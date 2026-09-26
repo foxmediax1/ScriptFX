@@ -1,0 +1,40 @@
+package net.foxmediax.scriptfx.config
+
+import me.shedaniel.clothconfig2.api.ConfigBuilder
+import net.minecraft.client.gui.screens.Screen
+import net.minecraft.network.chat.Component
+
+object ScriptFXConfigScreen {
+
+    fun build(parent: Screen): Screen {
+        val builder = ConfigBuilder.create()
+            .setParentScreen(parent)
+            .setTitle(Component.literal("Настройки ScriptFX"))
+            .setSavingRunnable { ScriptFXConfig.save() }
+
+        val entryBuilder = builder.entryBuilder()
+        val general = builder.getOrCreateCategory(Component.literal("Общие"))
+
+        general.addEntry(
+            entryBuilder.startBooleanToggle(Component.literal("Показывать подсказки"), ScriptFXConfig.showHints)
+                .setDefaultValue(true)
+                .setTooltip(Component.literal("Включает всплывающие подсказки в панели управления"))
+                .setSaveConsumer { value -> ScriptFXConfig.showHints = value }
+                .build()
+        )
+
+        general.addEntry(
+            entryBuilder.startIntSlider(Component.literal("Макс. количество скриптов"), ScriptFXConfig.maxScripts, 1, 50)
+                .setSaveConsumer { value -> ScriptFXConfig.maxScripts = value }
+                .build()
+        )
+
+        general.addEntry(
+            entryBuilder.startStrField(Component.literal("Тема оформления"), ScriptFXConfig.theme)
+                .setSaveConsumer { value -> ScriptFXConfig.theme = value }
+                .build()
+        )
+
+        return builder.build()
+    }
+}

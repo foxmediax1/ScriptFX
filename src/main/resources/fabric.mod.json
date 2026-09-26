@@ -1,0 +1,51 @@
+{
+	"schemaVersion": 1,
+	"id": "scriptfx",
+	"version": "${version}",
+	"name": "ScriptFX",
+	"description": "This mod allows you to create scripts and develop various storylines.",
+	"authors": [
+		"FoxMediaX"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/scriptfx/icon.png",
+	"environment": "*",
+	"entrypoints": {
+		"main": [
+			{
+				"value": "net.foxmediax.scriptfx.ScriptFX",
+				"adapter": "kotlin"
+			},
+			{
+				"value": "net.foxmediax.scriptfx.server.ScriptFXServer",
+				"adapter": "kotlin"
+			}
+		],
+		"fabric-datagen": [
+			{
+				"value": "net.foxmediax.scriptfx.ScriptFXDataGenerator",
+				"adapter": "kotlin"
+			}
+		],
+		"client": [
+			{
+				"value": "net.foxmediax.scriptfx.client.ScriptFXClient",
+				"adapter": "kotlin"
+			}
+		]
+	},
+	"mixins": [
+		"scriptfx.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~26.1",
+		"java": ">=25",
+		"fabric-api": "*",
+		"fabric-language-kotlin": "*"
+	}
+}
