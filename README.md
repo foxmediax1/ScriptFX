@@ -1,5 +1,6 @@
 # ScriptFX
 
+## INFO
 EN:
 This mod allows you to create scripts and develop various storylines.
 
