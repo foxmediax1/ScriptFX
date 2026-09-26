@@ -1,8 +1,14 @@
 # ScriptFX
 
-## Setup
+EN:
+This mod allows you to create scripts and develop various storylines.
 
-For setup instructions, please see the [Fabric Documentation page](https://docs.fabricmc.net/develop/getting-started/creating-a-project#setting-up) related to the IDE that you are using.
+The mod was created using the Claude neural network; I allow you to add your own changes and improve this project.
+----------------------------------------------------------
+RU:
+Данный мод позволяет создавать скрипты и создавать различные сюжетные истории.
+
+Мод был создан с помощью нейросети Claude, я разрешаю добавлять свои изменения и улучшать данный проект.
 
 ## License
 
