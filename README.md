@@ -5,6 +5,7 @@ EN:
 This mod allows you to create scripts and develop various storylines.
 
 The mod was created using the Claude neural network; I allow you to add your own changes and improve this project.
+
 ----------------------------------------------------------
 RU:
 Данный мод позволяет создавать скрипты и создавать различные сюжетные истории.
