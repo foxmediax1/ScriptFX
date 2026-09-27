@@ -17,6 +17,8 @@ object CommandRegistry {
         handlers[name] = handler
     }
 
+    fun isKnown(name: String): Boolean = handlers.containsKey(name)
+
     fun execute(command: ScriptCommand, context: ScriptContext): CommandResult {
         val handler = handlers[command.name] ?: run {
             ScriptFXLog.warn("Неизвестная команда '${command.name}' (строка ${command.lineNumber})")
@@ -28,8 +30,10 @@ object CommandRegistry {
     private fun registerDefaults() {
 
         register("print") { context, args ->
-            val message = Component.literal(args.joinToString(" "))
+            val text = args.joinToString(" ")
+            val message = Component.literal(text)
             context.player?.sendSystemMessage(message) ?: broadcastToAll(context, message)
+            ScriptFXLog.info("print: $text")
             CommandResult.Continue
         }
 
@@ -41,6 +45,7 @@ object CommandRegistry {
 
             val message = Component.literal("[$name] ").withStyle(color).append(Component.literal(text))
             context.player?.sendSystemMessage(message) ?: broadcastToAll(context, message)
+            ScriptFXLog.info("printNPC[$name]: $text")
             CommandResult.Continue
         }
 
@@ -56,7 +61,7 @@ object CommandRegistry {
         }
 
         register("startscript") { context, args ->
-            args.getOrNull(0)?.let { ScriptManager.startScript(it, context) }
+            args.getOrNull(0)?.substringBeforeLast(".")?.let { ScriptManager.startScript(it, context) }
             CommandResult.Continue
         }
 
@@ -89,7 +94,7 @@ object CommandRegistry {
         context.server.playerList.players.forEach { it.sendSystemMessage(message) }
     }
 
-    private fun resolveLevel(server: net.minecraft.server.MinecraftServer, worldKey: String) =
+    fun resolveLevel(server: net.minecraft.server.MinecraftServer, worldKey: String) =
         when (worldKey.lowercase()) {
             "overworld" -> server.overworld()
             "nether" -> server.getLevel(Level.NETHER)
@@ -104,7 +109,7 @@ object CommandRegistry {
         return when (parts.getOrNull(1)?.lowercase()) {
             "tick", "ticks", "t" -> amount.toLong()
             "ms", "millis" -> (amount / 50).toLong().coerceAtLeast(1)
-            else -> (amount * 20).toLong() // по умолчанию считаем секундами
+            else -> (amount * 20).toLong()
         }
     }
 }
