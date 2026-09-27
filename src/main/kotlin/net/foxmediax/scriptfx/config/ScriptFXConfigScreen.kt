@@ -18,7 +18,7 @@ object ScriptFXConfigScreen {
         general.addEntry(
             entryBuilder.startBooleanToggle(Component.literal("Показывать подсказки"), ScriptFXConfig.showHints)
                 .setDefaultValue(true)
-                .setTooltip(Component.literal("Включает всплывающие подсказки в панели управления"))
+                .setTooltip(Component.literal("Включает всплывающие подсказки в панели управления. (в разработке...)"))
                 .setSaveConsumer { value -> ScriptFXConfig.showHints = value }
                 .build()
         )
@@ -26,12 +26,14 @@ object ScriptFXConfigScreen {
         general.addEntry(
             entryBuilder.startIntSlider(Component.literal("Макс. количество скриптов"), ScriptFXConfig.maxScripts, 1, 50)
                 .setSaveConsumer { value -> ScriptFXConfig.maxScripts = value }
+                .setTooltip(Component.literal("Показывает определённое количество скриптов, в разделе Проекты."))
                 .build()
         )
 
         general.addEntry(
             entryBuilder.startStrField(Component.literal("Тема оформления"), ScriptFXConfig.theme)
                 .setSaveConsumer { value -> ScriptFXConfig.theme = value }
+                .setTooltip(Component.literal("Позволяет менять тему оформления панели уравления. (в разработке...)"))
                 .build()
         )
 
