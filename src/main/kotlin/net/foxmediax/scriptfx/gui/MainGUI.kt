@@ -1,9 +1,13 @@
 package net.foxmediax.scriptfx.gui
 
 import net.foxmediax.scriptfx.config.ScriptFXConfigScreen
+import net.foxmediax.scriptfx.scriptengine.CommandRegistry
 import net.foxmediax.scriptfx.scriptengine.ScriptContext
+import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.foxmediax.scriptfx.scriptengine.ScriptManager
 import net.foxmediax.scriptfx.scriptengine.ScriptParser
+import net.foxmediax.scriptfx.scriptengine.TriggerParser
+import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.components.AbstractWidget
@@ -20,6 +24,7 @@ enum class PanelSection(val displayName: String) {
     PROJECTS("Проекты"),
     CUTSCENES("Кат-сцены"),
     NPC_EDITOR("NPC-редактор"),
+    LOGS("Логи"),
     SETTINGS("Настройки мода")
 }
 
@@ -33,8 +38,6 @@ class FlatButton(
     private val onPress: () -> Unit
 ) : AbstractWidget(x, y, width, height, Component.literal(label)) {
 
-    // Публичная обёртка: extractWidgetRenderState у родителя protected,
-    // а нам нужно вызывать отрисовку кнопки вручную снаружи (для модального диалога).
     fun renderButton(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, delta: Float) {
         extractWidgetRenderState(graphics, mouseX, mouseY, delta)
     }
@@ -90,37 +93,42 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     private val sidebarTop get() = panelTop + headerHeight
     private val contentLeft get() = panelLeft + sidebarWidth
 
-    // ---- файловый менеджер ----
     private val fileBrowser = FileBrowser()
     private var fileRows: List<FileRow> = emptyList()
     private var contextMenu: ContextMenuInfo? = null
     private var contextMenuRowRects: List<Rect> = emptyList()
 
-    // ---- универсальное поле ввода (переименование / создание файла-папки-проекта) ----
     private var textInputBox: EditBox? = null
     private var textInputConfirmButton: FlatButton? = null
 
-    // ---- редактор скрипта (открывается прямо внутри "Проекты") ----
     private var scriptEditorFile: File? = null
     private var scriptEditorBox: MultiLineEditBox? = null
     private var scriptEditorOriginalContent: String? = null
     private var scriptEditorSaveButton: FlatButton? = null
     private var scriptEditorRunButton: FlatButton? = null
     private var scriptEditorCloseButton: FlatButton? = null
+    private var scriptEditorHintsButton: FlatButton? = null
 
-    // ---- диалог "есть несохранённые изменения" ----
-    // ВАЖНО: эти две кнопки НЕ регистрируются через addRenderableWidget — рисуем и обрабатываем клики сами,
-    // иначе стандартный Screen рисует их ДО модального затемнения (они оказываются под ним)
-    // и пропускает клики фоновым виджетам сквозь диалог.
     private var closeConfirmVisible = false
     private var closeConfirmSaveButton: FlatButton? = null
     private var closeConfirmDiscardButton: FlatButton? = null
     private var pendingNavigationAction: (() -> Unit)? = null
 
-    // ---- документация ----
+    private var deleteConfirmEntry: FileEntry? = null
+    private var deleteConfirmYesButton: FlatButton? = null
+    private var deleteConfirmNoButton: FlatButton? = null
+
     private var showDocumentation = false
     private var docsScrollOffset = 0
     private var docsCloseButtonRect: Rect? = null
+
+    private var showScriptHints = false
+    private var scriptHintsScrollOffset = 0
+    private var scriptHintsCloseButtonRect: Rect? = null
+    private var scriptHintsRowRects: List<Rect> = emptyList()
+
+    private var logsScrollOffset = 0
+    private var logsClearButtonRect: Rect? = null
 
     override fun init() {
         buildSidebarButtons()
@@ -142,6 +150,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                             Minecraft.getInstance().setScreen(ScriptFXConfigScreen.build(this))
                         } else {
                             selectedSection = section
+                            if (section == PanelSection.LOGS) logsScrollOffset = Int.MAX_VALUE / 2
                         }
                     }
                 }
@@ -161,7 +170,13 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         addRenderableWidget(
             FlatButton(navLeft, panelTop + 5 + navButtonSize + 4, navButtonSize, navButtonSize, "▲", centered = true) {
                 closeTextInput(); contextMenu = null
-                navigateAwayAndThen { selectedSection = null }
+                navigateAwayAndThen {
+                    if (selectedSection == PanelSection.PROJECTS && fileBrowser.canGoUp()) {
+                        fileBrowser.goUp()
+                    } else {
+                        selectedSection = null
+                    }
+                }
             }
         )
         addRenderableWidget(
@@ -205,9 +220,10 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         super.extractRenderState(graphics, mouseX, mouseY, delta)
 
         drawContextMenu(graphics)
-        // closeConfirm рисуется ПОСЛЕДНИМ и рисует свои кнопки вручную поверх всего остального
         if (closeConfirmVisible) drawCloseConfirmDialog(graphics, mouseX, mouseY, delta)
+        if (deleteConfirmEntry != null) drawDeleteConfirmDialog(graphics, mouseX, mouseY, delta)
         if (showDocumentation) drawDocumentationOverlay(graphics)
+        if (showScriptHints) drawScriptHintsOverlay(graphics)
     }
 
     private fun drawHorizontalDivider(graphics: GuiGraphicsExtractor, x1: Int, x2: Int, y: Int, color: Int = 0xFF3A3A3A.toInt()) {
@@ -240,10 +256,12 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                 if (scriptEditorFile != null) {
                     fileRows = emptyList()
                     graphics.text(font, scriptEditorFile!!.name, rect.x1, rect.y1 - 10, 0xFFFFFFFF.toInt(), false)
+                    drawScriptValidationStatus(graphics, rect)
                 } else {
                     drawProjectsFileList(graphics, rect)
                 }
             }
+            PanelSection.LOGS -> drawLogsSection(graphics, rect)
             else -> {
                 fileRows = emptyList()
                 graphics.fill(rect.x1, rect.y1, rect.x2, rect.y2, 0xFF000000.toInt())
@@ -266,7 +284,30 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         }
     }
 
-    // ---------------- ПРОЕКТЫ: файловый менеджер ----------------
+    private fun drawScriptValidationStatus(graphics: GuiGraphicsExtractor, rect: Rect) {
+        val box = scriptEditorBox ?: return
+        val (ok, message) = validateScript(box.getValue())
+        val color = if (ok) 0xFF55FF55.toInt() else 0xFFFFCC55.toInt()
+        val textWidth = font.width(message)
+        graphics.text(font, message, rect.x2 - textWidth, rect.y1 - 10, color, false)
+    }
+
+    /** Простая проверка "все ли команды в скрипте известны". Без привязки к позиции курсора —
+     *  просто перепарсивает весь текст на каждый кадр, это дёшево для файлов такого размера. */
+    private fun validateScript(text: String): Pair<Boolean, String> {
+        if (text.isBlank()) return true to "Пустой скрипт"
+
+        val commands = ScriptParser.parse(text)
+        if (commands.isEmpty()) return true to "Пустой скрипт"
+
+        commands.forEachIndexed { index, command ->
+            val isTriggerHeader = index == 0 && command.name in TriggerParser.TRIGGER_NAMES
+            if (!isTriggerHeader && !CommandRegistry.isKnown(command.name)) {
+                return false to "⚠ Неизвестная команда '${command.name}' (строка ${command.lineNumber})"
+            }
+        }
+        return true to "✓ Скрипт корректен (${commands.size} команд)"
+    }
 
     private fun drawProjectsFileList(graphics: GuiGraphicsExtractor, rect: Rect) {
         graphics.fill(rect.x1, rect.y1, rect.x2, rect.y2, 0xFF000000.toInt())
@@ -315,8 +356,6 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         openScriptEditor(entry.file)
     }
 
-    // ---------------- редактор скрипта ----------------
-
     private fun openScriptEditor(file: File) {
         closeScriptEditor()
 
@@ -347,10 +386,17 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             runScriptFile(file)
         }
 
+        val hintsBtn = FlatButton(rect.x2 - 90, editorTop + editorHeight + 4, 90, 20, "Подсказки") {
+            showScriptHints = true
+            scriptHintsScrollOffset = 0
+            setFocused(null)
+        }
+
         addRenderableWidget(box)
         addRenderableWidget(closeBtn)
         addRenderableWidget(saveBtn)
         addRenderableWidget(runBtn)
+        addRenderableWidget(hintsBtn)
 
         scriptEditorFile = file
         scriptEditorBox = box
@@ -358,6 +404,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         scriptEditorCloseButton = closeBtn
         scriptEditorSaveButton = saveBtn
         scriptEditorRunButton = runBtn
+        scriptEditorHintsButton = hintsBtn
     }
 
     private fun closeScriptEditor() {
@@ -365,16 +412,17 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         scriptEditorCloseButton?.let { removeWidget(it) }
         scriptEditorSaveButton?.let { removeWidget(it) }
         scriptEditorRunButton?.let { removeWidget(it) }
+        scriptEditorHintsButton?.let { removeWidget(it) }
         scriptEditorBox = null
         scriptEditorCloseButton = null
         scriptEditorSaveButton = null
         scriptEditorRunButton = null
+        scriptEditorHintsButton = null
         scriptEditorFile = null
         scriptEditorOriginalContent = null
+        showScriptHints = false
     }
 
-    /** Если в открытом скрипте есть несохранённые правки — сперва спрашивает подтверждение,
-     *  и выполняет action только после ответа. Если правок нет — закрывает редактор и сразу выполняет action. */
     private fun navigateAwayAndThen(action: () -> Unit) {
         if (scriptEditorFile != null && scriptEditorBox?.getValue() != scriptEditorOriginalContent) {
             pendingNavigationAction = action
@@ -388,7 +436,9 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     private fun runScriptFile(file: File) {
         val client = Minecraft.getInstance()
         if (!client.hasSingleplayerServer()) {
-            // TODO: на выделенном сервере тут нужен сетевой пакет клиент -> сервер, пока работает только в одиночной игре/LAN
+            client.player?.sendSystemMessage(
+                Component.literal("Запуск скриптов пока доступен только в одиночной игре").withStyle(ChatFormatting.RED)
+            )
             return
         }
         val server = client.getSingleplayerServer() ?: return
@@ -397,11 +447,9 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         server.execute {
             val serverPlayer = server.playerList.getPlayer(playerUuid) ?: return@execute
             val commands = ScriptParser.parse(file.readText())
-            ScriptManager.runAdHoc(commands, ScriptContext(server, serverPlayer))
+            ScriptManager.runAdHoc(commands, ScriptContext(server, serverPlayer), file.nameWithoutExtension)
         }
     }
-
-    // ---------------- диалог "несохранённые изменения" ----------------
 
     private fun closeConfirmBounds(): Rect {
         val rect = contentRect()
@@ -416,8 +464,6 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         closeCloseConfirmDialog()
         val box = closeConfirmBounds()
 
-        // ВАЖНО: НЕ addRenderableWidget — рисуем и обрабатываем клики вручную,
-        // чтобы кнопки не оказались "под" затемнением и не пропускали клики фону.
         closeConfirmSaveButton = FlatButton(box.x1 + 10, box.y2 - 24, 125, 20, "Сохранить и закрыть") {
             scriptEditorFile?.writeText(scriptEditorBox?.getValue() ?: "")
             finishPendingNavigation()
@@ -456,9 +502,45 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             graphics.text(font, line, box.x1 + 10, box.y1 + 22 + i * 10, 0xFFCCCCCC.toInt(), false)
         }
 
-        // рисуем кнопки вручную через публичную обёртку renderButton(), уже поверх подложки диалога
         closeConfirmSaveButton?.renderButton(graphics, mouseX, mouseY, delta)
         closeConfirmDiscardButton?.renderButton(graphics, mouseX, mouseY, delta)
+    }
+
+    private fun openDeleteConfirm(entry: FileEntry) {
+        closeDeleteConfirm()
+        val box = closeConfirmBounds()
+        deleteConfirmEntry = entry
+        deleteConfirmYesButton = FlatButton(box.x1 + 10, box.y2 - 24, 125, 20, "Удалить") {
+            fileBrowser.delete(entry)
+            closeDeleteConfirm()
+        }
+        deleteConfirmNoButton = FlatButton(box.x2 - 135, box.y2 - 24, 125, 20, "Отмена") {
+            closeDeleteConfirm()
+        }
+    }
+
+    private fun closeDeleteConfirm() {
+        deleteConfirmEntry = null
+        deleteConfirmYesButton = null
+        deleteConfirmNoButton = null
+    }
+
+    private fun drawDeleteConfirmDialog(graphics: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, delta: Float) {
+        val entry = deleteConfirmEntry ?: return
+        val rect = contentRect()
+        graphics.fill(rect.x1, rect.y1, rect.x2, rect.y2, 0x99000000.toInt())
+
+        val box = closeConfirmBounds()
+        graphics.fill(box.x1, box.y1, box.x2, box.y2, 0xFF1E1E1E.toInt())
+        graphics.text(font, "Внимание!", box.x1 + 10, box.y1 + 8, 0xFFFF5555.toInt(), false)
+
+        val message = "Удалить \"${entry.name}\" безвозвратно?"
+        for ((i, line) in wrapText(message, box.x2 - box.x1 - 20).withIndex()) {
+            graphics.text(font, line, box.x1 + 10, box.y1 + 22 + i * 10, 0xFFCCCCCC.toInt(), false)
+        }
+
+        deleteConfirmYesButton?.renderButton(graphics, mouseX, mouseY, delta)
+        deleteConfirmNoButton?.renderButton(graphics, mouseX, mouseY, delta)
     }
 
     private fun wrapText(text: String, maxWidth: Int): List<String> {
@@ -478,7 +560,54 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         return lines
     }
 
-    // ---------------- контекстные меню ----------------
+    private fun drawLogsSection(graphics: GuiGraphicsExtractor, rect: Rect) {
+        graphics.fill(rect.x1, rect.y1, rect.x2, rect.y2, 0xFF000000.toInt())
+
+        val clearRect = Rect(rect.x2 - 70, rect.y1 + 2, rect.x2 - 2, rect.y1 + 16)
+        graphics.fill(clearRect.x1, clearRect.y1, clearRect.x2, clearRect.y2, 0xFF262626.toInt())
+        graphics.text(font, "Очистить", clearRect.x1 + 4, clearRect.y1 + 3, 0xFFAAAAAA.toInt(), false)
+        logsClearButtonRect = clearRect
+
+        val entries = ScriptFXLog.snapshot()
+        if (entries.isEmpty()) {
+            graphics.text(
+                font, "Пока пусто — здесь появятся сообщения во время выполнения скриптов",
+                rect.x1 + 6, rect.y1 + 22, 0xFF666666.toInt(), false
+            )
+            return
+        }
+
+        val timeFormat = java.text.SimpleDateFormat("HH:mm:ss")
+        val lineHeight = font.lineHeight + 2
+        val visibleTop = rect.y1 + 22
+        val visibleBottom = rect.y2 - 4
+
+        var totalLines = 0
+        val wrapped = entries.map { entry ->
+            val color = when (entry.level) {
+                ScriptFXLog.Level.INFO -> 0xFFAAAAAA.toInt()
+                ScriptFXLog.Level.WARN -> 0xFFFFCC55.toInt()
+                ScriptFXLog.Level.ERROR -> 0xFFFF5555.toInt()
+            }
+            val prefix = "[${timeFormat.format(java.util.Date(entry.time))}] "
+            val lines = wrapText(prefix + entry.message, rect.x2 - rect.x1 - 12)
+            totalLines += lines.size
+            lines to color
+        }
+
+        val maxScroll = ((totalLines * lineHeight) - (visibleBottom - visibleTop)).coerceAtLeast(0)
+        logsScrollOffset = logsScrollOffset.coerceIn(0, maxScroll)
+
+        var y = visibleTop - logsScrollOffset
+        for ((lines, color) in wrapped) {
+            for (line in lines) {
+                if (y in (visibleTop - lineHeight)..visibleBottom) {
+                    graphics.text(font, line, rect.x1 + 6, y, color, false)
+                }
+                y += lineHeight
+            }
+        }
+    }
 
     private fun openContextMenu(x: Int, y: Int, entry: FileEntry) {
         val items = mutableListOf<ContextMenuItem>()
@@ -490,7 +619,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         items.add(ContextMenuItem("Переименовать") {
             openTextInput(x, y, entry.name) { newName -> fileBrowser.rename(entry, newName) }
         })
-        items.add(ContextMenuItem("Удалить") { fileBrowser.delete(entry) })
+        items.add(ContextMenuItem("Удалить") { openDeleteConfirm(entry) })
         contextMenu = ContextMenuInfo(x, y, items)
     }
 
@@ -554,8 +683,6 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         contextMenuRowRects = rows
     }
 
-    // ---------------- универсальное текстовое поле ----------------
-
     private fun openTextInput(x: Int, y: Int, initialValue: String, onConfirm: (String) -> Unit) {
         closeTextInput()
 
@@ -581,11 +708,10 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         textInputConfirmButton = null
     }
 
-    // ---------------- документация ----------------
-
     private fun openDocumentation() {
         docsScrollOffset = 0
         showDocumentation = true
+        setFocused(null)
     }
 
     private fun closeDocumentation() {
@@ -623,21 +749,97 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         }
     }
 
-    // ---------------- ввод мыши ----------------
+    private fun drawScriptHintsOverlay(graphics: GuiGraphicsExtractor) {
+        graphics.fill(panelLeft, panelTop, panelRight, panelBottom, 0xFF101010.toInt())
+
+        val left = panelLeft + 20
+        val top = panelTop + 20
+        val right = panelRight - 20
+        val bottom = panelBottom - 20
+
+        graphics.text(font, "Подсказки — клик добавляет команду в конец скрипта", left, top, 0xFFFFFFFF.toInt(), false)
+
+        val closeRect = Rect(right - 20, top - 4, right, top + 12)
+        graphics.fill(closeRect.x1, closeRect.y1, closeRect.x2, closeRect.y2, 0xFF262626.toInt())
+        graphics.text(font, "X", closeRect.x1 + 6, closeRect.y1 + 2, 0xFFFFFFFF.toInt(), false)
+        scriptHintsCloseButtonRect = closeRect
+
+        val scrollbarWidth = 6
+        val scrollbarGap = 6
+        val listRight = right - scrollbarWidth - scrollbarGap
+
+        val rowHeight = 30
+        val visibleTop = top + 20
+        val visibleBottom = bottom
+
+        val totalHeight = CommandDocs.ALL.size * rowHeight
+        val viewportHeight = (visibleBottom - visibleTop).coerceAtLeast(1)
+        val maxScroll = (totalHeight - viewportHeight).coerceAtLeast(0)
+        scriptHintsScrollOffset = scriptHintsScrollOffset.coerceIn(0, maxScroll)
+
+        val rows = mutableListOf<Rect>()
+        var y = visibleTop - scriptHintsScrollOffset
+        for (doc in CommandDocs.ALL) {
+            val rowBottom = y + rowHeight - 2
+            // Рисуем строку, только если она ЦЕЛИКОМ помещается в видимую область —
+            // иначе частично обрезанная строка может вылезти за нижнюю границу окна.
+            if (y >= visibleTop && rowBottom <= visibleBottom) {
+                graphics.fill(left, y, listRight, rowBottom, 0xFF161616.toInt())
+                graphics.text(font, doc.template, left + 6, y + 3, 0xFFB026FF.toInt(), false)
+                graphics.text(font, doc.description, left + 6, y + 3 + font.lineHeight + 1, 0xFFAAAAAA.toInt(), false)
+                rows.add(Rect(left, y, listRight, rowBottom))
+            } else {
+                rows.add(Rect(0, 0, 0, 0))
+            }
+            y += rowHeight
+        }
+        scriptHintsRowRects = rows
+
+        if (maxScroll > 0) {
+            val trackLeft = listRight + scrollbarGap
+            val trackTop = visibleTop
+            val trackBottom = visibleBottom
+            val trackHeight = trackBottom - trackTop
+
+            graphics.fill(trackLeft, trackTop, right, trackBottom, 0xFF1A1A1A.toInt())
+
+            val thumbHeight = ((trackHeight.toFloat() * viewportHeight) / totalHeight)
+                .toInt()
+                .coerceIn(12, trackHeight)
+            val maxThumbTravel = (trackHeight - thumbHeight).coerceAtLeast(0)
+            val scrollRatio = scriptHintsScrollOffset.toFloat() / maxScroll
+            val thumbTop = trackTop + (maxThumbTravel * scrollRatio).toInt().coerceIn(0, maxThumbTravel)
+
+            graphics.fill(trackLeft, thumbTop, right, thumbTop + thumbHeight, 0xFF7A3FC0.toInt())
+        }
+    }
 
     override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
         val mx = event.x().toInt()
         val my = event.y().toInt()
-        val button = event.buttonInfo().button() // 0 = левая, 1 = правая
+        val button = event.buttonInfo().button()
 
         if (showDocumentation) {
             docsCloseButtonRect?.let { if (it.contains(mx, my)) closeDocumentation() }
             return true
         }
 
+        if (showScriptHints) {
+            scriptHintsCloseButtonRect?.let {
+                if (it.contains(mx, my)) { showScriptHints = false; return true }
+            }
+            val rowIndex = scriptHintsRowRects.indexOfFirst { it.contains(mx, my) }
+            if (rowIndex >= 0) {
+                val doc = CommandDocs.ALL[rowIndex]
+                val current = scriptEditorBox?.getValue() ?: ""
+                val separator = if (current.isEmpty() || current.endsWith("\n")) "" else "\n"
+                scriptEditorBox?.setValue(current + separator + doc.template + "\n")
+                showScriptHints = false
+            }
+            return true
+        }
+
         if (closeConfirmVisible) {
-            // Диалог модальный: клик обрабатывается ТОЛЬКО нами и никуда дальше не идёт,
-            // независимо от того, попал он в одну из двух кнопок или в пустое место фона.
             val save = closeConfirmSaveButton
             val discard = closeConfirmDiscardButton
             when {
@@ -645,6 +847,18 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                     save.onClick(event, doubleClick)
                 discard != null && mx >= discard.x && mx < discard.x + discard.width && my >= discard.y && my < discard.y + discard.height ->
                     discard.onClick(event, doubleClick)
+            }
+            return true
+        }
+
+        deleteConfirmEntry?.let {
+            val yes = deleteConfirmYesButton
+            val no = deleteConfirmNoButton
+            when {
+                yes != null && mx >= yes.x && mx < yes.x + yes.width && my >= yes.y && my < yes.y + yes.height ->
+                    yes.onClick(event, doubleClick)
+                no != null && mx >= no.x && mx < no.x + no.width && my >= no.y && my < no.y + no.height ->
+                    no.onClick(event, doubleClick)
             }
             return true
         }
@@ -658,6 +872,10 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             } else {
                 contextMenu = null
             }
+        }
+
+        if (selectedSection == PanelSection.LOGS) {
+            logsClearButtonRect?.let { if (it.contains(mx, my)) { ScriptFXLog.clear(); return true } }
         }
 
         if (selectedSection == PanelSection.PROJECTS && scriptEditorFile == null) {
@@ -688,6 +906,14 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
         if (showDocumentation) {
             docsScrollOffset = (docsScrollOffset - (scrollY * 12).toInt()).coerceAtLeast(0)
+            return true
+        }
+        if (showScriptHints) {
+            scriptHintsScrollOffset = (scriptHintsScrollOffset - (scrollY * 12).toInt()).coerceAtLeast(0)
+            return true
+        }
+        if (selectedSection == PanelSection.LOGS) {
+            logsScrollOffset -= (scrollY * 12).toInt()
             return true
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
