@@ -860,7 +860,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
         val mx = event.x().toInt()
         val my = event.y().toInt()
-        val mouseButton = event.button // ИСПРАВЛЕНО: было event.buttonInfo().button()
+        val mouseButton = event.button() // ИСПРАВЛЕНО: было event.buttonInfo().button()
 
         // Обработка документации (модальное окно)
         if (showDocumentation) {
