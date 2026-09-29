@@ -860,7 +860,6 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
         val mx = event.x().toInt()
         val my = event.y().toInt()
-        val mouseButton = event.button() // ИСПРАВЛЕНО: было event.buttonInfo().button()
 
         // Обработка документации (модальное окно)
         if (showDocumentation) {
@@ -946,27 +945,37 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         if (selectedSection == PanelSection.PROJECTS && scriptEditorFile == null) {
             val row = fileRows.firstOrNull { it.rect.contains(mx, my) }
 
-            // ЛЕВЫЙ КЛИК (0) - открытие файлов/папок
-            if (mouseButton == 0) {
-                row?.let { fileRow ->
-                    when {
-                        fileRow.isUp -> {
-                            // Клик по "../" - переход в родительскую папку
-                            fileBrowser.goUp()
-                            return true
-                        }
-                        fileRow.entry != null && doubleClick -> {
-                            // Двойной клик на файл/папку
-                            if (fileRow.entry.isDirectory) {
-                                fileBrowser.goInto(fileRow.entry)
-                            } else if (fileRow.entry.file.extension == "sfxs") {
-                                openScriptEditor(fileRow.entry.file)
-                            }
-                            return true
-                        }
+            if (row != null) {
+                when {
+                    // Двойной клик по "../" - открыть родительскую папку
+                    row.isUp && doubleClick -> {
+                        fileBrowser.goUp()
+                        return true
+                    }
+                    // Двойной клик по папке - открыть её
+                    row.entry != null && row.entry.isDirectory && doubleClick -> {
+                        fileBrowser.goInto(row.entry)
+                        return true
+                    }
+                    // Двойной клик по .sfxs файлу - открыть в редакторе
+                    row.entry != null && !row.entry.isDirectory && doubleClick && row.entry.file.extension == "sfxs" -> {
+                        openScriptEditor(row.entry.file)
+                        return true
+                    }
+                    // Правый клик на файл/папку - контекстное меню
+                    row.entry != null && !row.isUp && event.button == 1 -> {
+                        openContextMenu(mx, my, row.entry)
+                        return true
                     }
                 }
             }
+
+            // Правый клик на пустую область - меню создания
+            if (event.button == 1 && contentRect().contains(mx, my)) {
+                openBackgroundContextMenu(mx, my)
+                return true
+            }
+        }
             // ПРАВЫЙ КЛИК (1) - контекстное меню
             else if (mouseButton == 1) {
                 row?.let { fileRow ->
@@ -991,15 +1000,14 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                 it.items[rowIndex].action.invoke()
                 contextMenu = null
                 return true
-            } else if (mouseButton == 0) {
-                // Закрыть контекстное меню при клике левой кнопкой в другое место
+            } else {
                 contextMenu = null
                 return true
             }
         }
 
-        return super.mouseClicked(event, doubleClick)
-    }
+    return super.mouseClicked(event, doubleClick)
+}
 
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
         if (showDocumentation) {
