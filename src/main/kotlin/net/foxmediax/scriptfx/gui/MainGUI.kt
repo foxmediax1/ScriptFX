@@ -19,6 +19,8 @@ import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.network.chat.Component
 import java.io.File
+import net.minecraft.client.input.KeyEvent
+import net.minecraft.client.input.CharacterEvent
 
 enum class PanelSection(val displayName: String) {
     PROJECTS("Проекты"),
@@ -101,6 +103,9 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     private var textInputBox: EditBox? = null
     private var textInputConfirmButton: FlatButton? = null
 
+    private var showSaveSuccessMessage = false
+    private var saveSuccessMessageUntil = 0L
+
     private var scriptEditorFile: File? = null
     private var scriptEditorBox: MultiLineEditBox? = null
     private var scriptEditorOriginalContent: String? = null
@@ -126,9 +131,26 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     private var scriptHintsScrollOffset = 0
     private var scriptHintsCloseButtonRect: Rect? = null
     private var scriptHintsRowRects: List<Rect> = emptyList()
-
+    private var scriptHintsScrollbarTrackRect: Rect? = null
+    private var scriptHintsScrollbarThumbRect: Rect? = null
+    private var scriptHintsMaxScroll: Int = 0
+    private var draggingScriptHintsScrollbar = false
+    private var scriptHintsDragGrabOffsetY = 0
     private var logsScrollOffset = 0
     private var logsClearButtonRect: Rect? = null
+
+    private fun openScriptHints() {
+        showScriptHints = true
+        scriptHintsScrollOffset = 0
+        draggingScriptHintsScrollbar = false
+        setFocused(null)
+    }
+
+    private fun closeScriptHints() {
+        showScriptHints = false
+        draggingScriptHintsScrollbar = false
+        setFocused(null)
+    }
 
     override fun init() {
         buildSidebarButtons()
@@ -257,6 +279,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                     fileRows = emptyList()
                     graphics.text(font, scriptEditorFile!!.name, rect.x1, rect.y1 - 10, 0xFFFFFFFF.toInt(), false)
                     drawScriptValidationStatus(graphics, rect)
+                    drawSaveSuccessMessage(graphics, rect)
                 } else {
                     drawProjectsFileList(graphics, rect)
                 }
@@ -290,6 +313,20 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         val color = if (ok) 0xFF55FF55.toInt() else 0xFFFFCC55.toInt()
         val textWidth = font.width(message)
         graphics.text(font, message, rect.x2 - textWidth, rect.y1 - 10, color, false)
+    }
+
+    private fun drawSaveSuccessMessage(
+        graphics: GuiGraphicsExtractor,
+        rect: Rect
+    ) {
+        if (!showSaveSuccessMessage) return
+
+        if (System.currentTimeMillis() >= saveSuccessMessageUntil) {
+            showSaveSuccessMessage = false
+            return
+        }
+
+        val button = scriptEditorSaveButton ?: return
     }
 
     /** Простая проверка "все ли команды в скрипте известны". Без привязки к позиции курсора —
@@ -359,6 +396,9 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     private fun openScriptEditor(file: File) {
         closeScriptEditor()
 
+        showSaveSuccessMessage = false
+        saveSuccessMessageUntil = 0L
+
         val rect = contentRect()
         val headerRowHeight = 16
         val bottomRowHeight = 24
@@ -380,6 +420,10 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         val saveBtn = FlatButton(rect.x1, editorTop + editorHeight + 4, 100, 20, "Сохранить") {
             file.writeText(box.getValue())
             scriptEditorOriginalContent = box.getValue()
+
+            showSaveSuccessMessage = true
+            saveSuccessMessageUntil = System.currentTimeMillis() + 3000L
+
         }
 
         val runBtn = FlatButton(rect.x1 + 108, editorTop + editorHeight + 4, 150, 20, "▶ Запустить скрипт") {
@@ -389,8 +433,10 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         val hintsBtn = FlatButton(rect.x2 - 90, editorTop + editorHeight + 4, 90, 20, "Подсказки") {
             showScriptHints = true
             scriptHintsScrollOffset = 0
+            draggingScriptHintsScrollbar = false
             setFocused(null)
         }
+
 
         addRenderableWidget(box)
         addRenderableWidget(closeBtn)
@@ -421,6 +467,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         scriptEditorFile = null
         scriptEditorOriginalContent = null
         showScriptHints = false
+        draggingScriptHintsScrollbar = false
     }
 
     private fun navigateAwayAndThen(action: () -> Unit) {
@@ -794,6 +841,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             y += rowHeight
         }
         scriptHintsRowRects = rows
+        scriptHintsMaxScroll = maxScroll
 
         if (maxScroll > 0) {
             val trackLeft = listRight + scrollbarGap
@@ -811,13 +859,44 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             val thumbTop = trackTop + (maxThumbTravel * scrollRatio).toInt().coerceIn(0, maxThumbTravel)
 
             graphics.fill(trackLeft, thumbTop, right, thumbTop + thumbHeight, 0xFF7A3FC0.toInt())
+
+            scriptHintsScrollbarTrackRect = Rect(trackLeft, trackTop, right, trackBottom)
+            scriptHintsScrollbarThumbRect = Rect(trackLeft, thumbTop, right, thumbTop + thumbHeight)
+        } else {
+            scriptHintsScrollbarTrackRect = null
+            scriptHintsScrollbarThumbRect = null
         }
     }
 
-    override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
+    private fun isBlockingOverlayOpen(): Boolean = showScriptHints || showDocumentation
+
+    override fun mouseClicked(
+        event: MouseButtonEvent,
+        doubleClick: Boolean
+    ): Boolean {
         val mx = event.x().toInt()
         val my = event.y().toInt()
         val button = event.buttonInfo().button()
+
+        // Подсказки — модальное окно.
+        // редактор при этом остаётся зарегистрированным, но не получает события мыши.
+        if (showScriptHints) {
+            setFocused(null)
+            //закритие окна
+            scriptHintsCloseButtonRect?.let {
+                if (it.contains(mx, my)) {
+                    closeScriptHints()
+                    return true
+                }
+            }
+        }
+        // обработка элементов окна подсказок
+        scriptHintsCloseButtonRect?.let {
+            if (it.contains(mx, my)) {
+                showScriptHints = false
+                return true
+            }
+        }
 
         if (showDocumentation) {
             docsCloseButtonRect?.let { if (it.contains(mx, my)) closeDocumentation() }
@@ -826,12 +905,43 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
 
         if (showScriptHints) {
             scriptHintsCloseButtonRect?.let {
-                if (it.contains(mx, my)) { showScriptHints = false; return true }
+                if (it.contains(mx, my)) { showScriptHints = false;
+                    scriptHintsCloseButtonRect?.let {
+                        if (it.contains(mx, my)) {
+                            showScriptHints = false
+                            draggingScriptHintsScrollbar = false
+                            return true
+                        }
+                    }
+                }
             }
+
+            scriptHintsScrollbarThumbRect?.let { thumb ->
+                if (thumb.contains(mx, my)) {
+                    draggingScriptHintsScrollbar = true
+                    scriptHintsDragGrabOffsetY = my - thumb.y1
+                    return true
+                }
+            }
+
+            scriptHintsScrollbarTrackRect?.let { track ->
+                if (track.contains(mx, my) && scriptHintsMaxScroll > 0) {
+                    val thumbHeight = scriptHintsScrollbarThumbRect?.let { it.y2 - it.y1 } ?: 12
+                    val travel = (track.y2 - track.y1 - thumbHeight).coerceAtLeast(1)
+                    val newThumbTop = (my - thumbHeight / 2).coerceIn(track.y1, track.y2 - thumbHeight)
+                    val ratio = (newThumbTop - track.y1).toFloat() / travel
+                    scriptHintsScrollOffset = (ratio * scriptHintsMaxScroll).toInt().coerceIn(0, scriptHintsMaxScroll)
+                    draggingScriptHintsScrollbar = true
+                    scriptHintsDragGrabOffsetY = thumbHeight / 2
+                    return true
+                }
+            }
+
             val rowIndex = scriptHintsRowRects.indexOfFirst { it.contains(mx, my) }
             if (rowIndex >= 0) {
                 val doc = CommandDocs.ALL[rowIndex]
                 val current = scriptEditorBox?.getValue() ?: ""
+
                 val separator = if (current.isEmpty() || current.endsWith("\n")) "" else "\n"
                 scriptEditorBox?.setValue(current + separator + doc.template + "\n")
                 showScriptHints = false
@@ -917,5 +1027,42 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             return true
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY)
+    }
+
+    override fun mouseDragged(event: MouseButtonEvent, dragX: Double, dragY: Double): Boolean {
+        if (draggingScriptHintsScrollbar) {
+            val track = scriptHintsScrollbarTrackRect
+            val thumb = scriptHintsScrollbarThumbRect
+            if (track != null && thumb != null && scriptHintsMaxScroll > 0) {
+                val thumbHeight = thumb.y2 - thumb.y1
+                val travel = (track.y2 - track.y1 - thumbHeight).coerceAtLeast(1)
+                val my = event.y().toInt()
+                val newThumbTop = (my - scriptHintsDragGrabOffsetY).coerceIn(track.y1, track.y2 - thumbHeight)
+                val ratio = (newThumbTop - track.y1).toFloat() / travel
+                scriptHintsScrollOffset = (ratio * scriptHintsMaxScroll).toInt().coerceIn(0, scriptHintsMaxScroll)
+            }
+            return true
+        }
+        if (isBlockingOverlayOpen()) return true
+        return super.mouseDragged(event, dragX, dragY)
+    }
+
+    override fun mouseReleased(event: MouseButtonEvent): Boolean {
+        if (draggingScriptHintsScrollbar) {
+            draggingScriptHintsScrollbar = false
+            return true
+        }
+        if (isBlockingOverlayOpen()) return true
+        return super.mouseReleased(event)
+    }
+
+    override fun keyPressed(event: KeyEvent): Boolean {
+        if (isBlockingOverlayOpen()) return true
+        return super.keyPressed(event)
+    }
+
+    override fun charTyped(event: CharacterEvent): Boolean {
+        if (isBlockingOverlayOpen()) return true
+        return super.charTyped(event)
     }
 }
