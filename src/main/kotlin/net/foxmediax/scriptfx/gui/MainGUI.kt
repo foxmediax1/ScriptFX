@@ -107,6 +107,8 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     private var saveSuccessMessageUntil = 0L
 
     private var scriptEditorFile: File? = null
+    private var lastClickedFile: File? = null
+    private var lastClickTime: Long = 0L
     private var scriptEditorBox: MultiLineEditBox? = null
     private var scriptEditorOriginalContent: String? = null
     private var scriptEditorSaveButton: FlatButton? = null
@@ -239,7 +241,8 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         drawHorizontalDivider(graphics, panelLeft, panelRight, panelTop + headerHeight)
         drawVerticalDivider(graphics, panelLeft + sidebarWidth, sidebarTop, panelBottom)
 
-        super.extractRenderState(graphics, mouseX, mouseY, delta)
+        val overlayOpen = isBlockingOverlayOpen()
+        super.extractRenderState(graphics, if (overlayOpen) -1 else mouseX, if (overlayOpen) -1 else mouseY, delta)
 
         drawContextMenu(graphics)
         if (closeConfirmVisible) drawCloseConfirmDialog(graphics, mouseX, mouseY, delta)
@@ -497,6 +500,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     }
 
     private fun openCloseConfirmDialog() {
+        setFocused(null)
         closeCloseConfirmDialog()
         val box = closeConfirmBounds()
 
@@ -543,6 +547,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     }
 
     private fun openDeleteConfirm(entry: FileEntry) {
+        setFocused(null)
         closeDeleteConfirm()
         val box = closeConfirmBounds()
         deleteConfirmEntry = entry
@@ -669,7 +674,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                 })
             }
             fileBrowser.isInsideProjectScripts() -> {
-                items.add(ContextMenuItem("Создать скрипт-файл.sfxs") {
+                items.add(ContextMenuItem("Создать скрипт-файл") {
                     openTextInput(x, y, "новый_скрипт") { name -> fileBrowser.createScriptFile(name) }
                 })
                 items.add(ContextMenuItem("Создать папку") {
@@ -855,7 +860,9 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         }
     }
 
-    private fun isBlockingOverlayOpen(): Boolean = showScriptHints || showDocumentation
+    private fun isDialogOpen(): Boolean = closeConfirmVisible || deleteConfirmEntry != null
+
+    private fun isBlockingOverlayOpen(): Boolean = showScriptHints || showDocumentation || isDialogOpen()
 
     override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
         val mx = event.x().toInt()
@@ -941,75 +948,72 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             logsClearButtonRect?.let { if (it.contains(mx, my)) { ScriptFXLog.clear(); return true } }
         }
 
+        // Контекстное меню (обрабатываем первым, чтобы клики по пунктам не попадали в строки файлов)
+        contextMenu?.let { menu ->
+            val rowIndex = contextMenuRowRects.indexOfFirst { r -> r.contains(mx, my) }
+            contextMenu = null
+            if (rowIndex >= 0) {
+                menu.items[rowIndex].action.invoke()
+            }
+            return true
+        }
+
+        // Пока открыто поле ввода имени - клики отдаём обычным виджетам (поле, кнопка OK, боковые кнопки)
+        if (textInputBox != null) {
+            return super.mouseClicked(event, doubleClick)
+        }
+
         // Обработка раздела проектов
         if (selectedSection == PanelSection.PROJECTS && scriptEditorFile == null) {
+            val button = event.button()
             val row = fileRows.firstOrNull { it.rect.contains(mx, my) }
 
             if (row != null) {
+                val entry = row.entry
                 when {
-                    // Двойной клик по "../" - открыть родительскую папку
-                    row.isUp && doubleClick -> {
+                    // ЛКМ по "../" - родительская папка
+                    button == 0 && row.isUp -> {
                         fileBrowser.goUp()
                         return true
                     }
-                    // Двойной клик по папке - открыть её
-                    row.entry != null && row.entry.isDirectory && doubleClick -> {
-                        fileBrowser.goInto(row.entry)
+                    // ЛКМ по папке - открыть
+                    button == 0 && entry != null && entry.isDirectory -> {
+                        fileBrowser.goInto(entry)
                         return true
                     }
-                    // Двойной клик по .sfxs файлу - открыть в редакторе
-                    row.entry != null && !row.entry.isDirectory && doubleClick && row.entry.file.extension == "sfxs" -> {
-                        openScriptEditor(row.entry.file)
+                    // Двойной ЛКМ по .sfxs - открыть в редакторе
+                    button == 0 && entry != null && entry.file.extension == "sfxs" -> {
+                        val now = System.currentTimeMillis()
+                        val isDouble = doubleClick || (lastClickedFile == entry.file && now - lastClickTime < 500)
+                        if (isDouble) {
+                            lastClickedFile = null
+                            openScriptEditor(entry.file)
+                        } else {
+                            lastClickedFile = entry.file
+                            lastClickTime = now
+                        }
                         return true
                     }
-                    // Правый клик на файл/папку - контекстное меню
-                    row.entry != null && !row.isUp && event.button == 1 -> {
-                        openContextMenu(mx, my, row.entry)
+                    // ПКМ по файлу или папке - контекстное меню
+                    button == 1 && entry != null -> {
+                        openContextMenu(mx, my, entry)
                         return true
                     }
                 }
             }
 
-            // Правый клик на пустую область - меню создания
-            if (event.button == 1 && contentRect().contains(mx, my)) {
+            // ПКМ по пустой области - меню создания
+            if (button == 1 && contentRect().contains(mx, my)) {
                 openBackgroundContextMenu(mx, my)
                 return true
             }
         }
-            // ПРАВЫЙ КЛИК (1) - контекстное меню
-            else if (mouseButton == 1) {
-                row?.let { fileRow ->
-                    if (!fileRow.isUp && fileRow.entry != null) {
-                        openContextMenu(mx, my, fileRow.entry)
-                        return true
-                    }
-                }
 
-                // Клик на пустой площади - создание новых файлов
-                if (contentRect().contains(mx, my)) {
-                    openBackgroundContextMenu(mx, my)
-                    return true
-                }
-            }
-        }
-
-        // Обработка контекстного меню
-        contextMenu?.let {
-            val rowIndex = contextMenuRowRects.indexOfFirst { r -> r.contains(mx, my) }
-            if (rowIndex >= 0) {
-                it.items[rowIndex].action.invoke()
-                contextMenu = null
-                return true
-            } else {
-                contextMenu = null
-                return true
-            }
-        }
-
-    return super.mouseClicked(event, doubleClick)
-}
+        return super.mouseClicked(event, doubleClick)
+    }
 
     override fun mouseScrolled(mouseX: Double, mouseY: Double, scrollX: Double, scrollY: Double): Boolean {
+        if (isDialogOpen()) return true
         if (showDocumentation) {
             docsScrollOffset = (docsScrollOffset - (scrollY * 12).toInt()).coerceAtLeast(0)
             return true
@@ -1053,8 +1057,23 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     }
 
     override fun keyPressed(event: KeyEvent): Boolean {
-        if (isBlockingOverlayOpen()) return true
+        if (isBlockingOverlayOpen()) {
+            if (event.key() == 256) dismissTopOverlay() // 256 = Esc
+            return true
+        }
         return super.keyPressed(event)
+    }
+
+    private fun dismissTopOverlay() {
+        when {
+            deleteConfirmEntry != null -> closeDeleteConfirm()
+            closeConfirmVisible -> {
+                closeCloseConfirmDialog()
+                pendingNavigationAction = null
+            }
+            showScriptHints -> closeScriptHints()
+            showDocumentation -> closeDocumentation()
+        }
     }
 
     override fun charTyped(event: CharacterEvent): Boolean {
