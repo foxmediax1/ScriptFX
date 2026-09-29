@@ -315,10 +315,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         graphics.text(font, message, rect.x2 - textWidth, rect.y1 - 10, color, false)
     }
 
-    private fun drawSaveSuccessMessage(
-        graphics: GuiGraphicsExtractor,
-        rect: Rect
-    ) {
+    private fun drawSaveSuccessMessage(graphics: GuiGraphicsExtractor, rect: Rect) {
         if (!showSaveSuccessMessage) return
 
         if (System.currentTimeMillis() >= saveSuccessMessageUntil) {
@@ -329,8 +326,6 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         val button = scriptEditorSaveButton ?: return
     }
 
-    /** Простая проверка "все ли команды в скрипте известны". Без привязки к позиции курсора —
-     *  просто перепарсивает весь текст на каждый кадр, это дёшево для файлов такого размера. */
     private fun validateScript(text: String): Pair<Boolean, String> {
         if (text.isBlank()) return true to "Пустой скрипт"
 
@@ -420,10 +415,8 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         val saveBtn = FlatButton(rect.x1, editorTop + editorHeight + 4, 100, 20, "Сохранить") {
             file.writeText(box.getValue())
             scriptEditorOriginalContent = box.getValue()
-
             showSaveSuccessMessage = true
             saveSuccessMessageUntil = System.currentTimeMillis() + 3000L
-
         }
 
         val runBtn = FlatButton(rect.x1 + 108, editorTop + editorHeight + 4, 150, 20, "▶ Запустить скрипт") {
@@ -431,12 +424,8 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         }
 
         val hintsBtn = FlatButton(rect.x2 - 90, editorTop + editorHeight + 4, 90, 20, "Подсказки") {
-            showScriptHints = true
-            scriptHintsScrollOffset = 0
-            draggingScriptHintsScrollbar = false
-            setFocused(null)
+            openScriptHints()
         }
-
 
         addRenderableWidget(box)
         addRenderableWidget(closeBtn)
@@ -828,8 +817,6 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         var y = visibleTop - scriptHintsScrollOffset
         for (doc in CommandDocs.ALL) {
             val rowBottom = y + rowHeight - 2
-            // Рисуем строку, только если она ЦЕЛИКОМ помещается в видимую область —
-            // иначе частично обрезанная строка может вылезти за нижнюю границу окна.
             if (y >= visibleTop && rowBottom <= visibleBottom) {
                 graphics.fill(left, y, listRight, rowBottom, 0xFF161616.toInt())
                 graphics.text(font, doc.template, left + 6, y + 3, 0xFFB026FF.toInt(), false)
@@ -870,49 +857,25 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
 
     private fun isBlockingOverlayOpen(): Boolean = showScriptHints || showDocumentation
 
-    override fun mouseClicked(
-        event: MouseButtonEvent,
-        doubleClick: Boolean
-    ): Boolean {
+    override fun mouseClicked(event: MouseButtonEvent, doubleClick: Boolean): Boolean {
         val mx = event.x().toInt()
         val my = event.y().toInt()
-        val button = event.buttonInfo().button()
+        val mouseButton = event.button // ИСПРАВЛЕНО: было event.buttonInfo().button()
 
-        // Подсказки — модальное окно.
-        // редактор при этом остаётся зарегистрированным, но не получает события мыши.
-        if (showScriptHints) {
-            setFocused(null)
-            //закритие окна
-            scriptHintsCloseButtonRect?.let {
-                if (it.contains(mx, my)) {
-                    closeScriptHints()
-                    return true
-                }
-            }
-        }
-        // обработка элементов окна подсказок
-        scriptHintsCloseButtonRect?.let {
-            if (it.contains(mx, my)) {
-                showScriptHints = false
-                return true
-            }
-        }
-
+        // Обработка документации (модальное окно)
         if (showDocumentation) {
             docsCloseButtonRect?.let { if (it.contains(mx, my)) closeDocumentation() }
             return true
         }
 
+        // Обработка подсказок (модальное окно)
         if (showScriptHints) {
+            setFocused(null)
+
             scriptHintsCloseButtonRect?.let {
-                if (it.contains(mx, my)) { showScriptHints = false;
-                    scriptHintsCloseButtonRect?.let {
-                        if (it.contains(mx, my)) {
-                            showScriptHints = false
-                            draggingScriptHintsScrollbar = false
-                            return true
-                        }
-                    }
+                if (it.contains(mx, my)) {
+                    closeScriptHints()
+                    return true
                 }
             }
 
@@ -941,14 +904,14 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             if (rowIndex >= 0) {
                 val doc = CommandDocs.ALL[rowIndex]
                 val current = scriptEditorBox?.getValue() ?: ""
-
                 val separator = if (current.isEmpty() || current.endsWith("\n")) "" else "\n"
                 scriptEditorBox?.setValue(current + separator + doc.template + "\n")
-                showScriptHints = false
+                closeScriptHints()
             }
             return true
         }
 
+        // Обработка диалога подтверждения закрытия
         if (closeConfirmVisible) {
             val save = closeConfirmSaveButton
             val discard = closeConfirmDiscardButton
@@ -961,6 +924,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             return true
         }
 
+        // Обработка диалога подтверждения удаления
         deleteConfirmEntry?.let {
             val yes = deleteConfirmYesButton
             val no = deleteConfirmNoButton
@@ -973,39 +937,63 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             return true
         }
 
+        // Обработка раздела логов
+        if (selectedSection == PanelSection.LOGS) {
+            logsClearButtonRect?.let { if (it.contains(mx, my)) { ScriptFXLog.clear(); return true } }
+        }
+
+        // Обработка раздела проектов
+        if (selectedSection == PanelSection.PROJECTS && scriptEditorFile == null) {
+            val row = fileRows.firstOrNull { it.rect.contains(mx, my) }
+
+            // ЛЕВЫЙ КЛИК (0) - открытие файлов/папок
+            if (mouseButton == 0) {
+                row?.let { fileRow ->
+                    when {
+                        fileRow.isUp -> {
+                            // Клик по "../" - переход в родительскую папку
+                            fileBrowser.goUp()
+                            return true
+                        }
+                        fileRow.entry != null && doubleClick -> {
+                            // Двойной клик на файл/папку
+                            if (fileRow.entry.isDirectory) {
+                                fileBrowser.goInto(fileRow.entry)
+                            } else if (fileRow.entry.file.extension == "sfxs") {
+                                openScriptEditor(fileRow.entry.file)
+                            }
+                            return true
+                        }
+                    }
+                }
+            }
+            // ПРАВЫЙ КЛИК (1) - контекстное меню
+            else if (mouseButton == 1) {
+                row?.let { fileRow ->
+                    if (!fileRow.isUp && fileRow.entry != null) {
+                        openContextMenu(mx, my, fileRow.entry)
+                        return true
+                    }
+                }
+
+                // Клик на пустой площади - создание новых файлов
+                if (contentRect().contains(mx, my)) {
+                    openBackgroundContextMenu(mx, my)
+                    return true
+                }
+            }
+        }
+
+        // Обработка контекстного меню
         contextMenu?.let {
             val rowIndex = contextMenuRowRects.indexOfFirst { r -> r.contains(mx, my) }
             if (rowIndex >= 0) {
                 it.items[rowIndex].action.invoke()
                 contextMenu = null
                 return true
-            } else {
+            } else if (mouseButton == 0) {
+                // Закрыть контекстное меню при клике левой кнопкой в другое место
                 contextMenu = null
-            }
-        }
-
-        if (selectedSection == PanelSection.LOGS) {
-            logsClearButtonRect?.let { if (it.contains(mx, my)) { ScriptFXLog.clear(); return true } }
-        }
-
-        if (selectedSection == PanelSection.PROJECTS && scriptEditorFile == null) {
-            val row = fileRows.firstOrNull { it.rect.contains(mx, my) }
-
-            if (button == 1) {
-                if (row != null && !row.isUp && row.entry != null) {
-                    openContextMenu(mx, my, row.entry)
-                } else if (contentRect().contains(mx, my)) {
-                    openBackgroundContextMenu(mx, my)
-                }
-                return true
-            }
-
-            if (button == 0 && row != null) {
-                when {
-                    row.isUp -> fileBrowser.goUp()
-                    row.entry!!.isDirectory -> fileBrowser.goInto(row.entry)
-                    else -> openScriptFileFromEntry(row.entry)
-                }
                 return true
             }
         }
