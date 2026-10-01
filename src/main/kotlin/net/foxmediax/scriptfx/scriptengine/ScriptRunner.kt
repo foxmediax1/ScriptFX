@@ -11,8 +11,18 @@ class ScriptRunner(
     var finished = false
         private set
 
+    /** Имя скрипта, который выполняется сейчас (меняется при continue_startscript). */
+    val name: String get() = scriptName
+
     init {
         ScriptFXLog.info("Скрипт '$scriptName' запущен")
+    }
+
+    /** Аварийная остановка (/scriptfx stop_script). */
+    fun stop() {
+        if (finished) return
+        finished = true
+        ScriptFXLog.info("Скрипт '$scriptName' аварийно остановлен командой stop_script")
     }
 
     fun tick(currentTick: Long) {
@@ -28,6 +38,9 @@ class ScriptRunner(
                 ScriptFXLog.error("Ошибка в скрипте '$scriptName', команда '${command.name}' (строка ${command.lineNumber})", e)
                 CommandResult.Continue
             }
+
+            // Скрипт могли остановить прямо во время выполнения команды.
+            if (finished) return
 
             when (result) {
                 CommandResult.Continue -> continue
