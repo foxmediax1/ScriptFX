@@ -21,7 +21,6 @@ import net.minecraft.network.chat.Component
 import java.io.File
 import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.input.CharacterEvent
-import java.awt.Desktop
 import java.net.URI
 
 enum class PanelSection(val displayName: String) {
@@ -850,18 +849,24 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         graphics.text(font, "Очистить", clearRect.x1 + 4, clearRect.y1 + 3, 0xFFAAAAAA.toInt(), false)
         logsClearButtonRect = clearRect
 
+        // Разделительная черта между кнопкой и зоной логов.
+        drawHorizontalDivider(graphics, rect.x1, rect.x2, rect.y1 + 19)
+
+        // Верхняя граница зоны логов (под разделителем).
+        val logsTop = rect.y1 + 24
+
         val entries = ScriptFXLog.snapshot()
         if (entries.isEmpty()) {
             graphics.text(
                 font, "Пока пусто — здесь появятся сообщения во время выполнения скриптов",
-                rect.x1 + 6, rect.y1 + 22, 0xFF666666.toInt(), false
+                rect.x1 + 6, logsTop, 0xFF666666.toInt(), false
             )
             return
         }
 
         val timeFormat = java.text.SimpleDateFormat("HH:mm:ss")
         val lineHeight = font.lineHeight + 2
-        val visibleTop = rect.y1 + 22
+        val visibleTop = logsTop
         val visibleBottom = rect.y2 - 4
 
         var totalLines = 0
@@ -880,6 +885,9 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         val maxScroll = ((totalLines * lineHeight) - (visibleBottom - visibleTop)).coerceAtLeast(0)
         logsScrollOffset = logsScrollOffset.coerceIn(0, maxScroll)
 
+        // Обрезаем вывод по зоне логов, чтобы прокручиваемые строки не залезали на разделитель и кнопку.
+        graphics.enableScissor(rect.x1, visibleTop, rect.x2, rect.y2)
+
         var y = visibleTop - logsScrollOffset
         for ((lines, color) in wrapped) {
             for (line in lines) {
@@ -889,6 +897,8 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                 y += lineHeight
             }
         }
+
+        graphics.disableScissor()
     }
 
     /** Отслеживает удаления текста в редакторе и сохраняет прошлые состояния для кнопки "Вернуть". */
@@ -971,7 +981,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                 })
             }
             fileBrowser.isInsideProjectScripts() -> {
-                items.add(ContextMenuItem("Создать скрипт-файл.sfxs") {
+                items.add(ContextMenuItem("Создать скриптовый файл") {
                     openTextInput(x, y, "новый_скрипт") { name -> fileBrowser.createScriptFile(name) }
                 })
                 items.add(ContextMenuItem("Создать папку") {
@@ -1341,13 +1351,12 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                         row.y2
                     )
 
-                graphics.text(
-                    font,
-                    if (expanded) "🔼" else "🔽",
-                    expandRect.x1 + 3,
-                    expandRect.y1 + 5,
-                    0xFFFFFFFF.toInt(),
-                    false
+                drawPixelArrow(
+                    graphics,
+                    (expandRect.x1 + expandRect.x2) / 2,
+                    (expandRect.y1 + expandRect.y2) / 2,
+                    expanded,
+                    0xFFFFFFFF.toInt()
                 )
 
                 expandHits.add(
@@ -1569,6 +1578,29 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             0xFFFFFFFF.toInt(),
             false
         )
+    }
+
+    /**
+     * Пиксельная стрелка-треугольник.
+     * up = false — смотрит вниз (раздел свёрнут), up = true — смотрит вверх (раздел развёрнут).
+     */
+    private fun drawPixelArrow(
+        graphics: GuiGraphicsExtractor,
+        centerX: Int,
+        centerY: Int,
+        up: Boolean,
+        color: Int
+    ) {
+        val px = 2                                  // размер одного «пикселя»
+        val widthsInCells = if (up) listOf(1, 3, 5, 7) else listOf(7, 5, 3, 1)
+        val top = centerY - widthsInCells.size * px / 2
+
+        widthsInCells.forEachIndexed { row, cells ->
+            val width = cells * px
+            val x1 = centerX - width / 2
+            val y1 = top + row * px
+            graphics.fill(x1, y1, x1 + width, y1 + px, color)
+        }
     }
 
     private fun drawDocumentationBottomButtons(
@@ -2131,8 +2163,6 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         val my = event.y().toInt()
         val button = event.buttonInfo().button()
 
-        ScriptFXLog.info("mouseClicked: button=$button docs=$showDocumentation") // временно
-
         if (showDocumentation && handleDocumentationMouse(mx, my, button)) return true
 
         /*
@@ -2170,21 +2200,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             // Telegram
             documentationTelegramRect?.let {
                 if (it.contains(mx, my)) {
-
-                    try {
-                        if (Desktop.isDesktopSupported()) {
-                            Desktop.getDesktop().browse(
-                                URI.create(
-                                    "https://t.me/foxgameyt_prod"
-                                )
-                            )
-                        }
-                    } catch (e: Exception) {
-                        ScriptFXLog.error(
-                            "Не удалось открыть Telegram: ${e.message}"
-                        )
-                    }
-
+                    openLink("https://t.me/foxgameyt_prod", "Telegram")
                     return true
                 }
             }
@@ -2192,131 +2208,70 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             // YouTube
             documentationYouTubeRect?.let {
                 if (it.contains(mx, my)) {
-
-                    try {
-                        if (Desktop.isDesktopSupported()) {
-                            Desktop.getDesktop().browse(
-                                URI.create(
-                                    "https://www.youtube.com/@FoxMediaX_prod"
-                                )
-                            )
-                        }
-                    } catch (e: Exception) {
-                        ScriptFXLog.error(
-                            "Не удалось открыть YouTube: ${e.message}"
-                        )
-                    }
-
+                    openLink("https://www.youtube.com/@FoxMediaX_prod", "YouTube")
                     return true
                 }
             }
 
-
             /*
-             * Сначала проверяем кнопку 🔽 / 🔼.
+             * Сначала проверяем кнопку-стрелку.
              *
              * Это важно:
              * нажатие на стрелку НЕ должно одновременно
              * открывать сам раздел.
              */
             for (hit in documentationExpandHits) {
-
                 if (hit.rect.contains(mx, my)) {
-
-                    if (
-                        expandedDocumentationSections
-                            .contains(hit.section)
-                    ) {
-                        expandedDocumentationSections
-                            .remove(hit.section)
+                    if (expandedDocumentationSections.contains(hit.section)) {
+                        expandedDocumentationSections.remove(hit.section)
                     } else {
-                        expandedDocumentationSections
-                            .add(hit.section)
+                        expandedDocumentationSections.add(hit.section)
                     }
-
                     return true
                 }
             }
 
             // Подразделы
             for (hit in documentationSubsectionHits) {
-
                 if (hit.rect.contains(mx, my)) {
-
-                    openDocumentationPage(
-                        hit.section,
-                        hit.subsection
-                    )
-
+                    openDocumentationPage(hit.section, hit.subsection)
                     return true
                 }
             }
 
             // Основные разделы
             for (hit in documentationSectionHits) {
-
                 if (hit.rect.contains(mx, my)) {
-
-                    val subsection =
-                        when (hit.section) {
-                            "Главное меню" ->
-                                "Credits"
-
-                            "Скрипты" ->
-                                "Скрипты"
-
-                            else ->
-                                hit.section
-                        }
-
-                    openDocumentationPage(
-                        hit.section,
-                        subsection
-                    )
-
+                    val subsection = when (hit.section) {
+                        "Главное меню" -> "Credits"
+                        "Скрипты" -> "Скрипты"
+                        else -> hit.section
+                    }
+                    openDocumentationPage(hit.section, subsection)
                     return true
                 }
             }
 
             // Кнопки вкладок Скриптов
-            for (
-            index in
-            documentationTabRects.indices
-            ) {
-
-                val rect =
-                    documentationTabRects[index]
-
-                if (rect.contains(mx, my)) {
-
-                    val subsection =
-                        when (index) {
-                            0 -> "Переменные"
-                            1 -> "Глобальные переменные"
-                            2 -> "Для сюжета"
-                            3 -> "Для камеры"
-                            else -> return true
-                        }
-
-                    openDocumentationPage(
-                        "Скрипты",
-                        subsection
-                    )
-
+            for (index in documentationTabRects.indices) {
+                if (documentationTabRects[index].contains(mx, my)) {
+                    val subsection = when (index) {
+                        0 -> "Переменные"
+                        1 -> "Глобальные переменные"
+                        2 -> "Для сюжета"
+                        3 -> "Для камеры"
+                        else -> return true
+                    }
+                    openDocumentationPage("Скрипты", subsection)
                     return true
                 }
             }
 
             // Scrollbar thumb
             documentationScrollbarThumbRect?.let {
-
                 if (it.contains(mx, my)) {
-
                     draggingDocumentationScrollbar = true
-
-                    documentationScrollbarDragGrabOffsetY =
-                        my - it.y1
-
+                    documentationScrollbarDragGrabOffsetY = my - it.y1
                     return true
                 }
             }
@@ -2326,9 +2281,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
 
             /*
              * Ключевой момент:
-             *
-             * НИКАКИЕ события мыши из документации
-             * не должны проходить дальше.
+             * НИКАКИЕ события мыши из документации не должны проходить дальше.
              */
             return true
         }
@@ -2338,7 +2291,6 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
          * ПОДСКАЗКИ СКРИПТОВ
          * =========================================================
          */
-
         if (showScriptHints) {
 
             setFocused(null)
@@ -2908,6 +2860,15 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             dragX,
             dragY
         )
+    }
+
+    /** Открывает ссылку в браузере средствами самого Minecraft (java.awt.Desktop в игре недоступен). */
+    private fun openLink(url: String, label: String) {
+        try {
+            net.minecraft.util.Util.getPlatform().openUri(URI.create(url))
+        } catch (e: Exception) {
+            ScriptFXLog.error("Не удалось открыть $label: ${e.message}")
+        }
     }
 
     override fun mouseReleased(
