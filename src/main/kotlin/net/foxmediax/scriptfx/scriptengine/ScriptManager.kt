@@ -29,7 +29,7 @@ object ScriptManager {
                         ScriptFXLog.warn("Скрипт с именем '$name' уже загружен из другого проекта — старый будет перезаписан")
                     }
                     loadedScripts[name] = commands
-                    if (TriggerParser.tryRegister(name, commands) != null) triggerCount++
+                    triggerCount += TriggerParser.registerAll(name, commands)
                 }
         }
 
@@ -44,6 +44,20 @@ object ScriptManager {
             return
         }
         activeRunners.add(ScriptRunner(commands, context, name))
+    }
+
+    fun stopScript(name: String): Int {
+        val matching = activeRunners.filter { it.name == name && !it.finished }
+        matching.forEach { it.stop() }
+        activeRunners.removeAll(matching.toSet())
+        return matching.size
+    }
+
+    fun stopAllScripts(): Int {
+        val running = activeRunners.filter { !it.finished }
+        running.forEach { it.stop() }
+        activeRunners.clear()
+        return running.size
     }
 
     fun runAdHoc(commands: List<ScriptCommand>, context: ScriptContext, name: String = "ad-hoc") {
