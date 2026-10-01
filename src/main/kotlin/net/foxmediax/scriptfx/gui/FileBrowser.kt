@@ -116,6 +116,7 @@ class FileBrowser {
         if (!projectDir.exists()) {
             projectDir.mkdirs()
             File(projectDir, "scripts").mkdirs()
+            File(projectDir, "avatars").mkdirs()
         }
         goTo(projectDir)
     }
