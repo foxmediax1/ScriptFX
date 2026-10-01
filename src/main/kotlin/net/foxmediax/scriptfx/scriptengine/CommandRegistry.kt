@@ -1,7 +1,6 @@
 package net.foxmediax.scriptfx.scriptengine
 
 import net.minecraft.ChatFormatting
-import net.minecraft.network.chat.Component
 import net.minecraft.world.level.Level
 import net.minecraft.world.entity.Relative
 
@@ -31,20 +30,25 @@ object CommandRegistry {
 
         register("print") { context, args ->
             val text = args.joinToString(" ")
-            val message = Component.literal(text)
-            context.player?.sendSystemMessage(message) ?: broadcastToAll(context, message)
+            ScriptMessenger.send(context, text)
             ScriptFXLog.info("print: $text")
             CommandResult.Continue
         }
 
-        // printNPC "текст" "имя_или_id_нпс" "цвет" — цвет и имя необязательны
+        // printNPC ["аватар.png"] "текст" "цвет имени" "имя" "цвет текста" "ремарка"
+        // Всё, кроме текста, необязательно. Аватар определяется по окончанию .png в первом аргументе.
         register("printNPC") { context, args ->
-            val text = args.getOrNull(0) ?: ""
-            val name = args.getOrNull(1) ?: "NPC"
-            val color = args.getOrNull(2)?.let { ChatFormatting.getByName(it) } ?: ChatFormatting.WHITE
+            val hasAvatar = args.getOrNull(0)?.endsWith(".png", ignoreCase = true) == true
+            val avatar = if (hasAvatar) args[0] else ""
+            val rest = if (hasAvatar) args.drop(1) else args
 
-            val message = Component.literal("[$name] ").withStyle(color).append(Component.literal(text))
-            context.player?.sendSystemMessage(message) ?: broadcastToAll(context, message)
+            val text = rest.getOrNull(0) ?: ""
+            val nameColor = rest.getOrNull(1)?.let { ChatFormatting.getByName(it) } ?: ChatFormatting.WHITE
+            val name = rest.getOrNull(2) ?: "NPC"
+            val textColor = rest.getOrNull(3)?.let { ChatFormatting.getByName(it) } ?: ChatFormatting.WHITE
+            val remark = rest.getOrNull(4) ?: ""
+
+            ScriptMessenger.send(context, text, name, nameColor, textColor, avatar, remark)
             ScriptFXLog.info("printNPC[$name]: $text")
             CommandResult.Continue
         }
@@ -84,14 +88,41 @@ object CommandRegistry {
             CommandResult.Continue
         }
 
-        // TODO: cameraINEffect / cameraOUTEffect / cameraBIGText / cameraSMALLText —
-        // отдельный шаг: свой S2C-пакет + рендер оверлея на клиенте.
-        // TODO: checkpoint / worldstartscript / trigger_globalplay / weather / timecycles —
-        // регистрация через Fabric-события (следующий шаг).
-    }
+        // Команды-триггеры (checkpoint / worldstartscript / trigger_globalplay) регистрируются
+        // при загрузке скриптов (TriggerParser). При обычном запуске скрипта они ничего не делают.
+        TriggerParser.TRIGGER_NAMES.forEach { name ->
+            register(name) { _, _ -> CommandResult.Continue }
+        }
 
-    private fun broadcastToAll(context: ScriptContext, message: Component) {
-        context.server.playerList.players.forEach { it.sendSystemMessage(message) }
+        // weather rain | thunder | clear — меняет погоду (можно ставить на любой строке).
+        register("weather") { context, args ->
+            val kind = args.getOrNull(0)?.lowercase()
+            if (kind != "rain" && kind != "thunder" && kind != "clear") {
+                ScriptFXLog.warn("weather: ожидалось rain, thunder или clear, получено '${args.getOrNull(0)}'")
+                return@register CommandResult.Continue
+            }
+            runSilently(context, "weather $kind")
+            CommandResult.Continue
+        }
+
+        // timecycles day | night | число тиков — меняет время суток (можно ставить на любой строке).
+        register("timecycles") { context, args ->
+            val raw = args.getOrNull(0)?.lowercase()
+            val ticks = when (raw) {
+                "day" -> 1000L
+                "night" -> 13000L
+                else -> raw?.toLongOrNull()?.takeIf { it >= 0 }
+            }
+            if (ticks == null) {
+                ScriptFXLog.warn("timecycles: ожидалось day, night или число тиков, получено '${args.getOrNull(0)}'")
+                return@register CommandResult.Continue
+            }
+            runSilently(context, "time set $ticks")
+            CommandResult.Continue
+        }
+
+        // Команды камеры: cameraINEffect / cameraOUTEffect / cameraBIGText / cameraSMALLText
+        CameraCommands.install { name, handler -> register(name, handler) }
     }
 
     fun resolveLevel(server: net.minecraft.server.MinecraftServer, worldKey: String) =
@@ -102,8 +133,14 @@ object CommandRegistry {
             else -> null
         }
 
+    /** Выполняет ванильную команду от имени сервера, не показывая сообщения операторам в чате. */
+    private fun runSilently(context: ScriptContext, command: String) {
+        val source = context.server.createCommandSourceStack().withSuppressedOutput()
+        context.server.commands.performPrefixedCommand(source, command)
+    }
+
     /** "1.sec" / "20.tick" / "500.ms" -> число серверных тиков (20 тиков = 1 секунда). */
-    private fun parseDurationTicks(raw: String): Long {
+    fun parseDurationTicks(raw: String): Long {
         val parts = raw.split(".")
         val amount = parts.getOrNull(0)?.toDoubleOrNull() ?: 1.0
         return when (parts.getOrNull(1)?.lowercase()) {
