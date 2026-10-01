@@ -16,6 +16,19 @@ object ScriptFXConfigScreen {
         val general = builder.getOrCreateCategory(Component.literal("Общие"))
 
         general.addEntry(
+            entryBuilder.startEnumSelector(
+                Component.literal("Вид сообщений скриптов"),
+                MessageDisplayMode::class.java,
+                ScriptFXConfig.messageMode
+            )
+                .setDefaultValue(MessageDisplayMode.CENTER)
+                .setEnumNameProvider { Component.literal((it as MessageDisplayMode).displayName) }
+                .setTooltip(Component.literal("Как показывать сообщения команд print и printNPC: в обычном чате (ванилла) или по центру экрана."))
+                .setSaveConsumer { value -> ScriptFXConfig.messageMode = value }
+                .build()
+        )
+
+        general.addEntry(
             entryBuilder.startBooleanToggle(Component.literal("Показывать подсказки"), ScriptFXConfig.showHints)
                 .setDefaultValue(true)
                 .setTooltip(Component.literal("Включает всплывающие подсказки в панели управления. (в разработке...)"))
