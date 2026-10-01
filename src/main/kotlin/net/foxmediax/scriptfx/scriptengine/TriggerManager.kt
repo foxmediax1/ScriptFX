@@ -14,17 +14,9 @@ object TriggerManager {
 
     private val checkpoints = mutableListOf<Trigger.Checkpoint>()
     private val worldStarts = mutableListOf<Trigger.WorldStart>()
-    private val weatherTriggers = mutableListOf<Trigger.Weather>()
-    private val timeCycleTriggers = mutableListOf<Trigger.TimeCycle>()
     private val globalPlayTriggers = mutableListOf<Trigger.GlobalPlay>()
 
     private val playersInsideCheckpoint = mutableSetOf<Pair<UUID, Trigger.Checkpoint>>()
-
-    private val wasRaining = mutableMapOf<ServerLevel, Boolean>()
-    private val wasThundering = mutableMapOf<ServerLevel, Boolean>()
-
-    private val timeCycleFiredToday = mutableSetOf<Trigger.TimeCycle>()
-    private var lastDayTime = -1L
 
     // Для ender_dragon_fight / wither_boss_fight — фронт "не было -> появился" по каждому миру.
     private val wasDragonPresent = mutableMapOf<ServerLevel, Boolean>()
@@ -40,10 +32,8 @@ object TriggerManager {
     )
 
     fun clear() {
-        checkpoints.clear(); worldStarts.clear(); weatherTriggers.clear()
-        timeCycleTriggers.clear(); globalPlayTriggers.clear()
-        playersInsideCheckpoint.clear(); wasRaining.clear(); wasThundering.clear()
-        timeCycleFiredToday.clear(); lastDayTime = -1L
+        checkpoints.clear(); worldStarts.clear(); globalPlayTriggers.clear()
+        playersInsideCheckpoint.clear()
         wasDragonPresent.clear(); wasWitherPresent.clear(); lastFoodLevel.clear()
     }
 
@@ -51,16 +41,12 @@ object TriggerManager {
         when (trigger) {
             is Trigger.Checkpoint -> checkpoints.add(trigger)
             is Trigger.WorldStart -> worldStarts.add(trigger)
-            is Trigger.Weather -> weatherTriggers.add(trigger)
-            is Trigger.TimeCycle -> timeCycleTriggers.add(trigger)
             is Trigger.GlobalPlay -> globalPlayTriggers.add(trigger)
         }
     }
 
     fun onServerTick(server: MinecraftServer) {
         if (checkpoints.isNotEmpty()) checkCheckpoints(server)
-        if (weatherTriggers.isNotEmpty()) checkWeather(server)
-        if (timeCycleTriggers.isNotEmpty()) checkTimeCycles(server)
         if (globalPlayTriggers.isNotEmpty()) {
             checkGlobalEntityFights(server)
             checkPlayerEat(server)
@@ -118,47 +104,6 @@ object TriggerManager {
                     }
                     !inside && wasInside -> playersInsideCheckpoint.remove(key)
                 }
-            }
-        }
-    }
-
-    private fun checkWeather(server: MinecraftServer) {
-        for (level in server.allLevels) {
-            val playersInLevel = server.playerList.players.filter { it.level() == level }
-
-            val rainingNow = level.isRaining
-            if (rainingNow && wasRaining[level] != true) {
-                weatherTriggers.filter { it.kind == "rain" }.forEach { t ->
-                    playersInLevel.forEach { p -> fire(t.body, server, p, t.scriptName) }
-                }
-            }
-            wasRaining[level] = rainingNow
-
-            val thunderingNow = level.isThundering
-            if (thunderingNow && wasThundering[level] != true) {
-                weatherTriggers.filter { it.kind == "thunder" }.forEach { t ->
-                    playersInLevel.forEach { p -> fire(t.body, server, p, t.scriptName) }
-                }
-            }
-            wasThundering[level] = thunderingNow
-        }
-    }
-
-    private fun checkTimeCycles(server: MinecraftServer) {
-        val dayTime = server.overworld().overworldClockTime % 24000L
-        if (dayTime == lastDayTime) return
-        if (dayTime < lastDayTime) timeCycleFiredToday.clear()
-        lastDayTime = dayTime
-
-        for (t in timeCycleTriggers) {
-            val matches = when (t.label) {
-                "day" -> dayTime in 0..12000
-                "night" -> dayTime in 13000..23000
-                else -> dayTime == t.ticks
-            }
-            if (matches && t !in timeCycleFiredToday) {
-                timeCycleFiredToday.add(t)
-                server.playerList.players.forEach { p -> fire(t.body, server, p, t.scriptName) }
             }
         }
     }

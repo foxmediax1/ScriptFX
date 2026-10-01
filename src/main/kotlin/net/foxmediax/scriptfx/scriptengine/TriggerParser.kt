@@ -1,29 +1,32 @@
 package net.foxmediax.scriptfx.scriptengine
 
-/** Разбирает первую строку скрипта и решает, триггер это или обычный скрипт. */
+/** Находит в скрипте команды-триггеры (на любой строке) и регистрирует их в TriggerManager. */
 object TriggerParser {
 
-    val TRIGGER_NAMES = setOf(
-        "checkpoint", "worldstartscript", "weather", "timecycles", "trigger_globalplay"
-    )
+    /** Команды-триггеры. weather и timecycles сюда не входят — это обычные команды-действия. */
+    val TRIGGER_NAMES = setOf("checkpoint", "worldstartscript", "trigger_globalplay")
 
-    /** Возвращает Trigger и регистрирует его в TriggerManager, либо null если это не триггер. */
-    fun tryRegister(scriptName: String, commands: List<ScriptCommand>): Trigger? {
-        val head = commands.firstOrNull() ?: return null
-        if (head.name !in TRIGGER_NAMES) return null
-        val body = commands.drop(1)
+    /** Регистрирует все триггеры скрипта. Возвращает, сколько триггеров зарегистрировано. */
+    fun registerAll(scriptName: String, commands: List<ScriptCommand>): Int {
+        var count = 0
+        commands.forEachIndexed { index, head ->
+            if (head.name !in TRIGGER_NAMES) return@forEachIndexed
 
-        val trigger = when (head.name) {
-            "checkpoint" -> parseCheckpoint(head, body, scriptName)
-            "worldstartscript" -> Trigger.WorldStart(scriptName, body)
-            "weather" -> parseWeather(head, body, scriptName)
-            "timecycles" -> parseTimeCycle(head, body, scriptName)
-            "trigger_globalplay" -> parseGlobalPlay(head, body, scriptName)
-            else -> null
-        } ?: return null
+            // Тело триггера — команды после этой строки до следующего триггера (или до конца скрипта).
+            val body = commands.drop(index + 1).takeWhile { it.name !in TRIGGER_NAMES }
 
-        TriggerManager.register(trigger)
-        return trigger
+            val trigger: Trigger? = when (head.name) {
+                "checkpoint" -> parseCheckpoint(head, body, scriptName)
+                "worldstartscript" -> Trigger.WorldStart(scriptName, body)
+                "trigger_globalplay" -> parseGlobalPlay(head, body, scriptName)
+                else -> null
+            }
+            if (trigger != null) {
+                TriggerManager.register(trigger)
+                count++
+            }
+        }
+        return count
     }
 
     private fun parseCheckpoint(head: ScriptCommand, body: List<ScriptCommand>, name: String): Trigger.Checkpoint? {
@@ -37,30 +40,6 @@ object TriggerParser {
             return null
         }
         return Trigger.Checkpoint(x, y, z, dimension, radius, name, body)
-    }
-
-    private fun parseWeather(head: ScriptCommand, body: List<ScriptCommand>, name: String): Trigger.Weather? {
-        val kind = head.args.getOrNull(0)?.lowercase()
-        if (kind != "rain" && kind != "thunder") {
-            ScriptFXLog.warn("weather: ожидался 'rain' или 'thunder' в скрипте '$name' (строка ${head.lineNumber})")
-            return null
-        }
-        return Trigger.Weather(kind, name, body)
-    }
-
-    private fun parseTimeCycle(head: ScriptCommand, body: List<ScriptCommand>, name: String): Trigger.TimeCycle? {
-        val raw = head.args.getOrNull(0) ?: run {
-            ScriptFXLog.warn("timecycles: не указано время в скрипте '$name' (строка ${head.lineNumber})")
-            return null
-        }
-        val ticks = when (raw.lowercase()) {
-            "day", "night" -> -1L
-            else -> raw.toLongOrNull() ?: run {
-                ScriptFXLog.warn("timecycles: некорректное значение '$raw' в скрипте '$name'")
-                return null
-            }
-        }
-        return Trigger.TimeCycle(ticks, raw.lowercase(), name, body)
     }
 
     private fun parseGlobalPlay(head: ScriptCommand, body: List<ScriptCommand>, name: String): Trigger.GlobalPlay? {

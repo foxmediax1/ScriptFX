@@ -7,9 +7,10 @@ enum class GlobalPlayEvent {
 }
 
 /**
- * Триггер — это .sfxs файл, у которого первая строка — служебная команда.
- * scriptName — имя файла (для логов), body — команды ПОСЛЕ первой строки,
- * которые выполняются как обычный скрипт при срабатывании.
+ * Триггер создаётся командой-триггером (checkpoint / worldstartscript / trigger_globalplay),
+ * которая может стоять на любой строке скрипта.
+ * scriptName — имя файла (для логов), body — команды ПОСЛЕ строки с триггером
+ * до следующего триггера (или до конца скрипта); они выполняются как обычный скрипт при срабатывании.
  */
 sealed class Trigger {
     abstract val scriptName: String
@@ -22,17 +23,6 @@ sealed class Trigger {
     ) : Trigger()
 
     data class WorldStart(
-        override val scriptName: String, override val body: List<ScriptCommand>
-    ) : Trigger()
-
-    data class Weather(
-        val kind: String, // "rain" | "thunder"
-        override val scriptName: String, override val body: List<ScriptCommand>
-    ) : Trigger()
-
-    data class TimeCycle(
-        val ticks: Long,   // конкретный tick дня, если label не "day"/"night"
-        val label: String, // "day" | "night" | сырое значение (для лога)
         override val scriptName: String, override val body: List<ScriptCommand>
     ) : Trigger()
 
