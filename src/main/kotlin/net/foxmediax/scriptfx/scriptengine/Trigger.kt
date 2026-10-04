@@ -16,7 +16,7 @@ sealed class Trigger {
     abstract val scriptName: String
     abstract val body: List<ScriptCommand>
 
-    data class Checkpoint(
+    class Checkpoint(
         val x: Double, val y: Double, val z: Double,
         val dimension: String, val radius: Double,
         override val scriptName: String, override val body: List<ScriptCommand>
