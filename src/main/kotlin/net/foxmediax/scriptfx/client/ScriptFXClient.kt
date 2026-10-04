@@ -40,6 +40,7 @@ object ScriptFXClient : ClientModInitializer {
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             CenterMessageOverlay.clear()
             CameraOverlay.clear()
+            CutsceneClient.clear()
         }
 
         ClientTickEvents.END_CLIENT_TICK.register { client ->
@@ -50,5 +51,7 @@ object ScriptFXClient : ClientModInitializer {
                 }
             }
         }
+
+        CutsceneClient.init()
     }
 }
