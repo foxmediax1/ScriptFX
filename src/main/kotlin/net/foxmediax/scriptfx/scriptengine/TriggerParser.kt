@@ -6,9 +6,9 @@ object TriggerParser {
     /** Команды-триггеры. weather и timecycles сюда не входят — это обычные команды-действия. */
     val TRIGGER_NAMES = setOf("checkpoint", "worldstartscript", "trigger_globalplay")
 
-    /** Регистрирует все триггеры скрипта. Возвращает, сколько триггеров зарегистрировано. */
-    fun registerAll(scriptName: String, commands: List<ScriptCommand>): Int {
-        var count = 0
+    /** Разбирает триггеры скрипта, ничего не регистрируя. */
+    fun parseAll(scriptName: String, commands: List<ScriptCommand>): List<Trigger> {
+        val result = mutableListOf<Trigger>()
         commands.forEachIndexed { index, head ->
             if (head.name !in TRIGGER_NAMES) return@forEachIndexed
 
@@ -21,12 +21,16 @@ object TriggerParser {
                 "trigger_globalplay" -> parseGlobalPlay(head, body, scriptName)
                 else -> null
             }
-            if (trigger != null) {
-                TriggerManager.register(trigger)
-                count++
-            }
+            if (trigger != null) result.add(trigger)
         }
-        return count
+        return result
+    }
+
+    /** Регистрирует все триггеры скрипта. Возвращает, сколько триггеров зарегистрировано. */
+    fun registerAll(scriptName: String, commands: List<ScriptCommand>): Int {
+        val triggers = parseAll(scriptName, commands)
+        triggers.forEach { TriggerManager.register(it) }
+        return triggers.size
     }
 
     private fun parseCheckpoint(head: ScriptCommand, body: List<ScriptCommand>, name: String): Trigger.Checkpoint? {
