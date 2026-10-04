@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "package": "net.foxmediax.scriptfx.mixin.client",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "CameraFovAccessor",
+    "CameraMixin",
+    "LocalPlayerMixin",
+    "MouseHandlerMixin",
+    "WindowAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
