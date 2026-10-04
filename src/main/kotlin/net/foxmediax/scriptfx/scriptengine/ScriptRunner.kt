@@ -1,10 +1,16 @@
 package net.foxmediax.scriptfx.scriptengine
 
-/** Выполняет один запущенный экземпляр скрипта, тик за тиком. */
+/**
+ * Выполняет один запущенный экземпляр скрипта, тик за тиком.
+ *
+ * Раннер не знает про Minecraft: команды выполняет переданный executor,
+ * а скрипт для continue_startscript ищет lookup. Поэтому его можно тестировать без игры.
+ */
 class ScriptRunner(
     private var commands: List<ScriptCommand>,
-    private val context: ScriptContext,
-    private var scriptName: String = "ad-hoc"
+    private var scriptName: String,
+    private val executor: (ScriptCommand) -> CommandResult,
+    private val lookup: (String) -> List<ScriptCommand>?
 ) {
     private var index = 0
     private var waitUntilTick = 0L
@@ -18,11 +24,11 @@ class ScriptRunner(
         ScriptFXLog.info("Скрипт '$scriptName' запущен")
     }
 
-    /** Аварийная остановка (/scriptfx stop_script). */
-    fun stop() {
+    /** Аварийная остановка. reason попадает в лог. */
+    fun stop(reason: String = "командой stop_script") {
         if (finished) return
         finished = true
-        ScriptFXLog.info("Скрипт '$scriptName' аварийно остановлен командой stop_script")
+        ScriptFXLog.info("Скрипт '$scriptName' аварийно остановлен ($reason)")
     }
 
     fun tick(currentTick: Long) {
@@ -33,7 +39,7 @@ class ScriptRunner(
             index++
 
             val result = try {
-                CommandRegistry.execute(command, context)
+                executor(command)
             } catch (e: Exception) {
                 ScriptFXLog.error("Ошибка в скрипте '$scriptName', команда '${command.name}' (строка ${command.lineNumber})", e)
                 CommandResult.Continue
@@ -51,7 +57,7 @@ class ScriptRunner(
                     return
                 }
                 is CommandResult.ContinueWith -> {
-                    val next = ScriptManager.loadedScript(result.scriptName)
+                    val next = lookup(result.scriptName)
                     if (next == null) {
                         ScriptFXLog.warn("continue_startscript: '${result.scriptName}' не найден")
                         finished = true
