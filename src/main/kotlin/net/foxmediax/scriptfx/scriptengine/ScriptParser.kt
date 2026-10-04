@@ -26,6 +26,7 @@ object ScriptParser {
         val tokens = mutableListOf<String>()
         val current = StringBuilder()
         var inQuotes = false
+        var wasQuoted = false
         var i = 0
 
         while (i < line.length) {
@@ -34,15 +35,19 @@ object ScriptParser {
                 c == '\\' && i + 1 < line.length && line[i + 1] == '"' -> {
                     current.append('"'); i++
                 }
-                c == '"' -> inQuotes = !inQuotes
+                c == '"' -> { inQuotes = !inQuotes; wasQuoted = true }
                 c == ' ' && !inQuotes -> {
-                    if (current.isNotEmpty()) { tokens.add(current.toString()); current.clear() }
+                    if (current.isNotEmpty() || wasQuoted) {
+                        tokens.add(current.toString())
+                        current.clear()
+                        wasQuoted = false
+                    }
                 }
                 else -> current.append(c)
             }
             i++
         }
-        if (current.isNotEmpty()) tokens.add(current.toString())
+        if (current.isNotEmpty() || wasQuoted) tokens.add(current.toString())
         return tokens
     }
 }
