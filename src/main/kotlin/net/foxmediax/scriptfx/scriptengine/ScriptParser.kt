@@ -10,7 +10,8 @@ object ScriptParser {
     fun parse(text: String): List<ScriptCommand> {
         val commands = mutableListOf<ScriptCommand>()
 
-        text.lineSequence().forEachIndexed { index, rawLine ->
+        // BOM (его добавляют некоторые редакторы Windows) иначе портит имя первой команды.
+        text.removePrefix("\uFEFF").lineSequence().forEachIndexed { index, rawLine ->
             val line = rawLine.trim()
             if (line.isEmpty() || line.startsWith("#") || line.startsWith("//")) return@forEachIndexed
 
@@ -26,7 +27,7 @@ object ScriptParser {
         val tokens = mutableListOf<String>()
         val current = StringBuilder()
         var inQuotes = false
-        var wasQuoted = false
+        var wasQuoted = false   // чтобы пустое "" не терялось
         var i = 0
 
         while (i < line.length) {
@@ -36,7 +37,7 @@ object ScriptParser {
                     current.append('"'); i++
                 }
                 c == '"' -> { inQuotes = !inQuotes; wasQuoted = true }
-                c == ' ' && !inQuotes -> {
+                (c == ' ' || c == '\t') && !inQuotes -> {
                     if (current.isNotEmpty() || wasQuoted) {
                         tokens.add(current.toString())
                         current.clear()
