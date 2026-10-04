@@ -176,9 +176,13 @@ object ScriptFXServer : ModInitializer {
             source.sendFailure(Component.literal("Скрипт '$name' не найден"))
             return 0
         }
-        ScriptManager.startScript(name, ScriptContext(source.server))
-        source.sendSuccess({ Component.literal("Скрипт '$name' запущен") }, true)
-        return 1
+        return if (ScriptManager.startScript(name, ScriptContext(source.server))) {
+            source.sendSuccess({ Component.literal("Скрипт '$name' запущен") }, true)
+            1
+        } else {
+            source.sendFailure(Component.literal("Скрипт '$name' не запущен: достигнут лимит одновременных скриптов"))
+            0
+        }
     }
 
     private fun stopAllScripts(source: CommandSourceStack): Int {
@@ -191,5 +195,7 @@ object ScriptFXServer : ModInitializer {
             source.sendFailure(Component.literal("Сейчас нет запущенных скриптов"))
         }
         return stopped
+        ScriptManager.stopAllScripts("reload")
     }
 }
+
