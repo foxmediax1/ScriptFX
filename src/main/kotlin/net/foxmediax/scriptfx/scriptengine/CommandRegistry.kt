@@ -144,17 +144,9 @@ object CommandRegistry {
     }
 
     /** "1.sec" / "20.tick" / "500.ms" -> число серверных тиков (20 тиков = 1 секунда). */
-    fun parseDurationTicks(raw: String): Long {
-        val m = DURATION_RE.matchEntire(raw.trim())
-        if (m == null) {
+    fun parseDurationTicks(raw: String): Long =
+        Durations.parseTicks(raw) ?: run {
             ScriptFXLog.warn("Некорректная длительность '$raw', использую 1.sec")
-            return 20L
+            20L
         }
-        val amount = m.groupValues[1].toDouble()
-        return when (m.groupValues[2].lowercase()) {
-            "tick", "ticks", "t" -> amount.toLong()
-            "ms", "millis" -> (amount / 50).toLong().coerceAtLeast(1)
-            else -> (amount * 20).toLong()
-        }
-    }
 }
