@@ -35,11 +35,19 @@ object ScriptFXConfig {
                 return
             }
             showHints = data.showHints
-            maxScripts = data.maxScripts
+            maxScripts = data.maxScripts.coerceIn(1, 50)
             theme = data.theme
             messageMode = MessageDisplayMode.fromId(data.messageMode)
         } catch (e: Exception) {
-            save() // если файл повреждён — пересоздаём с дефолтами
+            // Сохраняем повреждённый файл, чтобы не потерять пользовательские значения.
+            try {
+                java.nio.file.Files.copy(
+                    configPath,
+                    configPath.resolveSibling("scriptfx.json.broken"),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                )
+            } catch (_: Exception) { }
+            save()
         }
     }
 
