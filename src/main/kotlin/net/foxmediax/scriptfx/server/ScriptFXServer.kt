@@ -21,6 +21,9 @@ import net.minecraft.server.permissions.Permissions
 import net.minecraft.world.InteractionResult
 import net.foxmediax.scriptfx.scriptengine.ScriptContext
 import net.foxmediax.scriptfx.scriptengine.CameraCommands
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
+import net.foxmediax.scriptfx.network.CutsceneInterruptPayload
+import net.foxmediax.scriptfx.scriptengine.CutsceneManager
 
 object ScriptFXServer : ModInitializer {
 
@@ -40,6 +43,7 @@ object ScriptFXServer : ModInitializer {
             tickCounter++
             ScriptManager.tickAll(tickCounter)
             TriggerManager.onServerTick(server)
+            CutsceneManager.tick(server)
         }
 
         ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
@@ -49,6 +53,7 @@ object ScriptFXServer : ModInitializer {
         ServerLivingEntityEvents.AFTER_DEATH.register { entity, _ ->
             val server = cachedServer ?: return@register
             if (entity is ServerPlayer) {
+                CutsceneManager.abort(entity)
                 TriggerManager.onPlayerDeath(server, entity)
             }
         }
@@ -67,6 +72,28 @@ object ScriptFXServer : ModInitializer {
                 TriggerManager.onPlayerClick(server, player, itemId)
             }
             InteractionResult.PASS
+        }
+
+        ServerPlayNetworking.registerGlobalReceiver(CutsceneInterruptPayload.TYPE) { _, context ->
+            val player = context.player()
+            CutsceneManager.onInterrupt(player)
+        }
+
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
+            CutsceneManager.endFor(handler.player)
+        }
+
+        ServerLifecycleEvents.SERVER_STOPPING.register { server ->
+            CutsceneManager.endAll(server)   // иначе игрок сохранится в точке камеры
+        }
+
+        ServerLivingEntityEvents.ALLOW_DAMAGE.register { entity, _, _ ->
+            !(entity is ServerPlayer && CutsceneManager.isInCutscene(entity))
+        }
+
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
+            CutsceneManager.endFor(handler.player)
+            TriggerManager.onPlayerLeave(handler.player.uuid)
         }
     }
 
@@ -102,6 +129,22 @@ object ScriptFXServer : ModInitializer {
                     .then(
                         Commands.literal("camera_reset")
                             .executes { ctx -> cameraReset(ctx.source) }
+                        
+                    )
+                    .then(
+                        Commands.literal("reload")
+                            .executes { ctx ->
+                                val server = ctx.source.server
+                                ScriptManager.stopAllScripts()
+                                CameraCommands.reset(server)
+                                CutsceneManager.endAll(server)
+                                ScriptManager.reload()
+                                ctx.source.sendSuccess(
+                                    { Component.literal("Скрипты ScriptFX перезагружены") },
+                                    true
+                                )
+                                1
+                            }
                     )
             )
         }
@@ -140,6 +183,7 @@ object ScriptFXServer : ModInitializer {
 
     private fun stopAllScripts(source: CommandSourceStack): Int {
         CameraCommands.reset(source.server)
+        CutsceneManager.endAll(source.server)
         val stopped = ScriptManager.stopAllScripts()
         if (stopped > 0) {
             source.sendSuccess({ Component.literal("Аварийно завершено скриптов: $stopped") }, true)
