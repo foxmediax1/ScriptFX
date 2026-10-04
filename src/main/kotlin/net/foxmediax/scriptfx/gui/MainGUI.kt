@@ -22,6 +22,7 @@ import java.io.File
 import net.minecraft.client.input.KeyEvent
 import net.minecraft.client.input.CharacterEvent
 import java.net.URI
+import net.fabricmc.loader.api.FabricLoader
 
 enum class PanelSection(val displayName: String) {
     PROJECTS("Проекты"),
@@ -245,7 +246,8 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                 DocumentationSubsection("Переменные"),
                 DocumentationSubsection("Глобальные переменные"),
                 DocumentationSubsection("Для сюжета"),
-                DocumentationSubsection("Для камеры")
+                DocumentationSubsection("Для камеры"),
+                DocumentationSubsection("Катсцены")
             )
         ),
 
@@ -291,7 +293,11 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                     contextMenu = null
                     navigateAwayAndThen {
                         if (section == PanelSection.SETTINGS) {
-                            Minecraft.getInstance().setScreen(ScriptFXConfigScreen.build(this))
+                            if (FabricLoader.getInstance().isModLoaded("cloth-config")) {
+                                Minecraft.getInstance().setScreen(ScriptFXConfigScreen.build(this))
+                            } else {
+                                ScriptFXLog.warn("Настройки недоступны: не установлен Cloth Config. Значения можно править в config/scriptfx.json")
+                            }
                         } else {
                             selectedSection = section
                             if (section == PanelSection.LOGS) logsScrollOffset = Int.MAX_VALUE / 2
@@ -1656,7 +1662,8 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             "Переменные",
             "Глобальные переменные",
             "Для сюжета",
-            "Для камеры"
+            "Для камеры",
+            "Катсцены"
         )
 
         val title = "Вы находитесь в разделе Скрипты"
@@ -2260,6 +2267,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                         1 -> "Глобальные переменные"
                         2 -> "Для сюжета"
                         3 -> "Для камеры"
+                        4 -> "Катсцены"
                         else -> return true
                     }
                     openDocumentationPage("Скрипты", subsection)
