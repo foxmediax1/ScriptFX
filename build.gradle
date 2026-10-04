@@ -3,12 +3,10 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
 	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 	id 'maven-publish'
-	id "org.jetbrains.kotlin.jvm" version "2.4.20"
-
+	id "org.jetbrains.kotlin.jvm" version "${kotlin_version}"
 }
 
 repositories {
-	maven { url "https://maven.architectury.dev/" }
 	maven { url "https://maven.shedaniel.me/" }
 }
 
@@ -25,10 +23,10 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-    implementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
+	implementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
 
-	// Cloth Config
-	implementation "me.shedaniel.cloth:cloth-config-fabric:26.1.154"
+	// Cloth Config (используется только клиентским экраном настроек)
+	implementation "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
 }
 
 processResources {
@@ -42,6 +40,7 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
+	it.options.encoding = 'UTF-8'
 }
 
 kotlin {
@@ -65,7 +64,7 @@ jar {
 	inputs.property "projectName", projectName
 
 	from("LICENSE") {
-		rename { "${it}_$projectName"}
+		rename { "${it}_$projectName" }
 	}
 }
 
@@ -79,11 +78,5 @@ publishing {
 
 	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
 	repositories {
-	}
-}
-
-sourceSets {
-	client {
-		kotlin.srcDirs += 'src/client/kotlin'
 	}
 }
