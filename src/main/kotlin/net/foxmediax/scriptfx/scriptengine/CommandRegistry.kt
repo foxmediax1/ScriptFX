@@ -10,6 +10,8 @@ object CommandRegistry {
 
     private val handlers = mutableMapOf<String, CommandHandler>()
 
+    private val DURATION_RE = Regex("""^(\d+(?:\.\d+)?)(?:\.([a-z]+))?$""", RegexOption.IGNORE_CASE)
+
     init { registerDefaults() }
 
     fun register(name: String, handler: CommandHandler) {
@@ -123,6 +125,8 @@ object CommandRegistry {
 
         // Команды камеры: cameraINEffect / cameraOUTEffect / cameraBIGText / cameraSMALLText
         CameraCommands.install { name, handler -> register(name, handler) }
+
+        CutsceneCommands.install { name, handler -> register(name, handler) }
     }
 
     fun resolveLevel(server: net.minecraft.server.MinecraftServer, worldKey: String) =
@@ -141,9 +145,13 @@ object CommandRegistry {
 
     /** "1.sec" / "20.tick" / "500.ms" -> число серверных тиков (20 тиков = 1 секунда). */
     fun parseDurationTicks(raw: String): Long {
-        val parts = raw.split(".")
-        val amount = parts.getOrNull(0)?.toDoubleOrNull() ?: 1.0
-        return when (parts.getOrNull(1)?.lowercase()) {
+        val m = DURATION_RE.matchEntire(raw.trim())
+        if (m == null) {
+            ScriptFXLog.warn("Некорректная длительность '$raw', использую 1.sec")
+            return 20L
+        }
+        val amount = m.groupValues[1].toDouble()
+        return when (m.groupValues[2].lowercase()) {
             "tick", "ticks", "t" -> amount.toLong()
             "ms", "millis" -> (amount / 50).toLong().coerceAtLeast(1)
             else -> (amount * 20).toLong()
