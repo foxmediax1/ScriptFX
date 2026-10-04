@@ -6,15 +6,8 @@ import java.io.File
 
 object ScriptManager {
 
-    /** Как часто (в тиках) предупреждать о достигнутом лимите. */
-    private const val LIMIT_WARN_INTERVAL_TICKS = 100L
-
     private val loadedScripts = mutableMapOf<String, List<ScriptCommand>>()
-    private val activeRunners = mutableListOf<ScriptRunner>()
-
-    private var currentTick = 0L
-    private var lastLimitWarnTick = -LIMIT_WARN_INTERVAL_TICKS
-    private var rejectedSinceWarn = 0
+    private val scheduler = ScriptScheduler(limit = { ScriptFXConfig.maxScripts })
 
     fun reload() {
         loadedScripts.clear()
@@ -34,9 +27,7 @@ object ScriptManager {
                 .forEach { file ->
                     val name = file.nameWithoutExtension
                     val commands = try {
-                        // BOM в начале файла (его добавляют некоторые редакторы Windows)
-                        // превращает первую команду в "\uFEFFprint".
-                        ScriptParser.parse(file.readText().removePrefix("\uFEFF"))
+                        ScriptParser.parse(file.readText())
                     } catch (e: Exception) {
                         ScriptFXLog.error("Не удалось загрузить скрипт '${file.name}'", e)
                         return@forEach
@@ -61,52 +52,25 @@ object ScriptManager {
             ScriptFXLog.warn("startscript: '$name' не найден")
             return false
         }
-        if (!hasFreeSlot(name)) return false
-        activeRunners.add(ScriptRunner(commands, context, name))
-        return true
+        return scheduler.add(name) { newRunner(commands, name, context) }
     }
 
-    fun stopScript(name: String): Int {
-        val matching = activeRunners.filter { it.name == name && !it.finished }
-        matching.forEach { it.stop() }
-        activeRunners.removeAll(matching.toSet())
-        return matching.size
-    }
+    fun runAdHoc(commands: List<ScriptCommand>, context: ScriptContext, name: String = "ad-hoc"): Boolean =
+        scheduler.add(name) { newRunner(commands, name, context) }
 
-    fun stopAllScripts(): Int {
-        val running = activeRunners.filter { !it.finished }
-        running.forEach { it.stop() }
-        activeRunners.clear()
-        return running.size
-    }
+    fun stopScript(name: String, reason: String = "командой stop_script"): Int =
+        scheduler.stop(name, reason)
 
-    fun runAdHoc(commands: List<ScriptCommand>, context: ScriptContext, name: String = "ad-hoc"): Boolean {
-        if (!hasFreeSlot(name)) return false
-        activeRunners.add(ScriptRunner(commands, context, name))
-        return true
-    }
+    fun stopAllScripts(reason: String = "stop_all_scripts"): Int =
+        scheduler.stopAll(reason)
 
-    fun tickAll(currentTick: Long) {
-        this.currentTick = currentTick
-        activeRunners.toList().forEach { it.tick(currentTick) }
-        activeRunners.removeAll { it.finished }
-    }
+    fun tickAll(currentTick: Long) = scheduler.tick(currentTick)
 
-    /** Лимит одновременно работающих скриптов (настройка maxScripts). */
-    private fun hasFreeSlot(name: String): Boolean {
-        val limit = ScriptFXConfig.maxScripts.coerceAtLeast(1)
-        if (activeRunners.count { !it.finished } < limit) return true
-
-        rejectedSinceWarn++
-        if (currentTick - lastLimitWarnTick >= LIMIT_WARN_INTERVAL_TICKS) {
-            ScriptFXLog.warn(
-                "Достигнут лимит одновременных скриптов ($limit). Запуск '$name' отклонён" +
-                        " (отклонено с прошлого предупреждения: $rejectedSinceWarn). " +
-                        "Возможно, скрипт запускает сам себя; лимит меняется в настройке maxScripts."
-            )
-            lastLimitWarnTick = currentTick
-            rejectedSinceWarn = 0
-        }
-        return false
-    }
+    private fun newRunner(commands: List<ScriptCommand>, name: String, context: ScriptContext) =
+        ScriptRunner(
+            commands = commands,
+            scriptName = name,
+            executor = { CommandRegistry.execute(it, context) },
+            lookup = { loadedScript(it) }
+        )
 }
