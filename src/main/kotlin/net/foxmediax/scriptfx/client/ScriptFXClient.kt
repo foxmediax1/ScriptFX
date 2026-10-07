@@ -15,7 +15,7 @@ import net.foxmediax.scriptfx.network.CameraPayload
 import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.minecraft.server.permissions.Permissions
 import net.foxmediax.scriptfx.npc.NpcEntities
-import net.foxmediax.scriptfx.client.ScriptNpcRenderer
+import net.foxmediax.scriptfx.npc.NpcInteractClient
 
 object ScriptFXClient : ClientModInitializer {
     private val REQUIRED_PERMISSION = Permissions.COMMANDS_GAMEMASTER
@@ -30,6 +30,10 @@ object ScriptFXClient : ClientModInitializer {
         }
         HudElementRegistry.addLast(ScriptFX.id("camera_effects"), HudElement { graphics, _ ->
             CameraOverlay.render(graphics)
+        })
+
+        HudElementRegistry.addLast(ScriptFX.id("npc_interact_prompt"), HudElement { graphics, _ ->
+            NpcInteractClient.render(graphics)
         })
 
         // Сообщения скриптов: чат или над хотбаром — зависит от настройки.
@@ -55,6 +59,7 @@ object ScriptFXClient : ClientModInitializer {
                     client.setScreen(ControlPanelScreen())
                 }
             }
+            NpcInteractClient.tick()
         }
 
         CutsceneClient.init()

@@ -1,5 +1,6 @@
 package net.foxmediax.scriptfx.scriptengine
 
+import net.foxmediax.scriptfx.npc.NpcInteractWait
 import net.foxmediax.scriptfx.npc.NpcManager
 import net.minecraft.server.level.ServerLevel
 
@@ -36,6 +37,22 @@ object NpcCommands {
             val level = (ctx.player?.level() ?: ctx.server.overworld()) as ServerLevel
             NpcManager.repack(level, id, rest)
             CommandResult.Continue
+        }
+
+        // npc_interact_key "X"  — скрипт ждёт нажатия у ближайшего/текущего NPC
+        register("npc_interact_key") { ctx, args ->
+            val keyName = args.getOrNull(0)?.removeSurrounding("\"")?.uppercase() ?: "X"
+            val player = ctx.player
+            if (player == null) {
+                ScriptFXLog.warn("npc_interact_key: нет игрока в контексте")
+                return@register CommandResult.Continue
+            }
+            NpcInteractWait.begin(player.uuid, keyName)
+            CommandResult.WaitUntil {
+                val done = NpcInteractWait.isDone(player.uuid)
+                if (done) NpcInteractWait.clear(player.uuid)
+                done
+            }
         }
     }
 }

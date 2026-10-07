@@ -23,6 +23,8 @@ import net.foxmediax.scriptfx.scriptengine.ScriptContext
 import net.foxmediax.scriptfx.scriptengine.CameraCommands
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.foxmediax.scriptfx.network.CutsceneInterruptPayload
+import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
+import net.foxmediax.scriptfx.npc.NpcInteractWait
 import net.foxmediax.scriptfx.scriptengine.CutsceneManager
 
 object ScriptFXServer : ModInitializer {
@@ -90,6 +92,10 @@ object ScriptFXServer : ModInitializer {
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
             CutsceneManager.endFor(handler.player)
             TriggerManager.onPlayerLeave(handler.player.uuid)
+        }
+
+        ServerPlayNetworking.registerGlobalReceiver(NpcInteractKeyPayload.TYPE) { payload, ctx ->
+            NpcInteractWait.notifyKey(ctx.player().uuid, payload.key)
         }
     }
 

@@ -51,6 +51,16 @@ class ScriptRunner(
             when (result) {
                 CommandResult.Continue -> continue
                 is CommandResult.Wait -> { waitUntilTick = currentTick + result.ticks; return }
+
+                is CommandResult.WaitUntil -> {
+                    if (!result.predicate()) {
+                        // та же команда на следующем тике
+                        index--
+                        waitUntilTick = currentTick + 1
+                        return
+                    }
+                    continue
+                }
                 CommandResult.Stop -> {
                     finished = true
                     ScriptFXLog.info("Скрипт '$scriptName' остановлен (stopscript)")
