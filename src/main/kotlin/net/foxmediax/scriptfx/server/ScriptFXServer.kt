@@ -22,8 +22,11 @@ import net.minecraft.world.InteractionResult
 import net.foxmediax.scriptfx.scriptengine.ScriptContext
 import net.foxmediax.scriptfx.scriptengine.CameraCommands
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
+import net.foxmediax.scriptfx.client.NpcDialogClient
 import net.foxmediax.scriptfx.network.CutsceneInterruptPayload
+import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
 import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
+import net.foxmediax.scriptfx.npc.NpcDialogWait
 import net.foxmediax.scriptfx.npc.NpcInteractWait
 import net.foxmediax.scriptfx.scriptengine.CutsceneManager
 
@@ -78,6 +81,7 @@ object ScriptFXServer : ModInitializer {
 
         ServerPlayNetworking.registerGlobalReceiver(CutsceneInterruptPayload.TYPE) { _, context ->
             val player = context.player()
+
             CutsceneManager.onInterrupt(player)
         }
 
@@ -96,6 +100,11 @@ object ScriptFXServer : ModInitializer {
 
         ServerPlayNetworking.registerGlobalReceiver(NpcInteractKeyPayload.TYPE) { payload, ctx ->
             NpcInteractWait.notifyKey(ctx.player().uuid, payload.key)
+        }
+        ServerPlayNetworking.registerGlobalReceiver(NpcDialogChoicePayload.TYPE) { payload, ctx ->
+            val serverPlayer = ctx.player()
+            NpcDialogWait.notifyChoice(serverPlayer.uuid, payload.button)
+            CutsceneManager.endFor(serverPlayer)
         }
     }
 
@@ -176,7 +185,8 @@ object ScriptFXServer : ModInitializer {
             source.sendFailure(Component.literal("Скрипт '$name' не найден"))
             return 0
         }
-        return if (ScriptManager.startScript(name, ScriptContext(source.server))) {
+        val context = ScriptContext(source.server, source.player)
+        return if (ScriptManager.startScript(name, context)) {
             source.sendSuccess({ Component.literal("Скрипт '$name' запущен") }, true)
             1
         } else {

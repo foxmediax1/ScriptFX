@@ -12,6 +12,8 @@ import net.foxmediax.scriptfx.ScriptFXKeybinds
 import net.foxmediax.scriptfx.gui.ControlPanelScreen
 import net.foxmediax.scriptfx.config.ScriptFXConfig
 import net.foxmediax.scriptfx.network.CameraPayload
+import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
+import net.foxmediax.scriptfx.network.NpcInteractListenPayload
 import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.minecraft.server.permissions.Permissions
 import net.foxmediax.scriptfx.npc.NpcEntities
@@ -53,15 +55,27 @@ object ScriptFXClient : ClientModInitializer {
         EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC, ::ScriptNpcRenderer)
 
         ClientTickEvents.END_CLIENT_TICK.register { client ->
+            NpcInteractClient.tick()
+            NpcDialogClient.tick()
             while (ScriptFXKeybinds.openControlPanel.consumeClick()) {
                 val player = client.player ?: continue
                 if (client.screen == null && player.permissions().hasPermission(REQUIRED_PERMISSION)) {
                     client.setScreen(ControlPanelScreen())
                 }
             }
-            NpcInteractClient.tick()
         }
 
         CutsceneClient.init()
+
+        ClientPlayNetworking.registerGlobalReceiver(NpcInteractListenPayload.TYPE) { payload, _ ->
+            NpcInteractClient.setListenKey(payload.key)
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(NpcDialogOpenPayload.TYPE) { payload, _ ->
+            NpcDialogClient.open(payload)
+        }
+        HudElementRegistry.addLast(ScriptFX.id("npc_dialog"), HudElement { g, _ ->
+            NpcDialogClient.render(g)
+        })
     }
 }

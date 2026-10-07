@@ -45,6 +45,22 @@ class ScriptNpcEntity(
                 .add(Attributes.MAX_HEALTH, 20.0)
                 .add(Attributes.MOVEMENT_SPEED, 0.25)
                 .add(Attributes.FOLLOW_RANGE, 16.0)
+
+        private val KNOWN_ANIMS = setOf(
+            "idle", "running", "sprinting",
+            "crouching_idle", "crouching",
+            "swipe", "jump", "land",
+            "stun1", "stun1_idle", "stun1_gettingUp",
+            "lying_idle", "lying_running"
+        )
+
+        fun sanitizeAnim(name: String): String {
+            val n = name.ifBlank { "idle" }
+            return if (n in KNOWN_ANIMS) n else "idle"
+        }
+
+        val DATA_MODE: EntityDataAccessor<String> =
+            SynchedEntityData.defineId(ScriptNpcEntity::class.java, EntityDataSerializers.STRING)
     }
 
     override fun defineSynchedData(builder: SynchedEntityData.Builder) {
@@ -52,10 +68,16 @@ class ScriptNpcEntity(
         builder.define(DATA_ANIM, "idle")
         builder.define(DATA_INVULN, false)
         builder.define(DATA_LOOK, true)
+        builder.define(DATA_MODE, NpcMode.INTERACT.id)
     }
 
     fun setAnim(name: String) {
-        entityData.set(DATA_ANIM, name)
+        val safe = sanitizeAnim(name)
+        if (safe != name && name.isNotBlank()) {
+            // лог один раз на сервере, если нужно:
+            // ScriptFXLog.warn("анимация '$name' не найдена, использую idle")
+        }
+        entityData.set(DATA_ANIM, safe)
     }
 
     fun currentAnim(): String = entityData.get(DATA_ANIM)
@@ -84,7 +106,7 @@ class ScriptNpcEntity(
     override fun registerControllers(controllers: AnimatableManager.ControllerRegistrar) {
         controllers.add(
             AnimationController<ScriptNpcEntity>("main", 5) { state ->
-                val anim = currentAnim().ifBlank { "idle" }
+                val anim = sanitizeAnim(currentAnim())
                 state.setAndContinue(RawAnimation.begin().thenLoop(anim))
             }
         )
@@ -101,6 +123,7 @@ class ScriptNpcEntity(
         output.putString("Anim", currentAnim())
         output.putBoolean("Invuln", entityData.get(DATA_INVULN))
         output.putBoolean("Look", entityData.get(DATA_LOOK))
+        output.putString("Mode", entityData.get(DATA_MODE))
     }
 
     override fun readAdditionalSaveData(input: ValueInput) {
@@ -112,8 +135,15 @@ class ScriptNpcEntity(
         setAnim(input.getStringOr("Anim", "idle"))
         setInvulnerableFlag(input.getBooleanOr("Invuln", false))
         setLookAtPlayer(input.getBooleanOr("Look", true))
+        setMode(NpcMode.from(input.getStringOr("Mode", NpcMode.INTERACT.id)))
     }
 
     override fun getTypeName(): Component =
         customName ?: Component.literal(npcId.ifBlank { "NPC" })
+
+    fun setMode(mode: NpcMode) {
+        entityData.set(DATA_MODE, mode.id)
+    }
+
+    fun currentMode(): NpcMode = NpcMode.from(entityData.get(DATA_MODE))
 }

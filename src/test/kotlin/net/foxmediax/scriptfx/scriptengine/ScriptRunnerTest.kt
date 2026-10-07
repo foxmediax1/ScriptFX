@@ -152,4 +152,23 @@ class ScriptRunnerTest {
         assertEquals(listOf("go"), h.executed)
         assertTrue(h.runner.finished)
     }
+
+    @Test
+    fun `WaitUntil держит скрипт пока условие false`() {
+        var ready = false
+        val h = Harness(listOf(cmd("wait"), cmd("after")), behave = {
+            if (it.name == "wait") CommandResult.WaitUntil { ready } else CommandResult.Continue
+        })
+        h.runner.tick(1)
+        assertEquals(listOf("wait"), h.executed)
+        assertFalse(h.runner.finished)
+
+        h.runner.tick(2)
+        assertEquals(listOf("wait"), h.executed)
+
+        ready = true
+        h.runner.tick(3)
+        assertEquals(listOf("wait", "after"), h.executed)
+        assertTrue(h.runner.finished)
+    }
 }

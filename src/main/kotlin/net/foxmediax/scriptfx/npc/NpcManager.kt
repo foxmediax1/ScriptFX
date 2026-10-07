@@ -27,6 +27,7 @@ object NpcManager {
         val mode = NpcMode.from(modeRaw.ifBlank { def.defaultMode })
 
         val entity = NpcEntities.SCRIPT_NPC.create(level, EntitySpawnReason.COMMAND) ?: return false
+        entity.setMode(mode)
         entity.setPos(x, y, z)
         entity.yRot = 0f
         entity.xRot = 0f
@@ -172,6 +173,14 @@ object NpcManager {
                         entity.getAttribute(net.minecraft.world.entity.ai.attributes.Attributes.MOVEMENT_SPEED)
                             ?.baseValue = value
                     }
+                }
+
+                a.startsWith("mode", true) -> {
+                    val value = if (a.contains(":")) a.substringAfter(":").trim()
+                    else args.getOrNull(++i) ?: ""
+                    val m = NpcMode.from(value)
+                    state.mode = m
+                    entity.setMode(m)
                 }
             }
             i++

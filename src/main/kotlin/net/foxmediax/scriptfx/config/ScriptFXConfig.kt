@@ -13,6 +13,9 @@ object ScriptFXConfig {
     var theme: String = "dark"
     var messageMode: MessageDisplayMode = MessageDisplayMode.CENTER
 
+    var dialogFadeMs: Int = 400
+    var dialogTypewriterMs: Int = 25
+
     private val gson = GsonBuilder().setPrettyPrinting().create()
     private val configPath = FabricLoader.getInstance().configDir.resolve("scriptfx.json")
 
@@ -20,7 +23,9 @@ object ScriptFXConfig {
         var showHints: Boolean = true,
         var maxScripts: Int = 10,
         var theme: String = "dark",
-        var messageMode: String = MessageDisplayMode.CENTER.id
+        var messageMode: String = MessageDisplayMode.CENTER.id,
+        var dialogFadeMs: Int = 400,
+        var dialogTypewriterMs: Int = 25
     )
 
     fun load() {
