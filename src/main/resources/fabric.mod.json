@@ -49,7 +49,8 @@
 		"minecraft": "~26.1",
 		"java": ">=25",
 		"fabric-api": "*",
-		"fabric-language-kotlin": "*"
+		"fabric-language-kotlin": "*",
+		"geckolib": ">=5.5"
 	},
 	"recommends": {
 		"cloth-config": "*"
