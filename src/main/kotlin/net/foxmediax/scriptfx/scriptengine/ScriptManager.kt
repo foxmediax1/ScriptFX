@@ -3,6 +3,7 @@ package net.foxmediax.scriptfx.scriptengine
 import net.fabricmc.loader.api.FabricLoader
 import net.foxmediax.scriptfx.config.ScriptFXConfig
 import java.io.File
+import net.foxmediax.scriptfx.npc.NpcRegistry
 
 object ScriptManager {
 
