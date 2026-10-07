@@ -15,7 +15,7 @@ import net.foxmediax.scriptfx.network.CameraPayload
 import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.minecraft.server.permissions.Permissions
 import net.foxmediax.scriptfx.npc.NpcEntities
-import net.foxmediax.scriptfx.npc.ScriptNpcRenderer
+import net.foxmediax.scriptfx.client.ScriptNpcRenderer
 
 object ScriptFXClient : ClientModInitializer {
     private val REQUIRED_PERMISSION = Permissions.COMMANDS_GAMEMASTER
@@ -46,6 +46,8 @@ object ScriptFXClient : ClientModInitializer {
             CutsceneClient.clear()
         }
 
+        EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC, ::ScriptNpcRenderer)
+
         ClientTickEvents.END_CLIENT_TICK.register { client ->
             while (ScriptFXKeybinds.openControlPanel.consumeClick()) {
                 val player = client.player ?: continue
@@ -56,7 +58,5 @@ object ScriptFXClient : ClientModInitializer {
         }
 
         CutsceneClient.init()
-
-        EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC) { ctx -> ScriptNpcRenderer(ctx) }
     }
 }
