@@ -8,6 +8,15 @@ plugins {
 
 repositories {
 	maven { url "https://maven.shedaniel.me/" }
+	maven {
+		name = 'GeckoLib'
+		url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+		content {
+			includeGroup("com.geckolib")
+			includeGroupByRegex("software\\.bernie.*")
+			includeGroup("com.eliotlash.mclib")
+		}
+	}
 }
 
 fabricApi {
@@ -27,6 +36,8 @@ dependencies {
 
 	// Cloth Config (используется только клиентским экраном настроек)
 	implementation "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
+
+	implementation "com.geckolib:geckolib-fabric-${minecraft_version}:${geckolib_version}"
 
 	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
 	testImplementation "org.junit.jupiter:junit-jupiter"
