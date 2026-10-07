@@ -73,35 +73,6 @@ class FlatButton(
 
 class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
 
-    private data class Rect(val x1: Int, val y1: Int, val x2: Int, val y2: Int) {
-        fun contains(px: Int, py: Int) = px in x1 until x2 && py in y1 until y2
-    }
-
-    private data class DocumentationSubsection(
-        val name: String
-    )
-
-    private data class DocumentationSection(
-        val name: String,
-        val children: List<DocumentationSubsection> = emptyList()
-    )
-
-    private data class DocumentationSectionHit(
-        val rect: Rect,
-        val section: String
-    )
-
-    private data class DocumentationExpandHit(
-        val rect: Rect,
-        val section: String
-    )
-
-    private data class DocumentationSubsectionHit(
-        val rect: Rect,
-        val section: String,
-        val subsection: String
-    )
-
     private data class FileRow(val entry: FileEntry?, val rect: Rect, val isUp: Boolean = false)
     private data class ContextMenuItem(val label: String, val enabled: Boolean = true, val action: () -> Unit)
     private data class ContextMenuInfo(val x: Int, val y: Int, val items: List<ContextMenuItem>)
@@ -247,7 +218,8 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                 DocumentationSubsection("Глобальные переменные"),
                 DocumentationSubsection("Для сюжета"),
                 DocumentationSubsection("Для камеры"),
-                DocumentationSubsection("Катсцены")
+                DocumentationSubsection("Катсцены"),
+                DocumentationSubsection("NPC")
             )
         ),
 
@@ -555,18 +527,8 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
     }
 
     private fun validateScript(text: String): Pair<Boolean, String> {
-        if (text.isBlank()) return true to "Пустой скрипт"
-
-        val commands = ScriptParser.parse(text)
-        if (commands.isEmpty()) return true to "Пустой скрипт"
-
-        commands.forEachIndexed { index, command ->
-            val isTriggerHeader = index == 0 && command.name in TriggerParser.TRIGGER_NAMES
-            if (!isTriggerHeader && !CommandRegistry.isKnown(command.name)) {
-                return false to "⚠ Неизвестная команда '${command.name}' (строка ${command.lineNumber})"
-            }
-        }
-        return true to "✓ Скрипт корректен (${pluralizeCommands(commands.size)})"
+        val result = ScriptValidator.validate(text, CommandRegistry::isKnown)
+        return result.ok to result.message
     }
 
     private fun drawProjectsFileList(graphics: GuiGraphicsExtractor, rect: Rect) {
@@ -818,34 +780,12 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
         deleteConfirmNoButton?.renderButton(graphics, mouseX, mouseY, delta)
     }
 
-    private fun wrapText(text: String, maxWidth: Int): List<String> {
-        val words = text.split(" ")
-        val lines = mutableListOf<String>()
-        var current = StringBuilder()
-        for (word in words) {
-            val candidate = if (current.isEmpty()) word else "$current $word"
-            if (font.width(candidate) > maxWidth && current.isNotEmpty()) {
-                lines.add(current.toString())
-                current = StringBuilder(word)
-            } else {
-                current = StringBuilder(candidate)
-            }
-        }
-        if (current.isNotEmpty()) lines.add(current.toString())
-        return lines
-    }
+    private fun wrapText(text: String, maxWidth: Int): List<String> =
+        TextLayout.wrap(text, maxWidth) { font.width(it) }
 
     /** Обрезает текст с "..." так, чтобы он помещался в maxWidth пикселей. */
-    private fun fitText(text: String, maxWidth: Int): String {
-        if (font.width(text) <= maxWidth) return text
-
-        val ellipsis = "..."
-        var end = text.length
-        while (end > 0 && font.width(text.substring(0, end) + ellipsis) > maxWidth) {
-            end--
-        }
-        return text.substring(0, end).trimEnd() + ellipsis
-    }
+    private fun fitText(text: String, maxWidth: Int): String =
+        TextLayout.fit(text, maxWidth) { font.width(it) }
 
     private fun drawLogsSection(graphics: GuiGraphicsExtractor, rect: Rect) {
         graphics.fill(rect.x1, rect.y1, rect.x2, rect.y2, 0xFF000000.toInt())
@@ -1663,7 +1603,8 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
             "Глобальные переменные",
             "Для сюжета",
             "Для камеры",
-            "Катсцены"
+            "Катсцены",
+            "NPC"
         )
 
         val title = "Вы находитесь в разделе Скрипты"
@@ -2268,6 +2209,7 @@ class ControlPanelScreen : Screen(Component.literal("ScriptFX")) {
                         2 -> "Для сюжета"
                         3 -> "Для камеры"
                         4 -> "Катсцены"
+                        5 -> "NPC"
                         else -> return true
                     }
                     openDocumentationPage("Скрипты", subsection)
