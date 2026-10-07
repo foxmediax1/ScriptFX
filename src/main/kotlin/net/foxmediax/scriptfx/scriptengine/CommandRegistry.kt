@@ -12,7 +12,9 @@ object CommandRegistry {
 
     private val DURATION_RE = Regex("""^(\d+(?:\.\d+)?)(?:\.([a-z]+))?$""", RegexOption.IGNORE_CASE)
 
-    init { registerDefaults() }
+    init { registerDefaults()
+        NpcCommands.install { name, handler -> register(name, handler) }
+    }
 
     fun register(name: String, handler: CommandHandler) {
         handlers[name] = handler
