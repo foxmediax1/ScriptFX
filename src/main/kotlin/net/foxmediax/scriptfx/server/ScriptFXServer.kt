@@ -79,10 +79,6 @@ object ScriptFXServer : ModInitializer {
             CutsceneManager.onInterrupt(player)
         }
 
-        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
-            CutsceneManager.endFor(handler.player)
-        }
-
         ServerLifecycleEvents.SERVER_STOPPING.register { server ->
             CutsceneManager.endAll(server)   // иначе игрок сохранится в точке камеры
         }
@@ -97,8 +93,7 @@ object ScriptFXServer : ModInitializer {
         }
     }
 
-    /** /scriptfx stop_script "имя скрипта.sfxs" */
-    /** /scriptfx start_script, stop_script, stop_all_scripts */
+    /** /scriptfx start_script, stop_script, stop_all_scripts, camera_reset, reload */
     private fun registerCommands() {
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             dispatcher.register(
@@ -129,7 +124,6 @@ object ScriptFXServer : ModInitializer {
                     .then(
                         Commands.literal("camera_reset")
                             .executes { ctx -> cameraReset(ctx.source) }
-                        
                     )
                     .then(
                         Commands.literal("reload")
@@ -195,7 +189,5 @@ object ScriptFXServer : ModInitializer {
             source.sendFailure(Component.literal("Сейчас нет запущенных скриптов"))
         }
         return stopped
-        ScriptManager.stopAllScripts("reload")
     }
 }
-

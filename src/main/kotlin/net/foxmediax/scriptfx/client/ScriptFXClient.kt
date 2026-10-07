@@ -4,6 +4,7 @@ import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
+import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.foxmediax.scriptfx.ScriptFX
@@ -13,6 +14,8 @@ import net.foxmediax.scriptfx.config.ScriptFXConfig
 import net.foxmediax.scriptfx.network.CameraPayload
 import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.minecraft.server.permissions.Permissions
+import net.foxmediax.scriptfx.npc.NpcEntities
+import net.foxmediax.scriptfx.npc.ScriptNpcRenderer
 
 object ScriptFXClient : ClientModInitializer {
     private val REQUIRED_PERMISSION = Permissions.COMMANDS_GAMEMASTER
@@ -53,5 +56,7 @@ object ScriptFXClient : ClientModInitializer {
         }
 
         CutsceneClient.init()
+
+        EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC) { ctx -> ScriptNpcRenderer(ctx) }
     }
 }

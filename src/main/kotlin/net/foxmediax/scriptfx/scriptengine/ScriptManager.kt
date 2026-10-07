@@ -13,6 +13,7 @@ object ScriptManager {
         loadedScripts.clear()
         TriggerManager.clear()
         AvatarLoader.clearCache()
+        NpcRegistry.reload()
 
         val projectsDir = FabricLoader.getInstance().configDir.resolve("scriptfx/projects").toFile()
         if (!projectsDir.exists()) {
