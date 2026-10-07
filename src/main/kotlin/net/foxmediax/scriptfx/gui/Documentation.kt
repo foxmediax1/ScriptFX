@@ -17,6 +17,7 @@ object Documentation {
         section == "Триггеры" -> TRIGGERS
         section == "Примеры скриптов" -> TEMPLES_SCRIPTS
         section == "Скрипты" && subsection == "Катсцены" -> CUTSCENES
+        section == "Скрипты" && subsection == "NPC" -> NPC
         else -> emptyList()
     }
 
@@ -244,6 +245,20 @@ object Documentation {
             timecycles night
 
         Эти команды сразу меняют погоду и время суток, их можно ставить на любую строчку.
+        ---
+    """.trimIndent().lines()
+    private val NPC: List<String> = """
+        Раздел: "Скрипты → NPC"
+        ---
+        NPC описываются шаблонами в папке проекта: npcs/id.json (позже их будет создавать NPC-редактор). Режимы: Диалог (реплики по правому клику), Торговля (окно торговли), Интеракт (запуск скрипта по правому клику).
+        ---
+        npc_spawn "id" "x y z" "анимация" "режим" - создаёт NPC. Координаты можно писать с поворотом, наклоном и миром: "100 64 200 90 0 nether", а "~ ~ ~" - позиция игрока скрипта. Анимацию и режим можно не указывать. Один NPC на один id.
+
+        npc_despawn "id" - убирает NPC из мира.
+
+        npc_repack "id" "параметр=значение" - меняет параметры NPC: mode, animation, name, namecolor, textcolor, namevisible, health, maxhealth, invulnerable, lookatplayer, scale, model, texture, script, dialogueend, dialogue, pos, rot, glow, silent.
+        ---
+        Команды находят NPC только в загруженных чанках.
         ---
     """.trimIndent().lines()
 }
