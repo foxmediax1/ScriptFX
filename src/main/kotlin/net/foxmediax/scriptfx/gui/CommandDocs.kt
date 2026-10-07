@@ -41,5 +41,8 @@ object CommandDocs {
         CommandDoc("player_lock true", "Блокирует движение и поворот игрока в катсцене"),
         CommandDoc("hud_hide true", "Скрывает интерфейс в катсцене"),
         CommandDoc("letterbox true 0.12", "Чёрные полосы сверху и снизу (высота 0–0.4)"),
+        CommandDoc("npc_spawn \"id\" \"x y z [мир]\" \"анимация\" \"режим\"", "Создаёт NPC в мире"),
+        CommandDoc("npc_despawn \"id\"", "Убирает NPC из мира"),
+        CommandDoc("npc_repack \"id\" \"параметр=значение\"", "Меняет параметры NPC"),
     )
 }
