@@ -127,6 +127,7 @@ object CommandRegistry {
         CameraCommands.install { name, handler -> register(name, handler) }
 
         CutsceneCommands.install { name, handler -> register(name, handler) }
+        NpcCommands.install { name, handler -> register(name, handler) }
     }
 
     fun resolveLevel(server: net.minecraft.server.MinecraftServer, worldKey: String) =
