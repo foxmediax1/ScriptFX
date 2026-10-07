@@ -19,9 +19,9 @@ enum class NpcMode(val id: String) {
 data class NpcDefinition(
     val id: String,
     val displayName: String = id,
-    val model: String = "scriptfx:geo/female_models.geo.json",
+    val model: String = "scriptfx:female_models",
     val texture: String = "scriptfx:textures/npc/temple_skins.png",
-    val animation: String = "scriptfx:animations/female_models.animation.json",
+    val animation: String = "scriptfx:female_models",
     val defaultAnim: String = "idle",
     val defaultMode: String = NpcMode.INTERACT.id,
     val maxHealth: Float = 20f,
