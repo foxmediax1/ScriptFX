@@ -27,7 +27,10 @@ object NpcManager {
         val mode = NpcMode.from(modeRaw.ifBlank { def.defaultMode })
 
         val entity = NpcEntities.SCRIPT_NPC.create(level, EntitySpawnReason.COMMAND) ?: return false
-        entity.moveTo(x, y, z, 0f, 0f)
+        entity.setPos(x, y, z)
+        entity.yRot = 0f
+        entity.xRot = 0f
+        entity.yHeadRot = 0f
         entity.npcId = id
         entity.modelPath = def.model
         entity.texturePath = def.texture
