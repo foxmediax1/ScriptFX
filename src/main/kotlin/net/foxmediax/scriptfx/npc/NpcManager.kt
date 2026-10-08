@@ -12,7 +12,9 @@ object NpcManager {
         id: String,
         x: Double, y: Double, z: Double,
         anim: String,
-        modeRaw: String
+        modeRaw: String,
+        yaw: Float = 0f,
+        pitch: Float = 0f
     ): Boolean {
         if (NpcRuntime.isSpawned(id)) {
             ScriptFXLog.warn("npc_spawn: NPC '$id' уже в мире")
@@ -29,9 +31,10 @@ object NpcManager {
         val entity = NpcEntities.SCRIPT_NPC.create(level, EntitySpawnReason.COMMAND) ?: return false
         entity.setMode(mode)
         entity.setPos(x, y, z)
-        entity.yRot = 0f
-        entity.xRot = 0f
-        entity.yHeadRot = 0f
+        entity.yRot = yaw
+        entity.xRot = pitch
+        entity.yHeadRot = yaw
+        entity.yBodyRot = yaw
         entity.npcId = id
         entity.modelPath = def.model
         entity.texturePath = def.texture
