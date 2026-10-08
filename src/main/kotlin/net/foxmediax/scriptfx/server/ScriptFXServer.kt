@@ -22,7 +22,6 @@ import net.minecraft.world.InteractionResult
 import net.foxmediax.scriptfx.scriptengine.ScriptContext
 import net.foxmediax.scriptfx.scriptengine.CameraCommands
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
-import net.foxmediax.scriptfx.client.NpcDialogClient
 import net.foxmediax.scriptfx.network.CutsceneInterruptPayload
 import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
 import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
@@ -102,9 +101,7 @@ object ScriptFXServer : ModInitializer {
             NpcInteractWait.notifyKey(ctx.player().uuid, payload.key)
         }
         ServerPlayNetworking.registerGlobalReceiver(NpcDialogChoicePayload.TYPE) { payload, ctx ->
-            val serverPlayer = ctx.player()
-            NpcDialogWait.notifyChoice(serverPlayer.uuid, payload.button)
-            CutsceneManager.endFor(serverPlayer)
+            NpcDialogWait.notifyChoice(ctx.player().uuid, payload.button)
         }
     }
 
