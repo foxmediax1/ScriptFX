@@ -15,6 +15,7 @@ object ScriptFXConfig {
 
     var dialogFadeMs: Int = 400
     var dialogTypewriterMs: Int = 25
+    var npcOutline: Boolean = true
 
     private val gson = GsonBuilder().setPrettyPrinting().create()
     private val configPath = FabricLoader.getInstance().configDir.resolve("scriptfx.json")
@@ -25,7 +26,8 @@ object ScriptFXConfig {
         var theme: String = "dark",
         var messageMode: String = MessageDisplayMode.CENTER.id,
         var dialogFadeMs: Int = 400,
-        var dialogTypewriterMs: Int = 25
+        var dialogTypewriterMs: Int = 25,
+        var npcOutline: Boolean = true
     )
 
     fun load() {
@@ -43,6 +45,9 @@ object ScriptFXConfig {
             maxScripts = data.maxScripts.coerceIn(1, 50)
             theme = data.theme
             messageMode = MessageDisplayMode.fromId(data.messageMode)
+            dialogFadeMs = data.dialogFadeMs.coerceIn(1, 5000)
+            dialogTypewriterMs = data.dialogTypewriterMs.coerceIn(1, 500)
+            npcOutline = data.npcOutline
         } catch (e: Exception) {
             // Сохраняем повреждённый файл, чтобы не потерять пользовательские значения.
             try {
@@ -57,7 +62,8 @@ object ScriptFXConfig {
     }
 
     fun save() {
-        val data = Data(showHints, maxScripts, theme, messageMode.id)
+        val data = Data(showHints, maxScripts, theme, messageMode.id,
+            dialogFadeMs, dialogTypewriterMs, npcOutline)
         configPath.writeText(gson.toJson(data))
     }
 }
