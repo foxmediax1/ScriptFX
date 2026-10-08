@@ -19,4 +19,14 @@ object ScriptFXKeybinds {
             CATEGORY
         )
     )
+
+    /** Тестовый экран Modern UI (временная клавиша) */
+    val openMuiTest: KeyMapping = KeyMappingHelper.registerKeyMapping(
+        KeyMapping(
+            "key.scriptfx.open_mui_test",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_RIGHT_BRACKET, // ]
+            CATEGORY
+        )
+    )
 }
