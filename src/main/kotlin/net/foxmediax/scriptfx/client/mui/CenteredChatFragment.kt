@@ -5,6 +5,7 @@ import icyllis.modernui.fragment.Fragment
 import icyllis.modernui.graphics.drawable.ColorDrawable
 import icyllis.modernui.util.DataSet
 import icyllis.modernui.view.Gravity
+import icyllis.modernui.view.KeyEvent
 import icyllis.modernui.view.LayoutInflater
 import icyllis.modernui.view.View
 import icyllis.modernui.view.ViewGroup
@@ -14,15 +15,40 @@ import icyllis.modernui.widget.FrameLayout
 import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
 import icyllis.modernui.widget.TextView
+import net.foxmediax.scriptfx.mixin.client.ChatComponentAccessor
 import net.minecraft.client.Minecraft
-import net.minecraft.network.chat.Component
+import net.minecraft.client.multiplayer.chat.GuiMessage
+import org.lwjgl.glfw.GLFW
+import kotlin.math.min
 
+/**
+ * ВАЖНО: Modern UI работает в своём UI-потоке. Всё, что трогает Minecraft
+ * (экраны, курсор, сеть, чат), выполняем через Minecraft.execute { } (основной поток).
+ */
 class CenteredChatFragment : Fragment() {
 
+    private companion object {
+        const val PANEL_W_DP = 420
+        const val PANEL_H_DP = 440
+        const val PANEL_MAX_H_RATIO = 0.8f
+        const val MAX_LINES = 100
+        const val POLL_MS = 250L
+    }
+
+    @Volatile private var rootView: View? = null
+    private var scroll: ScrollView? = null
     private var messagesContainer: LinearLayout? = null
     private var input: EditText? = null
-    private var historyIndex = -1
-    private val sentHistory = mutableListOf<String>()
+
+    private var shownLines: List<String>? = null
+
+    private val poll = object : Runnable {
+        override fun run() {
+            val root = rootView ?: return   // экран закрыт: цикл останавливается
+            requestRefresh()
+            root.postDelayed(this, POLL_MS)
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -30,18 +56,14 @@ class CenteredChatFragment : Fragment() {
         savedInstanceState: DataSet?
     ): View {
         val ctx = requireContext()
-
-        // Корневой фрейм на весь экран
         val root = FrameLayout(ctx)
 
-        // Центральная панель
         val panel = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(20, 20, 20, 20)
-            background = ColorDrawable(0xCC1A1A1E.toInt()) // полупрозрачная тёмная
+            background = ColorDrawable(0xCC1A1A1E.toInt())
         }
 
-        // Заголовок
         val header = TextView(ctx).apply {
             text = "Чат"
             textSize = 16f
@@ -56,14 +78,14 @@ class CenteredChatFragment : Fragment() {
             )
         )
 
-        // Скролл с сообщениями
-        val scroll = ScrollView(ctx)
+        val scrollView = ScrollView(ctx)
+        scroll = scrollView
         val messages = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(8, 8, 8, 8)
         }
         messagesContainer = messages
-        scroll.addView(
+        scrollView.addView(
             messages,
             ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
@@ -71,15 +93,10 @@ class CenteredChatFragment : Fragment() {
             )
         )
         panel.addView(
-            scroll,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                0,
-                1f
-            )
+            scrollView,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         )
 
-        // Низ: поле ввода + отправить
         val bottom = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -89,10 +106,18 @@ class CenteredChatFragment : Fragment() {
         val edit = EditText(ctx).apply {
             hint = "Сообщение..."
             textSize = 14f
-            // Enter — отправка (если API поддерживает editor action)
             setSingleLine(true)
         }
         input = edit
+
+        edit.setOnKeyListener { _, keyCode, event ->
+            if (event.action == KeyEvent.ACTION_DOWN &&
+                (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)
+            ) {
+                sendCurrent()
+                true
+            } else false
+        }
 
         val sendBtn = Button(ctx).apply {
             text = "➤"
@@ -118,42 +143,61 @@ class CenteredChatFragment : Fragment() {
             )
         )
 
-        // Панель по центру, фиксированная ширина ~420dp-эквивалент
-        val panelLp = FrameLayout.LayoutParams(
-            dp(ctx, 420),
-            dp(ctx, 320),
-            Gravity.CENTER
+        val maxH = (ctx.resources.displayMetrics.heightPixels * PANEL_MAX_H_RATIO).toInt()
+        val panelH = min(dp(ctx, PANEL_H_DP), maxH)
+        root.addView(
+            panel,
+            FrameLayout.LayoutParams(dp(ctx, PANEL_W_DP), panelH, Gravity.CENTER)
         )
-        root.addView(panel, panelLp)
 
-        // Заполняем историю из ванильного чата
-        loadVanillaHistory()
+        rootView = root
+        requestRefresh()
+        root.postDelayed(poll, POLL_MS)
+        edit.post { edit.requestFocus() }
 
         return root
     }
 
-    private fun loadVanillaHistory() {
+    override fun onDestroyView() {
+        rootView = null
+        scroll = null
+        messagesContainer = null
+        input = null
+        shownLines = null
+        super.onDestroyView()
+    }
+
+    // ------------------------------------------------------------------
+    // История. Снимок берём в основном потоке, в UI-поток передаём готовые строки.
+
+    private fun requestRefresh() {
         val mc = Minecraft.getInstance()
+        mc.execute {
+            val lines = chronological().map { it.content().string }
+            rootView?.post { applyHistory(lines) }
+        }
+    }
+
+    /** Основной поток. Сообщения ванильного чата от старых к новым. */
+    private fun chronological(): List<GuiMessage> {
+        val chat = Minecraft.getInstance().gui.chat
+        val all = ((chat as Any) as ChatComponentAccessor).`scriptfx$getAllMessages`()
+        if (all.isEmpty()) return emptyList()
+
+        val copy = ArrayList(all)
+        val newestFirst = copy.size < 2 || copy.first().addedTime() >= copy.last().addedTime()
+        if (newestFirst) copy.reverse()
+        return copy.takeLast(MAX_LINES)
+    }
+
+    /** UI-поток. */
+    private fun applyHistory(lines: List<String>) {
+        if (lines == shownLines) return
+        shownLines = lines
         val container = messagesContainer ?: return
         container.removeAllViews()
-
-        // recentChat — строки, которые игрок отправлял; для входящих берём allMessages, если доступно
-        try {
-            val chat = mc.gui.chat
-            // Пробуем вытащить последние сообщения (API может чуть отличаться — см. ниже)
-            val recent = chat.recentChat
-            // Показываем recent как fallback + подсказку
-            if (recent.isEmpty()) {
-                addLine("Нет сообщений в истории. Напиши что-нибудь.")
-            } else {
-                // recentChat обычно только исходящие команды/сообщения игрока
-                for (line in recent.takeLast(30)) {
-                    addLine(line)
-                }
-            }
-        } catch (t: Throwable) {
-            addLine("История чата недоступна: ${t.message}")
-        }
+        if (lines.isEmpty()) addLine("Чат пуст") else lines.forEach { addLine(it) }
+        scroll?.post { scroll?.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun addLine(text: String) {
@@ -173,25 +217,24 @@ class CenteredChatFragment : Fragment() {
         )
     }
 
+    // ------------------------------------------------------------------
+
     private fun sendCurrent() {
-        val edit = input ?: return
-        val raw = edit.text?.toString()?.trim().orEmpty()
+        val raw = input?.text?.toString()?.trim().orEmpty()
         if (raw.isEmpty()) return
 
         val mc = Minecraft.getInstance()
-        val player = mc.player ?: return
-        val connection = player.connection
-
-        if (raw.startsWith("/")) {
-            connection.sendCommand(raw.substring(1))
-        } else {
-            connection.sendChat(raw)
+        // Основной поток: отправка пакета, история ввода и закрытие экрана (захват курсора).
+        mc.execute {
+            val connection = mc.player?.connection ?: return@execute
+            mc.gui.chat.addRecentChat(raw)
+            if (raw.startsWith("/")) {
+                connection.sendCommand(raw.substring(1))
+            } else {
+                connection.sendChat(raw)
+            }
+            mc.setScreen(null)
         }
-
-        sentHistory.add(raw)
-        historyIndex = sentHistory.size
-        addLine("§7» §f$raw")
-        edit.setText("")
     }
 
     private fun dp(ctx: Context, value: Int): Int {
