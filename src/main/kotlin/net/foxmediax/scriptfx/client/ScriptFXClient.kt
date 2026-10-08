@@ -19,6 +19,7 @@ import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.foxmediax.scriptfx.npc.NpcEntities
 import net.foxmediax.scriptfx.npc.NpcInteractClient
 import net.minecraft.server.permissions.Permissions
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents
 
 object ScriptFXClient : ClientModInitializer {
     private val REQUIRED_PERMISSION = Permissions.COMMANDS_GAMEMASTER
@@ -37,6 +38,15 @@ object ScriptFXClient : ClientModInitializer {
         HudElementRegistry.addLast(ScriptFX.id("npc_interact_prompt"), HudElement { graphics, _ ->
             NpcInteractClient.render(graphics)
         })
+
+        ClientReceiveMessageEvents.CHAT.register { _, signed, _, params, _ ->
+            if (signed == null) return@register
+            CenterMessageOverlay.receivePlayerChat(
+                params.name().string,
+                signed.sender(),
+                signed.decoratedContent().string
+            )
+        }
 
         ClientPlayNetworking.registerGlobalReceiver(ScriptMessagePayload.TYPE) { payload, _ ->
             CenterMessageOverlay.receive(payload)
