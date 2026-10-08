@@ -17,7 +17,8 @@ data class NpcDialogOpenPayload(
     val button2: String,
     val button3: String,
     val button4: String,
-    val button5: String
+    val button5: String,
+    val npcEntityId: Int
 ) : CustomPacketPayload {
 
     override fun type(): CustomPacketPayload.Type<out CustomPacketPayload> = TYPE
@@ -34,6 +35,7 @@ data class NpcDialogOpenPayload(
             ByteBufCodecs.STRING_UTF8, NpcDialogOpenPayload::button3,
             ByteBufCodecs.STRING_UTF8, NpcDialogOpenPayload::button4,
             ByteBufCodecs.STRING_UTF8, NpcDialogOpenPayload::button5,
+            ByteBufCodecs.VAR_INT, NpcDialogOpenPayload::npcEntityId,
             ::NpcDialogOpenPayload
         )
     }
