@@ -23,7 +23,10 @@ object ScriptFXConfigScreen {
             )
                 .setDefaultValue(MessageDisplayMode.CENTER)
                 .setEnumNameProvider { Component.literal((it as MessageDisplayMode).displayName) }
-                .setTooltip(Component.literal("Как показывать сообщения команд print и printNPC: в обычном чате (ванилла) или по центру экрана."))
+                .setTooltip(Component.literal(
+                    "Как показывать сообщения скриптов и основной чат (клавиша T): " +
+                            "в обычном чате (ванилла) или по центру экрана."
+                ))
                 .setSaveConsumer { value -> ScriptFXConfig.messageMode = value }
                 .build()
         )
