@@ -3,8 +3,22 @@ package net.foxmediax.scriptfx.config
 import me.shedaniel.clothconfig2.api.ConfigBuilder
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
+import me.shedaniel.clothconfig2.api.ConfigEntryBuilder
 
 object ScriptFXConfigScreen {
+
+    private fun colorEntry(
+        eb: ConfigEntryBuilder,
+        title: String,
+        tooltip: String,
+        current: Int,
+        default: Int,
+        save: (Int) -> Unit
+    ) = eb.startAlphaColorField(Component.literal(title), current)
+        .setDefaultValue(default)
+        .setTooltip(Component.literal(tooltip))
+        .setSaveConsumer { save(it) }
+        .build()
 
     fun build(parent: Screen): Screen {
         val builder = ConfigBuilder.create()
@@ -60,6 +74,32 @@ object ScriptFXConfigScreen {
                 .setSaveConsumer { value -> ScriptFXConfig.npcOutline = value }
                 .build()
         )
+
+        val messages = builder.getOrCreateCategory(Component.literal("Сообщения"))
+
+        messages.addEntry(colorEntry(
+            entryBuilder, "Фон всплывашки",
+            "Цвет и прозрачность фона плашки сообщения (формат #AARRGGBB).",
+            ScriptFXConfig.bubbleBg, ScriptFXConfig.DEFAULT_BUBBLE_BG
+        ) { ScriptFXConfig.bubbleBg = it })
+
+        messages.addEntry(colorEntry(
+            entryBuilder, "Обводка всплывашки",
+            "Цвет и прозрачность обводки плашки сообщения.",
+            ScriptFXConfig.bubbleBorder, ScriptFXConfig.DEFAULT_BUBBLE_BORDER
+        ) { ScriptFXConfig.bubbleBorder = it })
+
+        messages.addEntry(colorEntry(
+            entryBuilder, "Фон нового сообщения",
+            "Фон самой нижней (новой) плашки, которая подсвечена.",
+            ScriptFXConfig.bubbleBgNew, ScriptFXConfig.DEFAULT_BUBBLE_BG_NEW
+        ) { ScriptFXConfig.bubbleBgNew = it })
+
+        messages.addEntry(colorEntry(
+            entryBuilder, "Обводка нового сообщения",
+            "Обводка самой нижней (новой) плашки, которая подсвечена.",
+            ScriptFXConfig.bubbleBorderNew, ScriptFXConfig.DEFAULT_BUBBLE_BORDER_NEW
+        ) { ScriptFXConfig.bubbleBorderNew = it })
 
         return builder.build()
     }
