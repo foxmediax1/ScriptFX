@@ -42,7 +42,7 @@ class TestMuiFragment : Fragment() {
         val closeBtn = Button(context).apply {
             text = "Закрыть"
             setOnClickListener {
-                Minecraft.getInstance().setScreen(null)
+                Minecraft.getInstance().execute { Minecraft.getInstance().setScreen(null) }
             }
         }
 
