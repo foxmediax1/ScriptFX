@@ -52,7 +52,6 @@ dependencies {
 	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 
 	implementation "fuzs.forgeconfigapiport:forgeconfigapiport-fabric:26.1.5"
-	implementation "curse.maven:forge-config-api-port-547434:8218664"
 
 	implementation files('libs/modernui-fabric.jar')
 }
