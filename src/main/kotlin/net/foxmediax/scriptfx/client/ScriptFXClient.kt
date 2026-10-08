@@ -9,15 +9,16 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.foxmediax.scriptfx.ScriptFX
 import net.foxmediax.scriptfx.ScriptFXKeybinds
-import net.foxmediax.scriptfx.gui.ControlPanelScreen
+import net.foxmediax.scriptfx.client.mui.MuiScreens
 import net.foxmediax.scriptfx.config.ScriptFXConfig
+import net.foxmediax.scriptfx.gui.ControlPanelScreen
 import net.foxmediax.scriptfx.network.CameraPayload
 import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
 import net.foxmediax.scriptfx.network.NpcInteractListenPayload
 import net.foxmediax.scriptfx.network.ScriptMessagePayload
-import net.minecraft.server.permissions.Permissions
 import net.foxmediax.scriptfx.npc.NpcEntities
 import net.foxmediax.scriptfx.npc.NpcInteractClient
+import net.minecraft.server.permissions.Permissions
 
 object ScriptFXClient : ClientModInitializer {
     private val REQUIRED_PERMISSION = Permissions.COMMANDS_GAMEMASTER
@@ -26,7 +27,6 @@ object ScriptFXClient : ClientModInitializer {
         ScriptFXKeybinds
         ScriptFXConfig.load()
 
-        // Эффекты камеры (чёрный экран, крупный/мелкий текст).
         ClientPlayNetworking.registerGlobalReceiver(CameraPayload.TYPE) { payload, _ ->
             CameraOverlay.receive(payload)
         }
@@ -38,7 +38,6 @@ object ScriptFXClient : ClientModInitializer {
             NpcInteractClient.render(graphics)
         })
 
-        // Сообщения скриптов: чат или над хотбаром — зависит от настройки.
         ClientPlayNetworking.registerGlobalReceiver(ScriptMessagePayload.TYPE) { payload, _ ->
             CenterMessageOverlay.receive(payload)
         }
@@ -57,10 +56,18 @@ object ScriptFXClient : ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register { client ->
             NpcInteractClient.tick()
             NpcDialogClient.tick()
+
             while (ScriptFXKeybinds.openControlPanel.consumeClick()) {
                 val player = client.player ?: continue
                 if (client.screen == null && player.permissions().hasPermission(REQUIRED_PERMISSION)) {
                     client.setScreen(ControlPanelScreen())
+                }
+            }
+
+            // Тест Modern UI
+            while (ScriptFXKeybinds.openMuiTest.consumeClick()) {
+                if (client.player != null) {
+                    MuiScreens.openTest()
                 }
             }
         }
