@@ -145,7 +145,8 @@ object CutsceneClient {
             }
 
             CutscenePayload.FOV -> {
-                val target = payload.value.coerceIn(10f, 170f)
+                // value <= 0: вернуть FOV из настроек игрока
+                val target = if (payload.value <= 0f) baseFov() else payload.value.coerceIn(10f, 170f)
                 if (payload.durationTicks <= 0) {
                     fovAnimating = false
                     tickFov = target
@@ -271,6 +272,8 @@ object CutsceneClient {
         tickFov = null
         prevFov = null
         fovOverride = null
+
+        NpcDialogClient.close()
     }
 
     // ------------------------------------------------------------------
