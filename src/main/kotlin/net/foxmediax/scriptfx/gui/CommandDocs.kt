@@ -41,8 +41,11 @@ object CommandDocs {
         CommandDoc("player_lock true", "Блокирует движение и поворот игрока в катсцене"),
         CommandDoc("hud_hide true", "Скрывает интерфейс в катсцене"),
         CommandDoc("letterbox true 0.12", "Чёрные полосы сверху и снизу (высота 0–0.4)"),
-        CommandDoc("npc_spawn \"id\" \"x y z [мир]\" \"анимация\" \"режим\"", "Создаёт NPC в мире"),
+        CommandDoc("npc_spawn \"id\" ~ ~ ~ ~180 0 \"idle\" \"dialog\"", "Создаёт NPC: x y z (можно ~), поворот и наклон (можно ~180), мир, анимация, режим. Всё после координат необязательно"),
         CommandDoc("npc_despawn \"id\"", "Убирает NPC из мира"),
-        CommandDoc("npc_repack \"id\" \"параметр=значение\"", "Меняет параметры NPC"),
+        CommandDoc("npc_repack \"id\" N_look \"anim=idle\"", "Меняет NPC: флаги Y_/N_ (damage, look, gravity, nametag, visible, silent, collide), anim=, mode:, name=, hp, speed"),
+        CommandDoc("npc_interact_key \"X\"", "Скрипт ждёт, пока игрок нажмёт указанную клавишу"),
+        CommandDoc("npc_dialog_hud \"id\" :: dialog_window_text \"текст\" :: button1 = \"Да\" :: button2 = \"Нет\"", "Диалог с NPC (до 5 кнопок), номер выбора попадает в dialog_button"),
+        CommandDoc("if dialog_button == 1 {", "Выполняет блок, если выбрана кнопка 1. Блок обязательно закрывать строкой }"),
     )
 }
