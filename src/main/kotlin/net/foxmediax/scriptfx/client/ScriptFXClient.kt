@@ -74,8 +74,5 @@ object ScriptFXClient : ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(NpcDialogOpenPayload.TYPE) { payload, _ ->
             NpcDialogClient.open(payload)
         }
-        HudElementRegistry.addLast(ScriptFX.id("npc_dialog"), HudElement { g, _ ->
-            NpcDialogClient.render(g)
-        })
     }
 }
