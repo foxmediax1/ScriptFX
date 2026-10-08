@@ -1,4 +1,7 @@
 {
   "key.category.scriptfx.main": "ScriptFX",
-  "key.scriptfx.open_control_panel": "Open Control Panel"
+  "key.scriptfx.open_control_panel": "Open Control Panel",
+
+  "key.scriptfx.open_control_panel": "Open Control Panel",
+  "key.scriptfx.open_mui_test": "Open Modern UI Test"
 }
