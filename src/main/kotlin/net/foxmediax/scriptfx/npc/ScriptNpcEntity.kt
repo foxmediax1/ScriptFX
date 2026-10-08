@@ -19,6 +19,7 @@ import net.minecraft.world.entity.ai.attributes.Attributes
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.storage.ValueInput
 import net.minecraft.world.level.storage.ValueOutput
+import java.util.UUID
 
 class ScriptNpcEntity(
     type: EntityType<out ScriptNpcEntity>,
@@ -31,6 +32,10 @@ class ScriptNpcEntity(
     var modelPath: String = "scriptfx:female_models"
     var texturePath: String = "scriptfx:textures/npc/temple_skins.png"
     var animationPath: String = "scriptfx:female_models"
+
+    /** Игрок, с которым NPC ведёт диалог (только сервер, не сохраняется). */
+    @Volatile
+    var dialogFocus: UUID? = null
 
     companion object {
         val DATA_ANIM: EntityDataAccessor<String> =
@@ -72,12 +77,7 @@ class ScriptNpcEntity(
     }
 
     fun setAnim(name: String) {
-        val safe = sanitizeAnim(name)
-        if (safe != name && name.isNotBlank()) {
-            // лог один раз на сервере, если нужно:
-            // ScriptFXLog.warn("анимация '$name' не найдена, использую idle")
-        }
-        entityData.set(DATA_ANIM, safe)
+        entityData.set(DATA_ANIM, sanitizeAnim(name))
     }
 
     fun currentAnim(): String = entityData.get(DATA_ANIM)
@@ -97,7 +97,21 @@ class ScriptNpcEntity(
 
     override fun tick() {
         super.tick()
-        if (!level().isClientSide && entityData.get(DATA_LOOK)) {
+        if (level().isClientSide) return
+
+        // диалог: быстро разворачиваемся лицом к собеседнику, даже если Look = false
+        val focusId = dialogFocus
+        if (focusId != null) {
+            val p = (level() as ServerLevel).getPlayerByUUID(focusId)
+            if (p != null) {
+                lookAt(p, 45f, 45f)
+                yHeadRot = yRot
+                yBodyRot = yRot
+                return
+            }
+        }
+
+        if (entityData.get(DATA_LOOK)) {
             val player = level().getNearestPlayer(this, 12.0) ?: return
             lookAt(player, 30f, 30f)
         }
