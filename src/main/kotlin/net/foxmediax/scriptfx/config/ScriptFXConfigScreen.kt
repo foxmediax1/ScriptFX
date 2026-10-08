@@ -50,6 +50,14 @@ object ScriptFXConfigScreen {
                 .build()
         )
 
+        general.addEntry(
+            entryBuilder.startBooleanToggle(Component.literal("Обводка NPC в диалоге"), ScriptFXConfig.npcOutline)
+                .setDefaultValue(true)
+                .setTooltip(Component.literal("Подсвечивает белой обводкой NPC, с которым сейчас идёт диалог."))
+                .setSaveConsumer { value -> ScriptFXConfig.npcOutline = value }
+                .build()
+        )
+
         return builder.build()
     }
 }
