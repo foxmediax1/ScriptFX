@@ -1,8 +1,12 @@
 package net.foxmediax.scriptfx.client.mui
 
+import com.mojang.brigadier.StringReader
+import com.mojang.brigadier.suggestion.Suggestion
 import icyllis.modernui.core.Context
 import icyllis.modernui.fragment.Fragment
 import icyllis.modernui.graphics.drawable.ColorDrawable
+import icyllis.modernui.text.Editable
+import icyllis.modernui.text.TextWatcher
 import icyllis.modernui.util.DataSet
 import icyllis.modernui.view.Gravity
 import icyllis.modernui.view.KeyEvent
@@ -19,11 +23,12 @@ import net.foxmediax.scriptfx.mixin.client.ChatComponentAccessor
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.chat.GuiMessage
 import org.lwjgl.glfw.GLFW
+import kotlin.math.max
 import kotlin.math.min
 
 /**
  * ВАЖНО: Modern UI работает в своём UI-потоке. Всё, что трогает Minecraft
- * (экраны, курсор, сеть, чат), выполняем через Minecraft.execute { } (основной поток).
+ * (экраны, курсор, сеть, чат, команды), выполняем через Minecraft.execute { } (основной поток).
  */
 class CenteredChatFragment : Fragment() {
 
@@ -33,15 +38,29 @@ class CenteredChatFragment : Fragment() {
         const val PANEL_MAX_H_RATIO = 0.8f
         const val MAX_LINES = 100
         const val POLL_MS = 250L
+        const val MAX_SUGGEST_VISIBLE = 7
     }
 
     @Volatile private var rootView: View? = null
     private var scroll: ScrollView? = null
     private var messagesContainer: LinearLayout? = null
+    private var suggestionBox: LinearLayout? = null
     private var input: EditText? = null
 
     private var shownLines: List<String>? = null
 
+    // --- история введённого (стрелки вверх/вниз) ---
+    private var history: List<String> = emptyList()   // от старых к новым
+    private var historyIndex = -1                     // -1: не листаем
+    private var draft = ""                            // что было набрано до листания
+
+    // --- подсказки команд ---
+    private var suggestions: List<Suggestion> = emptyList()
+    private var suggestionIndex = 0
+    private var suggestSeq = 0
+    private var suppressWatcher = false               // программная смена текста
+
+    /** Следит за ванильным чатом, пока экран открыт (новые сообщения, очистка по F3+D). */
     private val poll = object : Runnable {
         override fun run() {
             val root = rootView ?: return   // экран закрыт: цикл останавливается
@@ -97,6 +116,22 @@ class CenteredChatFragment : Fragment() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         )
 
+        // Список подсказок команд (над строкой ввода)
+        val sBox = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(8, 4, 8, 4)
+            background = ColorDrawable(0xE6101018.toInt())
+        }
+        suggestionBox = sBox
+        panel.addView(
+            sBox,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+        )
+
         val bottom = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -110,13 +145,41 @@ class CenteredChatFragment : Fragment() {
         }
         input = edit
 
+        edit.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable) {
+                if (suppressWatcher) return
+                historyIndex = -1        // ручной ввод прерывает листание истории
+                requestSuggestions()
+            }
+        })
+
         edit.setOnKeyListener { _, keyCode, event ->
-            if (event.action == KeyEvent.ACTION_DOWN &&
-                (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)
-            ) {
-                sendCurrent()
-                true
-            } else false
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            when (keyCode) {
+                // Один ESC закрывает чат (иначе Modern UI первым нажатием лишь снимает фокус с поля)
+                GLFW.GLFW_KEY_ESCAPE -> { closeChat(); true }
+
+                GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { sendCurrent(); true }
+
+                GLFW.GLFW_KEY_TAB -> {
+                    if (suggestions.isNotEmpty()) applySuggestion()
+                    true
+                }
+
+                GLFW.GLFW_KEY_UP -> {
+                    if (suggestions.isNotEmpty()) moveSuggestion(-1) else navigateHistory(-1)
+                    true
+                }
+
+                GLFW.GLFW_KEY_DOWN -> {
+                    if (suggestions.isNotEmpty()) moveSuggestion(+1) else navigateHistory(+1)
+                    true
+                }
+
+                else -> false
+            }
         }
 
         val sendBtn = Button(ctx).apply {
@@ -152,6 +215,7 @@ class CenteredChatFragment : Fragment() {
 
         rootView = root
         requestRefresh()
+        loadSentHistory()
         root.postDelayed(poll, POLL_MS)
         edit.post { edit.requestFocus() }
 
@@ -162,13 +226,17 @@ class CenteredChatFragment : Fragment() {
         rootView = null
         scroll = null
         messagesContainer = null
+        suggestionBox = null
         input = null
         shownLines = null
+        suggestions = emptyList()
+        history = emptyList()
+        historyIndex = -1
         super.onDestroyView()
     }
 
     // ------------------------------------------------------------------
-    // История. Снимок берём в основном потоке, в UI-поток передаём готовые строки.
+    // История сообщений чата. Снимок берём в основном потоке.
 
     private fun requestRefresh() {
         val mc = Minecraft.getInstance()
@@ -218,6 +286,162 @@ class CenteredChatFragment : Fragment() {
     }
 
     // ------------------------------------------------------------------
+    // История введённого: стрелки вверх/вниз (как в обычном чате)
+
+    private fun loadSentHistory() {
+        val mc = Minecraft.getInstance()
+        mc.execute {
+            val snapshot = ArrayList(mc.gui.chat.recentChat)
+            rootView?.post { history = snapshot }
+        }
+    }
+
+    private fun navigateHistory(delta: Int) {
+        val edit = input ?: return
+        if (history.isEmpty()) return
+
+        if (historyIndex == -1) {
+            if (delta > 0) return            // вниз с «живой» строки листать нечего
+            draft = edit.text?.toString().orEmpty()
+            historyIndex = history.size
+        }
+
+        val next = historyIndex + delta
+        if (next < 0) return
+        if (next >= history.size) {          // дошли до конца: возвращаем набранное
+            historyIndex = -1
+            setInput(draft)
+            return
+        }
+        historyIndex = next
+        setInput(history[next])
+    }
+
+    /** Программно ставит текст (без запуска подсказок) и переносит курсор в конец. */
+    private fun setInput(text: String) {
+        val edit = input ?: return
+        suppressWatcher = true
+        edit.setText(text)
+        edit.setSelection(text.length)
+        suppressWatcher = false
+        hideSuggestions()
+    }
+
+    // ------------------------------------------------------------------
+    // Подсказки команд (как в обычном чате): Brigadier-дерево клиента + подсказки сервера
+
+    private fun requestSuggestions() {
+        val edit = input ?: return
+        val text = edit.text?.toString().orEmpty()
+        if (!text.startsWith("/")) {
+            hideSuggestions()
+            return
+        }
+        val caret = edit.selectionStart.coerceIn(0, text.length)
+        val seq = ++suggestSeq
+
+        val mc = Minecraft.getInstance()
+        mc.execute {
+            try {
+                val connection = mc.player?.connection
+                if (connection == null) {
+                    rootView?.post { hideSuggestions() }
+                    return@execute
+                }
+                val dispatcher = connection.commands
+                val reader = StringReader(text)
+                if (reader.canRead() && reader.peek() == '/') reader.skip()
+                val parse = dispatcher.parse(reader, connection.suggestionsProvider)
+
+                dispatcher.getCompletionSuggestions(parse, caret).thenAccept { result ->
+                    rootView?.post {
+                        if (seq == suggestSeq) showSuggestions(text, result.list)
+                    }
+                }
+            } catch (e: Exception) {
+                rootView?.post { hideSuggestions() }
+            }
+        }
+    }
+
+    private fun showSuggestions(forText: String, list: List<Suggestion>) {
+        val current = input?.text?.toString().orEmpty()
+        if (current != forText) return       // текст уже изменился
+        suggestions = list
+        suggestionIndex = 0
+        renderSuggestions()
+    }
+
+    private fun hideSuggestions() {
+        suggestSeq++
+        suggestions = emptyList()
+        suggestionIndex = 0
+        suggestionBox?.removeAllViews()
+        suggestionBox?.visibility = View.GONE
+    }
+
+    private fun renderSuggestions() {
+        val box = suggestionBox ?: return
+        val ctx = context ?: return
+        box.removeAllViews()
+        if (suggestions.isEmpty()) {
+            box.visibility = View.GONE
+            return
+        }
+
+        val start = (suggestionIndex - MAX_SUGGEST_VISIBLE / 2)
+            .coerceIn(0, max(0, suggestions.size - MAX_SUGGEST_VISIBLE))
+        val end = min(suggestions.size, start + MAX_SUGGEST_VISIBLE)
+
+        for (i in start until end) {
+            val selected = i == suggestionIndex
+            val tv = TextView(ctx).apply {
+                text = suggestions[i].text
+                textSize = 13f
+                setTextColor(if (selected) 0xFFFFFF55.toInt() else 0xFFAAAAAA.toInt())
+                setPadding(6, 3, 6, 3)
+                if (selected) background = ColorDrawable(0x55FFFFFF)
+                setOnClickListener {
+                    suggestionIndex = i
+                    applySuggestion()
+                }
+            }
+            box.addView(
+                tv,
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
+                )
+            )
+        }
+        box.visibility = View.VISIBLE
+    }
+
+    private fun moveSuggestion(delta: Int) {
+        if (suggestions.isEmpty()) return
+        suggestionIndex = (suggestionIndex + delta + suggestions.size) % suggestions.size
+        renderSuggestions()
+    }
+
+    private fun applySuggestion() {
+        val edit = input ?: return
+        val picked = suggestions.getOrNull(suggestionIndex) ?: return
+        val newText = picked.apply(edit.text?.toString().orEmpty())
+
+        suppressWatcher = true
+        edit.setText(newText)
+        edit.setSelection(newText.length)
+        suppressWatcher = false
+
+        requestSuggestions()                 // сразу подсказки для следующего аргумента
+    }
+
+    // ------------------------------------------------------------------
+
+    private fun closeChat() {
+        val mc = Minecraft.getInstance()
+        mc.execute { mc.setScreen(null) }
+    }
 
     private fun sendCurrent() {
         val raw = input?.text?.toString()?.trim().orEmpty()
