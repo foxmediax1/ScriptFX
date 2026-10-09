@@ -11,7 +11,6 @@ import net.foxmediax.scriptfx.ScriptFX
 import net.foxmediax.scriptfx.ScriptFXKeybinds
 import net.foxmediax.scriptfx.client.mui.MuiScreens
 import net.foxmediax.scriptfx.config.ScriptFXConfig
-import net.foxmediax.scriptfx.gui.ControlPanelScreen
 import net.foxmediax.scriptfx.network.CameraPayload
 import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
 import net.foxmediax.scriptfx.network.NpcInteractListenPayload
@@ -71,14 +70,6 @@ object ScriptFXClient : ClientModInitializer {
             NpcDialogClient.tick()
 
             while (ScriptFXKeybinds.openControlPanel.consumeClick()) {
-                val player = client.player ?: continue
-                if (client.screen == null && player.permissions().hasPermission(REQUIRED_PERMISSION)) {
-                    client.setScreen(ControlPanelScreen())
-                }
-            }
-
-            // Новая панель на Modern UI (временная клавиша ]), пока этап 3 не готов
-            while (ScriptFXKeybinds.openMuiTest.consumeClick()) {
                 val player = client.player ?: continue
                 if (client.screen == null && player.permissions().hasPermission(REQUIRED_PERMISSION)) {
                     MuiScreens.openControlPanel()
