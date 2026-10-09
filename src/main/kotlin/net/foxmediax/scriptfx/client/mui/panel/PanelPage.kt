@@ -9,12 +9,13 @@ import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
 import icyllis.modernui.widget.TextView
 import net.foxmediax.scriptfx.client.CutsceneClient
+import net.foxmediax.scriptfx.client.NpcPreviewHelper
 import net.foxmediax.scriptfx.gui.Documentation
 import net.foxmediax.scriptfx.gui.PanelSection
-import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
-import net.minecraft.client.Minecraft
 import net.foxmediax.scriptfx.npc.NpcDefinition
 import net.foxmediax.scriptfx.npc.NpcRegistry
+import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
+import net.minecraft.client.Minecraft
 
 interface PanelHost {
     fun navigate(section: PanelSection?)
@@ -240,17 +241,10 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
 
     override val breadcrumb: String? get() = "Документация"
 
-    private data class Node(val section: String, val subsection: String = "")
-
-    // дерево как в старой панели
-    private val tree = listOf(
-        "Скрипты" to listOf("Переменные", "Глобальные переменные", "Для сюжета", "Для камеры", "Катсцены", "NPC"),
-        "Триггеры" to emptyList(),
-        "Примеры скриптов" to emptyList()
-    )
+    private data class Node(val section: String, val subsection: String)
 
     private var current: Node? = null
-    private lateinit var body: LinearLayout
+    private lateinit var docsBody: LinearLayout
 
     override fun createView(ctx: Context): View {
         val root = LinearLayout(ctx).apply {
@@ -263,21 +257,28 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
             setPadding(PanelUi.dp(ctx, 6), PanelUi.dp(ctx, 6), PanelUi.dp(ctx, 6), PanelUi.dp(ctx, 6))
             background = ColorDrawable(0xFF141418.toInt())
         }
-        for ((section, subs) in tree) {
+
+        val sections = listOf(
+            "Скрипты" to listOf("Переменные", "Команды", "Триггеры"),
+            "NPC" to listOf("Определения", "Спавн", "Режимы"),
+            "Кат-сцены" to listOf("Обзор")
+        )
+
+        for ((section, subs) in sections) {
             nav.addView(
-                PanelUi.flatButton(ctx, section) {
-                    current = Node(section)
-                    renderBody()
+                TextView(ctx).apply {
+                    text = section
+                    textSize = 13f
+                    setTextColor(PanelUi.COL_ACCENT)
+                    setPadding(0, PanelUi.dp(ctx, 8), 0, PanelUi.dp(ctx, 2))
                 },
-                PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP).apply {
-                    topMargin = PanelUi.dp(ctx, 4)
-                }
+                PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
             )
             for (sub in subs) {
                 nav.addView(
                     PanelUi.flatButton(ctx, "  · $sub") {
                         current = Node(section, sub)
-                        renderBody()
+                        renderDocsBody()
                     },
                     PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP).apply {
                         topMargin = PanelUi.dp(ctx, 2)
@@ -288,26 +289,26 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
         root.addView(nav, PanelUi.lp(PanelUi.dp(ctx, 160), PanelUi.MATCH))
 
         val scroll = ScrollView(ctx)
-        body = LinearLayout(ctx).apply {
+        docsBody = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(PanelUi.dp(ctx, 10), PanelUi.dp(ctx, 8), PanelUi.dp(ctx, 10), PanelUi.dp(ctx, 8))
         }
-        scroll.addView(body, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+        scroll.addView(docsBody, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
         root.addView(scroll, LinearLayout.LayoutParams(0, PanelUi.MATCH, 1f))
 
         current = Node("Скрипты", "Переменные")
-        renderBody()
+        renderDocsBody()
         return root
     }
 
-    private fun renderBody() {
-        if (!this::body.isInitialized) return
-        val ctx = body.context
-        body.removeAllViews()
+    private fun renderDocsBody() {
+        if (!this::docsBody.isInitialized) return
+        val ctx = docsBody.context
+        docsBody.removeAllViews()
         val node = current ?: return
         val lines = Documentation.page(node.section, node.subsection)
         if (lines.isEmpty()) {
-            body.addView(
+            docsBody.addView(
                 TextView(ctx).apply {
                     text = "Нет текста для «${node.section}» / «${node.subsection}»"
                     textSize = 13f
@@ -319,7 +320,7 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
         }
         for (line in lines) {
             if (line.trim() == Documentation.DIVIDER) {
-                body.addView(
+                docsBody.addView(
                     View(ctx).apply { background = ColorDrawable(PanelUi.COL_DIVIDER) },
                     PanelUi.lp(PanelUi.MATCH, PanelUi.px1(ctx)).apply {
                         topMargin = PanelUi.dp(ctx, 6)
@@ -327,7 +328,7 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
                     }
                 )
             } else {
-                body.addView(
+                docsBody.addView(
                     TextView(ctx).apply {
                         text = line
                         textSize = 12f
@@ -339,7 +340,6 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
             }
         }
     }
-
 }
 
 class NpcEditorPage(host: PanelHost) : PanelPage(host) {
@@ -359,6 +359,7 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
     private lateinit var pathView: TextView
     private lateinit var rowsBox: LinearLayout
     private lateinit var detailBox: LinearLayout
+    private lateinit var previewView: NpcPreviewView
 
     override fun createView(ctx: Context): View {
         this.ctx = ctx
@@ -397,7 +398,10 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         )
         page.addView(top, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
 
-        val body = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        // Три колонки: список | свойства | превью
+        val npcColumns = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
 
         rowsBox = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -405,18 +409,40 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         }
         val leftScroll = ScrollView(ctx)
         leftScroll.addView(rowsBox, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-        body.addView(leftScroll, LinearLayout.LayoutParams(0, PanelUi.MATCH, 1f))
+        npcColumns.addView(
+            leftScroll,
+            LinearLayout.LayoutParams(0, PanelUi.MATCH, 0.9f)
+        )
 
         detailBox = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(PanelUi.dp(ctx, 8), PanelUi.dp(ctx, 4), PanelUi.dp(ctx, 8), PanelUi.dp(ctx, 4))
+            setPadding(
+                PanelUi.dp(ctx, 8),
+                PanelUi.dp(ctx, 4),
+                PanelUi.dp(ctx, 8),
+                PanelUi.dp(ctx, 4)
+            )
             background = ColorDrawable(0xFF101014.toInt())
         }
-        val rightScroll = ScrollView(ctx)
-        rightScroll.addView(detailBox, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-        body.addView(rightScroll, LinearLayout.LayoutParams(0, PanelUi.MATCH, 1f))
+        val centerScroll = ScrollView(ctx)
+        centerScroll.addView(detailBox, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+        npcColumns.addView(
+            centerScroll,
+            LinearLayout.LayoutParams(0, PanelUi.MATCH, 1.2f)
+        )
 
-        page.addView(body, LinearLayout.LayoutParams(PanelUi.MATCH, 0, 1f))
+        previewView = NpcPreviewView(ctx)
+        npcColumns.addView(
+            previewView,
+            LinearLayout.LayoutParams(PanelUi.dp(ctx, 180), PanelUi.MATCH).apply {
+                leftMargin = PanelUi.dp(ctx, 6)
+            }
+        )
+
+        page.addView(
+            npcColumns,
+            LinearLayout.LayoutParams(PanelUi.MATCH, 0, 1f)
+        )
         root.addView(page, FrameLayout.LayoutParams(PanelUi.MATCH, PanelUi.MATCH))
         root.addView(overlayLayer, FrameLayout.LayoutParams(PanelUi.MATCH, PanelUi.MATCH))
 
@@ -442,6 +468,7 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
 
     override fun onDestroy() {
         if (this::overlays.isInitialized) overlays.clear()
+        NpcPreviewHelper.clear()
     }
 
     private fun refresh() {
@@ -459,14 +486,18 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
             else -> "/scriptfx/projects/*/npc"
         }
 
+        if (this::previewView.isInitialized) {
+            previewView.definition = def
+        }
+
         if (project == null) {
             val projects = NpcRegistry.listProjects()
             if (projects.isEmpty()) {
-                rowsBox.addView(hint("Нет проектов. Создайте проект в разделе «Проекты»."))
+                rowsBox.addRow(hint("Нет проектов. Создайте проект в разделе «Проекты»."))
             } else {
                 for (name in projects) {
-                    rowsBox.addView(
-                        row(name, PanelUi.COL_TEXT) {
+                    rowsBox.addRow(
+                        listRow(name, PanelUi.COL_TEXT) {
                             selectedProject = name
                             selectedDef = null
                             refresh()
@@ -474,45 +505,50 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
                     )
                 }
             }
-            detailBox.addView(hint("Выберите проект слева"))
+            detailBox.addView(
+                hint("Выберите проект слева"),
+                PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+            )
             return
         }
 
         if (def == null) {
-            rowsBox.addView(
-                row("../", PanelUi.COL_MUTED) {
+            rowsBox.addRow(
+                listRow("../", PanelUi.COL_MUTED) {
                     selectedProject = null
                     refresh()
                 }
             )
             val npcs = NpcRegistry.listNpcs(project)
             if (npcs.isEmpty()) {
-                rowsBox.addView(hint("Нет .fxnpc — «Создать…»"))
+                rowsBox.addRow(hint("Нет .fxnpc — «Создать…»"))
             } else {
                 for (n in npcs) {
-                    rowsBox.addView(
-                        row("${n.id}  (${n.displayName})", PanelUi.COL_TEXT) {
+                    rowsBox.addRow(
+                        listRow("${n.id}  (${n.displayName})", PanelUi.COL_TEXT) {
                             selectedDef = n
                             refresh()
                         }
                     )
                 }
             }
-            detailBox.addView(hint("Выберите NPC слева"))
+            detailBox.addView(
+                hint("Выберите NPC слева"),
+                PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+            )
             return
         }
 
-        // список + детали
-        rowsBox.addView(
-            row("../", PanelUi.COL_MUTED) {
+        rowsBox.addRow(
+            listRow("../", PanelUi.COL_MUTED) {
                 selectedDef = null
                 refresh()
             }
         )
         for (n in NpcRegistry.listNpcs(project)) {
             val selected = n.id == def.id
-            rowsBox.addView(
-                row(
+            rowsBox.addRow(
+                listRow(
                     n.id,
                     if (selected) PanelUi.COL_ACCENT else PanelUi.COL_TEXT
                 ) {
@@ -536,7 +572,6 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
             PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
         )
 
-        // id только для чтения
         addReadonly(ctx, "id", def.id)
 
         addEditRow(ctx, "displayName", def.displayName) { v ->
@@ -568,7 +603,6 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
             save(project, def.copy(interactKey = v.ifBlank { "X" }))
         }
 
-        // флаги
         addToggle(ctx, "lookAtPlayer", def.lookAtPlayer) { on ->
             save(project, def.copy(lookAtPlayer = on))
         }
@@ -588,7 +622,6 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
             save(project, def.copy(silent = on))
         }
 
-        // mode quick-pick
         detailBox.addView(
             TextView(ctx).apply {
                 text = "Режим (быстрый выбор)"
@@ -660,7 +693,7 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         }
     }
 
-    private fun row(label: String, color: Int, onClick: () -> Unit): View {
+    private fun listRow(label: String, color: Int, onClick: () -> Unit): View {
         return LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -680,11 +713,14 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         }
     }
 
-    // удобный add с margin
-    private fun LinearLayout.addView(row: View) {
-        addView(row, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP).apply {
-            topMargin = PanelUi.dp(ctx, 2)
-        })
+    /** Добавить строку списка с отступом (не путать с ViewGroup.addView). */
+    private fun LinearLayout.addRow(child: View) {
+        addView(
+            child,
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP).apply {
+                topMargin = PanelUi.dp(ctx, 2)
+            }
+        )
     }
 
     private fun hint(text: String): View =

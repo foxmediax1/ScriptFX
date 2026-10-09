@@ -2,11 +2,13 @@ package net.foxmediax.scriptfx.client
 
 import net.fabricmc.api.ClientModInitializer
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents
 import net.foxmediax.scriptfx.ScriptFX
 import net.foxmediax.scriptfx.ScriptFXKeybinds
 import net.foxmediax.scriptfx.client.mui.MuiScreens
@@ -18,9 +20,9 @@ import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.foxmediax.scriptfx.npc.NpcEntities
 import net.foxmediax.scriptfx.npc.NpcInteractClient
 import net.minecraft.server.permissions.Permissions
-import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents
 
 object ScriptFXClient : ClientModInitializer {
+
     private val REQUIRED_PERMISSION = Permissions.COMMANDS_GAMEMASTER
 
     override fun onInitializeClient() {
@@ -61,6 +63,7 @@ object ScriptFXClient : ClientModInitializer {
             CenterMessageOverlay.clear()
             CameraOverlay.clear()
             CutsceneClient.clear()
+            NpcPreviewHelper.clear()
         }
 
         EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC, ::ScriptNpcRenderer)
@@ -74,6 +77,13 @@ object ScriptFXClient : ClientModInitializer {
                 if (client.screen == null && player.permissions().hasPermission(REQUIRED_PERMISSION)) {
                     MuiScreens.openControlPanel()
                 }
+            }
+        }
+
+        // 3D-превью NPC: после extract экрана (поверх ModernUI)
+        ScreenEvents.AFTER_INIT.register { _, screen, _, _ ->
+            ScreenEvents.afterExtract(screen).register { _, graphics, _, _, _ ->
+                NpcPreviewHelper.renderInGui(graphics)
             }
         }
 

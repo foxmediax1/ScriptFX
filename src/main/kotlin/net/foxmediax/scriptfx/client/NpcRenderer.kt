@@ -8,18 +8,30 @@ import net.minecraft.client.renderer.entity.EntityRendererProvider
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState
 import net.minecraft.resources.Identifier
 
+object CurrentNpcResources {
+    @JvmField var model: String = "scriptfx:female_models"
+    @JvmField var texture: String = "scriptfx:textures/npc/temple_skins.png"
+    @JvmField var animation: String = "scriptfx:female_models"
+
+    fun apply(entity: ScriptNpcEntity) {
+        model = entity.modelPath.ifBlank { "scriptfx:female_models" }
+        texture = entity.texturePath.ifBlank { "scriptfx:textures/npc/temple_skins.png" }
+        animation = entity.animationPath.ifBlank { "scriptfx:female_models" }
+    }
+}
+
 class ScriptNpcModel : GeoModel<ScriptNpcEntity>() {
 
-    // GeckoLib 5: без geo/ и без .geo.json
     override fun getModelResource(renderState: GeoRenderState): Identifier =
-        Identifier.parse("scriptfx:female_models")
+        Identifier.parse(CurrentNpcResources.model)
 
     override fun getTextureResource(renderState: GeoRenderState): Identifier =
-        Identifier.parse("scriptfx:textures/npc/temple_skins.png")
+        Identifier.parse(CurrentNpcResources.texture)
 
-    // GeckoLib 5: без animations/ и без .animation.json
     override fun getAnimationResource(animatable: ScriptNpcEntity): Identifier =
-        Identifier.parse("scriptfx:female_models")
+        Identifier.parse(
+            animatable.animationPath.ifBlank { CurrentNpcResources.animation }
+        )
 }
 
 class ScriptNpcRenderer(
