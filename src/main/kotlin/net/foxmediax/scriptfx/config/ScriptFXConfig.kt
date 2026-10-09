@@ -7,11 +7,9 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 object ScriptFXConfig {
-    // Цвета плашки сообщения по умолчанию (ARGB)
     const val DEFAULT_MESSAGE_BG = 0xD91C1436.toInt()
     const val DEFAULT_MESSAGE_BORDER = 0xFFC8B4FF.toInt()
 
-    // Сами настройки — просто поля с дефолтными значениями
     var showHints: Boolean = true
     var maxScripts: Int = 10
     var theme: String = "dark"
@@ -21,10 +19,8 @@ object ScriptFXConfig {
     var dialogTypewriterMs: Int = 25
     var npcOutline: Boolean = true
 
-    // Плашка сообщения: фон и обводка (ARGB)
     var messageBg: Int = DEFAULT_MESSAGE_BG
     var messageBorder: Int = DEFAULT_MESSAGE_BORDER
-
     var centerSystemMessages: Boolean = true
 
     private val gson = GsonBuilder().setPrettyPrinting().create()
@@ -50,7 +46,7 @@ object ScriptFXConfig {
         }
         try {
             val data = gson.fromJson(configPath.readText(), Data::class.java)
-            if (data == null) { // пустой файл
+            if (data == null) {
                 save()
                 return
             }
@@ -65,7 +61,6 @@ object ScriptFXConfig {
             messageBorder = data.messageBorder
             centerSystemMessages = data.centerSystemMessages
         } catch (e: Exception) {
-            // Сохраняем повреждённый файл, чтобы не потерять пользовательские значения.
             try {
                 java.nio.file.Files.copy(
                     configPath,
