@@ -50,20 +50,19 @@ class CenteredChatFragment : Fragment() {
     private var shownLines: List<String>? = null
 
     // --- история введённого (стрелки вверх/вниз) ---
-    private var history: List<String> = emptyList()   // от старых к новым
-    private var historyIndex = -1                     // -1: не листаем
-    private var draft = ""                            // что было набрано до листания
+    private var history: List<String> = emptyList()
+    private var historyIndex = -1
+    private var draft = ""
 
     // --- подсказки команд ---
     private var suggestions: List<Suggestion> = emptyList()
     private var suggestionIndex = 0
     private var suggestSeq = 0
-    private var suppressWatcher = false               // программная смена текста
+    private var suppressWatcher = false
 
-    /** Следит за ванильным чатом, пока экран открыт (новые сообщения, очистка по F3+D). */
     private val poll = object : Runnable {
         override fun run() {
-            val root = rootView ?: return   // экран закрыт: цикл останавливается
+            val root = rootView ?: return
             requestRefresh()
             root.postDelayed(this, POLL_MS)
         }
@@ -116,7 +115,6 @@ class CenteredChatFragment : Fragment() {
             LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
         )
 
-        // Список подсказок команд (над строкой ввода)
         val sBox = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
@@ -150,34 +148,35 @@ class CenteredChatFragment : Fragment() {
             override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable) {
                 if (suppressWatcher) return
-                historyIndex = -1        // ручной ввод прерывает листание истории
+                historyIndex = -1
                 requestSuggestions()
             }
         })
 
+        // Modern UI EditText: нет setOnEditorActionListener — только setOnKeyListener
         edit.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
-                // Один ESC закрывает чат (иначе Modern UI первым нажатием лишь снимает фокус с поля)
-                GLFW.GLFW_KEY_ESCAPE -> { closeChat(); true }
-
-                GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> { sendCurrent(); true }
-
+                GLFW.GLFW_KEY_ESCAPE -> {
+                    closeChat()
+                    true
+                }
+                GLFW.GLFW_KEY_ENTER, GLFW.GLFW_KEY_KP_ENTER -> {
+                    sendCurrent()
+                    true
+                }
                 GLFW.GLFW_KEY_TAB -> {
                     if (suggestions.isNotEmpty()) applySuggestion()
                     true
                 }
-
                 GLFW.GLFW_KEY_UP -> {
                     if (suggestions.isNotEmpty()) moveSuggestion(-1) else navigateHistory(-1)
                     true
                 }
-
                 GLFW.GLFW_KEY_DOWN -> {
                     if (suggestions.isNotEmpty()) moveSuggestion(+1) else navigateHistory(+1)
                     true
                 }
-
                 else -> false
             }
         }
@@ -236,29 +235,33 @@ class CenteredChatFragment : Fragment() {
     }
 
     // ------------------------------------------------------------------
-    // История сообщений чата. Снимок берём в основном потоке.
+    // История сообщений чата (основной поток → UI-поток)
 
     private fun requestRefresh() {
         val mc = Minecraft.getInstance()
         mc.execute {
-            val lines = chronological().map { it.content().string }
+            val lines = chronological().map { msg ->
+                // GuiMessage в 26.1: content() — Component
+                msg.content().string
+            }
             rootView?.post { applyHistory(lines) }
         }
     }
 
-    /** Основной поток. Сообщения ванильного чата от старых к новым. */
+    /** Только основной поток Minecraft. */
     private fun chronological(): List<GuiMessage> {
         val chat = Minecraft.getInstance().gui.chat
-        val all = ((chat as Any) as ChatComponentAccessor).`scriptfx$getAllMessages`()
+        val all = (chat as ChatComponentAccessor).`scriptfx$getAllMessages`()
         if (all.isEmpty()) return emptyList()
 
         val copy = ArrayList(all)
+        // allMessages обычно newest-first
         val newestFirst = copy.size < 2 || copy.first().addedTime() >= copy.last().addedTime()
         if (newestFirst) copy.reverse()
         return copy.takeLast(MAX_LINES)
     }
 
-    /** UI-поток. */
+    /** UI-поток Modern UI. */
     private fun applyHistory(lines: List<String>) {
         if (lines == shownLines) return
         shownLines = lines
@@ -286,7 +289,7 @@ class CenteredChatFragment : Fragment() {
     }
 
     // ------------------------------------------------------------------
-    // История введённого: стрелки вверх/вниз (как в обычном чате)
+    // История ввода (↑ / ↓)
 
     private fun loadSentHistory() {
         val mc = Minecraft.getInstance()
@@ -301,14 +304,14 @@ class CenteredChatFragment : Fragment() {
         if (history.isEmpty()) return
 
         if (historyIndex == -1) {
-            if (delta > 0) return            // вниз с «живой» строки листать нечего
+            if (delta > 0) return
             draft = edit.text?.toString().orEmpty()
             historyIndex = history.size
         }
 
         val next = historyIndex + delta
         if (next < 0) return
-        if (next >= history.size) {          // дошли до конца: возвращаем набранное
+        if (next >= history.size) {
             historyIndex = -1
             setInput(draft)
             return
@@ -317,18 +320,16 @@ class CenteredChatFragment : Fragment() {
         setInput(history[next])
     }
 
-    /** Программно ставит текст (без запуска подсказок) и переносит курсор в конец. */
     private fun setInput(text: String) {
         val edit = input ?: return
         suppressWatcher = true
         edit.setText(text)
         edit.setSelection(text.length)
         suppressWatcher = false
-        hideSuggestions()
     }
 
     // ------------------------------------------------------------------
-    // Подсказки команд (как в обычном чате): Brigadier-дерево клиента + подсказки сервера
+    // Подсказки команд (Brigadier)
 
     private fun requestSuggestions() {
         val edit = input ?: return
@@ -358,7 +359,7 @@ class CenteredChatFragment : Fragment() {
                         if (seq == suggestSeq) showSuggestions(text, result.list)
                     }
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 rootView?.post { hideSuggestions() }
             }
         }
@@ -366,7 +367,7 @@ class CenteredChatFragment : Fragment() {
 
     private fun showSuggestions(forText: String, list: List<Suggestion>) {
         val current = input?.text?.toString().orEmpty()
-        if (current != forText) return       // текст уже изменился
+        if (current != forText) return
         suggestions = list
         suggestionIndex = 0
         renderSuggestions()
@@ -433,7 +434,7 @@ class CenteredChatFragment : Fragment() {
         edit.setSelection(newText.length)
         suppressWatcher = false
 
-        requestSuggestions()                 // сразу подсказки для следующего аргумента
+        requestSuggestions()
     }
 
     // ------------------------------------------------------------------
@@ -448,7 +449,6 @@ class CenteredChatFragment : Fragment() {
         if (raw.isEmpty()) return
 
         val mc = Minecraft.getInstance()
-        // Основной поток: отправка пакета, история ввода и закрытие экрана (захват курсора).
         mc.execute {
             val connection = mc.player?.connection ?: return@execute
             mc.gui.chat.addRecentChat(raw)
