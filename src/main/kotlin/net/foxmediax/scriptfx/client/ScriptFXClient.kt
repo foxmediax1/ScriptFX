@@ -23,28 +23,60 @@ import net.minecraft.server.permissions.Permissions
 
 object ScriptFXClient : ClientModInitializer {
 
-    private val REQUIRED_PERMISSION = Permissions.COMMANDS_GAMEMASTER
+    private val REQUIRED_PERMISSION =
+        Permissions.COMMANDS_GAMEMASTER
 
     override fun onInitializeClient() {
+
         ScriptFXKeybinds
+
         ScriptFXConfig.load()
 
-        ClientPlayNetworking.registerGlobalReceiver(CameraPayload.TYPE) { payload, _ ->
-            CameraOverlay.receive(payload)
+        ClientPlayNetworking.registerGlobalReceiver(
+            CameraPayload.TYPE
+        ) { payload, _ ->
+
+            CameraOverlay.receive(
+                payload
+            )
         }
-        HudElementRegistry.addLast(ScriptFX.id("camera_effects"), HudElement { graphics, _ ->
-            CameraOverlay.render(graphics)
-        })
 
-        HudElementRegistry.addLast(ScriptFX.id("npc_interact_prompt"), HudElement { graphics, _ ->
-            NpcInteractClient.render(graphics)
-        })
+        HudElementRegistry.addLast(
+            ScriptFX.id("camera_effects"),
+            HudElement { graphics, _ ->
 
-        ClientReceiveMessageEvents.CHAT.register { message, signed, _, params, _ ->
+                CameraOverlay.render(
+                    graphics
+                )
+            }
+        )
+
+        HudElementRegistry.addLast(
+            ScriptFX.id("npc_interact_prompt"),
+            HudElement { graphics, _ ->
+
+                NpcInteractClient.render(
+                    graphics
+                )
+            }
+        )
+
+        ClientReceiveMessageEvents.CHAT.register {
+                message,
+                signed,
+                _,
+                params,
+                _ ->
+
             if (signed == null) {
-                CenterMessageOverlay.receiveSystem(message.string)
+
+                CenterMessageOverlay.receiveSystem(
+                    message.string
+                )
+
                 return@register
             }
+
             CenterMessageOverlay.receivePlayerChat(
                 params.name().string,
                 signed.sender(),
@@ -52,49 +84,110 @@ object ScriptFXClient : ClientModInitializer {
             )
         }
 
-        ClientPlayNetworking.registerGlobalReceiver(ScriptMessagePayload.TYPE) { payload, _ ->
-            CenterMessageOverlay.receive(payload)
-        }
-        HudElementRegistry.addLast(ScriptFX.id("center_message"), HudElement { graphics, _ ->
-            CenterMessageOverlay.render(graphics)
-        })
+        ClientPlayNetworking.registerGlobalReceiver(
+            ScriptMessagePayload.TYPE
+        ) { payload, _ ->
 
-        ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
+            CenterMessageOverlay.receive(
+                payload
+            )
+        }
+
+        HudElementRegistry.addLast(
+            ScriptFX.id("center_message"),
+            HudElement { graphics, _ ->
+
+                CenterMessageOverlay.render(
+                    graphics
+                )
+            }
+        )
+
+        ClientPlayConnectionEvents.DISCONNECT.register {
+                _, _ ->
+
             CenterMessageOverlay.clear()
             CameraOverlay.clear()
             CutsceneClient.clear()
             NpcPreviewHelper.clear()
         }
 
-        EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC, ::ScriptNpcRenderer)
+        /*
+         * GeckoLib entity renderer.
+         */
+        EntityRendererRegistry.register(
+            NpcEntities.SCRIPT_NPC,
+            ::ScriptNpcRenderer
+        )
 
-        ClientTickEvents.END_CLIENT_TICK.register { client ->
+        /*
+         * NPC editor preview.
+         *
+         * ModernUI performs its own extraction.
+         * We render the GeckoLib entity afterwards,
+         * so the 3D model is visible above ModernUI.
+         */
+        ScreenEvents.AFTER_INIT.register {
+                _, screen, _, _ ->
+
+            ScreenEvents.afterExtract(
+                screen
+            ).register {
+                    _, graphics, _, _, _ ->
+
+                NpcPreviewHelper.renderInGui(
+                    graphics
+                )
+            }
+        }
+
+        ClientTickEvents.END_CLIENT_TICK.register {
+                client ->
+
             NpcInteractClient.tick()
+
             NpcDialogClient.tick()
 
-            while (ScriptFXKeybinds.openControlPanel.consumeClick()) {
-                val player = client.player ?: continue
-                if (client.screen == null && player.permissions().hasPermission(REQUIRED_PERMISSION)) {
+            while (
+                ScriptFXKeybinds
+                    .openControlPanel
+                    .consumeClick()
+            ) {
+
+                val player =
+                    client.player
+                        ?: continue
+
+                if (
+                    client.screen == null &&
+                    player.permissions()
+                        .hasPermission(
+                            REQUIRED_PERMISSION
+                        )
+                ) {
                     MuiScreens.openControlPanel()
                 }
             }
         }
 
-        // 3D-превью NPC: после extract экрана (поверх ModernUI)
-        ScreenEvents.AFTER_INIT.register { _, screen, _, _ ->
-            ScreenEvents.afterExtract(screen).register { _, graphics, _, _, _ ->
-                NpcPreviewHelper.renderInGui(graphics)
-            }
-        }
-
         CutsceneClient.init()
 
-        ClientPlayNetworking.registerGlobalReceiver(NpcInteractListenPayload.TYPE) { payload, _ ->
-            NpcInteractClient.setListenKey(payload.key)
+        ClientPlayNetworking.registerGlobalReceiver(
+            NpcInteractListenPayload.TYPE
+        ) { payload, _ ->
+
+            NpcInteractClient.setListenKey(
+                payload.key
+            )
         }
 
-        ClientPlayNetworking.registerGlobalReceiver(NpcDialogOpenPayload.TYPE) { payload, _ ->
-            NpcDialogClient.open(payload)
+        ClientPlayNetworking.registerGlobalReceiver(
+            NpcDialogOpenPayload.TYPE
+        ) { payload, _ ->
+
+            NpcDialogClient.open(
+                payload
+            )
         }
     }
 }
