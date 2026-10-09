@@ -14,16 +14,17 @@ object PanelUi {
     const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
     const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
 
-    const val COL_PANEL = 0xE6161616.toInt()
-    const val COL_LOGO = 0xFF101010.toInt()
-    const val COL_HEADER = 0xFF1E1E1E.toInt()
-    const val COL_SIDEBAR = 0xFF141414.toInt()
+    const val COL_PANEL = 0xF01E1E1E.toInt()
+    const val COL_LOGO = 0xFF1A1A1A.toInt()
+    const val COL_HEADER = 0xFF252525.toInt()
+    const val COL_SIDEBAR = 0xFF1A1A1A.toInt()
     const val COL_DIVIDER = 0xFF3A3A3A.toInt()
     const val COL_BTN = 0xFF101010.toInt()
     const val COL_BTN_SELECTED = 0xFF2A2140.toInt()
     const val COL_ACCENT = 0xFFB026FF.toInt()
     const val COL_TEXT = 0xFFEDEDED.toInt()
     const val COL_MUTED = 0xFFAAAAAA.toInt()
+    const val COL_CONTENT = 0xFF000000.toInt()
 
     fun dp(ctx: Context, value: Int): Int =
         (value * ctx.resources.displayMetrics.density + 0.5f).toInt()
@@ -32,27 +33,35 @@ object PanelUi {
 
     fun lp(w: Int, h: Int) = LinearLayout.LayoutParams(w, h)
 
-    fun divider(ctx: Context, vertical: Boolean): View = View(ctx).apply {
-        background = ColorDrawable(COL_DIVIDER)
-    }.also {
-        // размеры задаёт вызывающий через lp(px1, MATCH) / lp(MATCH, px1)
-    }
+    fun sidebarButton(ctx: Context, label: String, onClick: () -> Unit): Button =
+        Button(ctx).apply {
+            text = label
+            textSize = 14f
+            setTextColor(COL_TEXT)
+            background = ColorDrawable(COL_BTN)
+            gravity = Gravity.CENTER
+            setPadding(dp(ctx, 8), dp(ctx, 10), dp(ctx, 8), dp(ctx, 10))
+            minHeight = dp(ctx, 42)
+            setOnClickListener { onClick() }
+        }
 
-    fun flatButton(ctx: Context, label: String, onClick: () -> Unit): Button = Button(ctx).apply {
-        text = label
-        textSize = 13f
-        setTextColor(COL_TEXT)
-        background = ColorDrawable(COL_BTN)
-        setOnClickListener { onClick() }
-    }
+    fun flatButton(ctx: Context, label: String, onClick: () -> Unit): Button =
+        Button(ctx).apply {
+            text = label
+            textSize = 12f
+            setTextColor(COL_TEXT)
+            background = ColorDrawable(COL_BTN)
+            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+            setOnClickListener { onClick() }
+        }
 
-    /** Маленькая квадратная кнопка-иконка для шапки. */
-    fun iconButton(ctx: Context, glyph: String, onClick: () -> Unit): TextView = TextView(ctx).apply {
-        text = glyph
-        textSize = 13f
-        gravity = Gravity.CENTER
-        setTextColor(COL_TEXT)
-        background = ColorDrawable(COL_BTN)
-        setOnClickListener { onClick() }
-    }
+    fun iconButton(ctx: Context, glyph: String, onClick: () -> Unit): TextView =
+        TextView(ctx).apply {
+            text = glyph
+            textSize = 13f
+            gravity = Gravity.CENTER
+            setTextColor(COL_TEXT)
+            background = ColorDrawable(COL_BTN)
+            setOnClickListener { onClick() }
+        }
 }
