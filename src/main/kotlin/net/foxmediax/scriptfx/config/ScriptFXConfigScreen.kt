@@ -4,8 +4,11 @@ import me.shedaniel.clothconfig2.api.ConfigBuilder
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
 import me.shedaniel.clothconfig2.api.ConfigEntryBuilder
+import net.foxmediax.scriptfx.client.mui.MuiScreens
 
 object ScriptFXConfigScreen {
+
+    fun build(parent: Screen): Screen = MuiScreens.createSettings(parent)
 
     private fun colorEntry(
         eb: ConfigEntryBuilder,
@@ -20,7 +23,7 @@ object ScriptFXConfigScreen {
         .setSaveConsumer { save(it) }
         .build()
 
-    fun build(parent: Screen): Screen {
+    fun buildCloth(parent: Screen): Screen {
         val builder = ConfigBuilder.create()
             .setParentScreen(parent)
             .setTitle(Component.literal("Настройки ScriptFX"))
@@ -78,28 +81,30 @@ object ScriptFXConfigScreen {
         val messages = builder.getOrCreateCategory(Component.literal("Сообщения"))
 
         messages.addEntry(colorEntry(
-            entryBuilder, "Фон всплывашки",
+            entryBuilder, "Фон сообщения",
             "Цвет и прозрачность фона плашки сообщения (формат #AARRGGBB).",
-            ScriptFXConfig.bubbleBg, ScriptFXConfig.DEFAULT_BUBBLE_BG
-        ) { ScriptFXConfig.bubbleBg = it })
+            ScriptFXConfig.messageBg, ScriptFXConfig.DEFAULT_MESSAGE_BG
+        ) { ScriptFXConfig.messageBg = it })
 
         messages.addEntry(colorEntry(
-            entryBuilder, "Обводка всплывашки",
+            entryBuilder, "Обводка сообщения",
             "Цвет и прозрачность обводки плашки сообщения.",
-            ScriptFXConfig.bubbleBorder, ScriptFXConfig.DEFAULT_BUBBLE_BORDER
-        ) { ScriptFXConfig.bubbleBorder = it })
+            ScriptFXConfig.messageBorder, ScriptFXConfig.DEFAULT_MESSAGE_BORDER
+        ) { ScriptFXConfig.messageBorder = it })
 
-        messages.addEntry(colorEntry(
-            entryBuilder, "Фон нового сообщения",
-            "Фон самой нижней (новой) плашки, которая подсвечена.",
-            ScriptFXConfig.bubbleBgNew, ScriptFXConfig.DEFAULT_BUBBLE_BG_NEW
-        ) { ScriptFXConfig.bubbleBgNew = it })
-
-        messages.addEntry(colorEntry(
-            entryBuilder, "Обводка нового сообщения",
-            "Обводка самой нижней (новой) плашки, которая подсвечена.",
-            ScriptFXConfig.bubbleBorderNew, ScriptFXConfig.DEFAULT_BUBBLE_BORDER_NEW
-        ) { ScriptFXConfig.bubbleBorderNew = it })
+        messages.addEntry(
+            entryBuilder.startBooleanToggle(
+                Component.literal("Системные сообщения по центру"),
+                ScriptFXConfig.centerSystemMessages
+            )
+                .setDefaultValue(true)
+                .setTooltip(Component.literal(
+                    "Показывать плашкой по центру ответы команд, вход/выход игроков и прочие " +
+                            "системные сообщения. Если выключено, они видны только в окне чата (T)."
+                ))
+                .setSaveConsumer { value -> ScriptFXConfig.centerSystemMessages = value }
+                .build()
+        )
 
         return builder.build()
     }
