@@ -32,14 +32,9 @@ class ScriptNpcEntity(
 
     var npcId: String = ""
 
-    var modelPath: String =
-        "scriptfx:geckolib/models/female_models.geo.json"
-
-    var texturePath: String =
-        "scriptfx:textures/npc/temple_skins.png"
-
-    var animationPath: String =
-        "scriptfx:geckolib/animations/female_models.animation.json"
+    var modelPath: String = "scriptfx:female_models"
+    var texturePath: String = "scriptfx:textures/npc/temple_skins.png"
+    var animationPath: String = "scriptfx:female_models"
 
     /**
      * Игрок, с которым NPC ведёт диалог.
