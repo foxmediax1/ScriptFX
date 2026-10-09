@@ -39,8 +39,11 @@ object ScriptFXClient : ClientModInitializer {
             NpcInteractClient.render(graphics)
         })
 
-        ClientReceiveMessageEvents.CHAT.register { _, signed, _, params, _ ->
-            if (signed == null) return@register
+        ClientReceiveMessageEvents.CHAT.register { message, signed, _, params, _ ->
+            if (signed == null) {
+                CenterMessageOverlay.receiveSystem(message.string)
+                return@register
+            }
             CenterMessageOverlay.receivePlayerChat(
                 params.name().string,
                 signed.sender(),
@@ -74,10 +77,11 @@ object ScriptFXClient : ClientModInitializer {
                 }
             }
 
-            // Тест Modern UI
+            // Новая панель на Modern UI (временная клавиша ]), пока этап 3 не готов
             while (ScriptFXKeybinds.openMuiTest.consumeClick()) {
-                if (client.player != null) {
-                    MuiScreens.openTest()
+                val player = client.player ?: continue
+                if (client.screen == null && player.permissions().hasPermission(REQUIRED_PERMISSION)) {
+                    MuiScreens.openControlPanel()
                 }
             }
         }
