@@ -16,14 +16,13 @@ import net.minecraft.client.resources.DefaultPlayerSkin
 import net.minecraft.resources.Identifier
 import java.security.MessageDigest
 import java.util.UUID
-import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
 
 /**
  * Сообщения скриптов (print / printNPC) и сообщения игроков из чата.
- * VANILLA: обычный чат. CENTER: стопка плашек над хотбаром, по центру по горизонтали;
- * новое сообщение внизу и подсвечено, старые плавно поднимаются вверх и тускнеют.
+ * VANILLA: обычный чат. CENTER: по одному сообщению внизу экрана (над хотбаром):
+ * появилось, повисело, исчезло, затем следующее из очереди.
  */
 object CenterMessageOverlay {
 
@@ -35,10 +34,12 @@ object CenterMessageOverlay {
         val speakerRgb: Int,
         val textRgb: Int,
         val avatar: Avatar?,      // PNG-аватар из printNPC
-        val bornAt: Long,
-        val faceUuid: UUID? = null   // игрок: рисуем голову его скина
+        val faceUuid: UUID? = null   // игрок: голова его скина
     ) {
         val hasIcon: Boolean get() = avatar != null || faceUuid != null
+
+        /** Сколько сообщение висит при пустой очереди. */
+        val baseHoldMs: Long = (2500L + text.length * 55L).coerceIn(2500L, 9000L)
 
         // кэш разметки (зависит от доступной ширины)
         var layoutKey = -1
@@ -48,47 +49,47 @@ object CenterMessageOverlay {
         var contentH = 0
         var bubbleW = 0
         var bubbleH = 0
-
-        // текущая (анимированная) вертикальная позиция плашки
-        var curY = Float.NaN
     }
+
+    private enum class Phase { FADE_IN, HOLD, FADE_OUT }
 
     // ---- тайминги ----
     private const val FADE_IN_MS = 250L
-    private const val FADE_OUT_MS = 500L
-    private const val NEW_BUBBLE_FADE_MS = 300L
-    private const val MAX_ENTRIES = 12
+    private const val FADE_OUT_MS = 350L
+    private const val GAP_MS = 120L        // пауза между сообщениями
+    private const val MIN_HOLD_MS = 1500L
+    private const val MAX_QUEUE = 30
 
     // ---- геометрия (GUI-пиксели) ----
-    /** От нижнего края экрана до нижней плашки (над хотбаром). */
+    /** От нижнего края экрана до плашки (над хотбаром). */
     private const val BOTTOM_MARGIN = 64
     private const val BUBBLE_PAD_X = 6
     private const val BUBBLE_PAD_Y = 4
-    private const val BUBBLE_GAP = 5
     private const val ICON_GAP = 4
+    private const val SLIDE_PX = 6         // «всплытие» при появлении
 
-    // ---- палитра ----
     private const val PLAYER_NAME_RGB = 0xFFFF55   // цвет ника игрока
 
-    private val entries = ArrayList<Entry>()
-    private val avatars = HashMap<String, Avatar>()   // sha1 -> текстура
-
-    private var lastActivity = 0L
+    private val queue = ArrayDeque<Entry>()
+    private var current: Entry? = null
+    private var phase = Phase.FADE_IN
+    private var phaseStart = 0L
     private var holdMs = 0L
-    private var globalAlpha = 0f
-    private var lastFrame = 0L
+    private var nextAllowedAt = 0L
+
+    private val avatars = HashMap<String, Avatar>()   // sha1 -> текстура
 
     private fun rgbOf(name: String): Int =
         ChatFormatting.getByName(name)?.color ?: 0xFFFFFF
+
+    private fun argb(alpha: Int, rgb: Int): Int =
+        (alpha.coerceIn(0, 255) shl 24) or (rgb and 0xFFFFFF)
 
     /** Умножает альфу цвета ARGB на общую прозрачность (затухание/появление, 0..255). */
     private fun withFade(argb: Int, fade: Int): Int {
         val a = ((argb ushr 24) * fade.coerceIn(0, 255)) / 255
         return (a shl 24) or (argb and 0xFFFFFF)
     }
-
-    private fun argb(alpha: Int, rgb: Int): Int =
-        (alpha.coerceIn(0, 255) shl 24) or (rgb and 0xFFFFFF)
 
     /** PNG-байты -> зарегистрированная текстура (с кэшем). null, если картинка битая. */
     private fun avatarOf(png: ByteArray): Avatar? {
@@ -116,6 +117,11 @@ object CenterMessageOverlay {
         else -> "[${payload.speaker}] [${payload.remark}]: "
     }
 
+    private fun enqueue(entry: Entry) {
+        if (queue.size >= MAX_QUEUE) queue.removeFirst()
+        queue.addLast(entry)
+    }
+
     /** Сообщение скрипта (print / printNPC). Вызывается из сетевого обработчика (клиентский поток). */
     fun receive(payload: ScriptMessagePayload) {
         when (ScriptFXConfig.messageMode) {
@@ -123,17 +129,14 @@ object CenterMessageOverlay {
                 Minecraft.getInstance().player?.sendSystemMessage(payload.toComponent())
 
             MessageDisplayMode.CENTER -> {
-                val now = System.currentTimeMillis()
-                if (entries.size >= MAX_ENTRIES) entries.removeAt(0)
-                entries.add(
+                enqueue(
                     Entry(
                         prefixOf(payload), payload.text,
                         rgbOf(payload.speakerColor), rgbOf(payload.textColor),
-                        avatarOf(payload.avatar), now
+                        avatarOf(payload.avatar)
                     )
                 )
-                lastActivity = now
-                holdMs = (2500L + payload.text.length * 55L).coerceIn(3500L, 10000L)
+                ScriptChatHistory.add(payload.toComponent())   // запись в историю окна чата
             }
         }
     }
@@ -142,42 +145,71 @@ object CenterMessageOverlay {
     fun receivePlayerChat(name: String, uuid: UUID?, text: String) {
         if (ScriptFXConfig.messageMode != MessageDisplayMode.CENTER) return
         if (text.isBlank()) return
-        val now = System.currentTimeMillis()
-        if (entries.size >= MAX_ENTRIES) entries.removeAt(0)
-        entries.add(Entry("$name: ", text, PLAYER_NAME_RGB, 0xFFFFFF, null, now, uuid))
-        lastActivity = now
-        holdMs = (2500L + text.length * 55L).coerceIn(3500L, 10000L)
+        enqueue(Entry("$name: ", text, PLAYER_NAME_RGB, 0xFFFFFF, null, uuid))
+    }
+
+    /** Системное сообщение чата (ответ команды, вход игрока, смерть и т.п.): простая плашка без иконки. */
+    fun receiveSystem(text: String) {
+        if (ScriptFXConfig.messageMode != MessageDisplayMode.CENTER) return
+        if (!ScriptFXConfig.centerSystemMessages) return
+        val clean = text.replace('\n', ' ').trim()
+        if (clean.isEmpty()) return
+        enqueue(Entry("", clean, 0xFFFFFF, 0xFFFFFF, null))
+    }
+
+    /** Пример плашки: кнопка «Показать в игре» в настройках. */
+    fun preview() {
+        enqueue(Entry("[Пример]: ", "Так выглядит сообщение", 0xFF55FF, 0xFFFFFF, null))
     }
 
     fun clear() {
-        entries.clear()
-        resetAnim()
+        queue.clear()
+        current = null
+        nextAllowedAt = 0L
         val textures = Minecraft.getInstance().textureManager
         avatars.values.forEach { textures.release(it.id) }
         avatars.clear()
     }
 
-    private fun resetAnim() {
-        globalAlpha = 0f
-        lastFrame = 0L
-    }
-
     // ------------------------------------------------------------------
 
     fun render(g: GuiGraphicsExtractor) {
-        if (entries.isEmpty()) { resetAnim(); return }
-
         val now = System.currentTimeMillis()
-        val dt = if (lastFrame == 0L) 0f else ((now - lastFrame) / 1000f).coerceIn(0f, 0.1f)
-        lastFrame = now
 
-        val holding = now - lastActivity < holdMs
-        globalAlpha = if (holding) min(1f, globalAlpha + dt * 1000f / FADE_IN_MS)
-        else max(0f, globalAlpha - dt * 1000f / FADE_OUT_MS)
-        if (!holding && globalAlpha <= 0f) { entries.clear(); resetAnim(); return }
+        // берём следующее сообщение из очереди
+        var e = current
+        if (e == null) {
+            if (now < nextAllowedAt) return
+            e = queue.removeFirstOrNull() ?: return
+            current = e
+            phase = Phase.FADE_IN
+            phaseStart = now
+            // при длинной очереди показываем быстрее, чтобы сообщения не копились
+            holdMs = (e.baseHoldMs / (1f + 0.25f * queue.size)).toLong().coerceAtLeast(MIN_HOLD_MS)
+        }
 
-        val ga = globalAlpha
-        if (ga * 255 < 8) return   // при очень малой альфе текст рисуется непрозрачным
+        val elapsed = now - phaseStart
+        var alphaF = 1f
+        when (phase) {
+            Phase.FADE_IN -> {
+                alphaF = (elapsed.toFloat() / FADE_IN_MS).coerceIn(0f, 1f)
+                if (elapsed >= FADE_IN_MS) { phase = Phase.HOLD; phaseStart = now }
+            }
+            Phase.HOLD -> {
+                if (elapsed >= holdMs) { phase = Phase.FADE_OUT; phaseStart = now }
+            }
+            Phase.FADE_OUT -> {
+                if (elapsed >= FADE_OUT_MS) {
+                    current = null
+                    nextAllowedAt = now + GAP_MS
+                    return
+                }
+                alphaF = 1f - elapsed.toFloat() / FADE_OUT_MS
+            }
+        }
+
+        val alpha = (alphaF * 255).toInt()
+        if (alpha < 8) return   // при очень малой альфе текст рисуется непрозрачным
 
         val mc = Minecraft.getInstance()
         val font = mc.font
@@ -187,60 +219,33 @@ object CenterMessageOverlay {
         val bubbleMaxW = (sw * 0.42).toInt().coerceIn(180, 340)
         val lineStep = font.lineHeight + 2
         val iconSize = lineStep + 3
-        val maxStackH = (sh * 0.5f).toInt()
 
-        // что помещается по высоте: от новых к старым
-        var used = 0
-        var firstVisible = entries.size
-        for (i in entries.indices.reversed()) {
-            val e = entries[i]
-            layoutEntry(e, font, bubbleMaxW, lineStep, iconSize)
-            val add = e.bubbleH + (if (used > 0) BUBBLE_GAP else 0)
-            if (used + add > maxStackH && used > 0) break
-            used += add
-            firstVisible = i
-        }
-        if (firstVisible > 0) entries.subList(0, firstVisible).clear()
+        layoutEntry(e, font, bubbleMaxW, lineStep, iconSize)
 
-        // плашки: нижняя стоит над хотбаром, остальные выше; позиции плавно доезжают до цели
-        val slide = 1f - exp(-dt * 14f)
-        var y = sh - BOTTOM_MARGIN
-        var rank = 0   // 0 = самое новое
-        for (i in entries.indices.reversed()) {
-            val e = entries[i]
-            y -= e.bubbleH
-            val targetY = y.toFloat()
-            e.curY = if (e.curY.isNaN()) targetY else e.curY + (targetY - e.curY) * slide
+        val slide = if (phase == Phase.FADE_IN) ((1f - alphaF) * SLIDE_PX).toInt() else 0
+        val top = sh - BOTTOM_MARGIN - e.bubbleH + slide
 
-            val born = ((now - e.bornAt).toFloat() / NEW_BUBBLE_FADE_MS).coerceIn(0f, 1f)
-            val fadeByAge = max(0.25f, 1f - rank * 0.15f)
-            val alpha = (ga * born * fadeByAge * 255).toInt()
-            if (alpha >= 8) {
-                drawBubble(g, font, e, sw, e.curY.toInt(), alpha, rank == 0, iconSize, lineStep)
-            }
-
-            y -= BUBBLE_GAP
-            rank++
-        }
+        drawBubble(g, font, e, sw, top, alpha, iconSize, lineStep)
     }
 
     private fun drawBubble(
         g: GuiGraphicsExtractor, font: Font, e: Entry,
-        sw: Int, top: Int, alpha: Int, active: Boolean,
+        sw: Int, top: Int, alpha: Int,
         iconSize: Int, lineStep: Int
     ) {
         val left = sw / 2 - e.bubbleW / 2
         val right = left + e.bubbleW
         val bottom = top + e.bubbleH
 
-        val bg = withFade(if (active) ScriptFXConfig.bubbleBgNew else ScriptFXConfig.bubbleBg, alpha)
-        val border = withFade(if (active) ScriptFXConfig.bubbleBorderNew else ScriptFXConfig.bubbleBorder, alpha)
+        val bg = withFade(ScriptFXConfig.messageBg, alpha)
+        val border = withFade(ScriptFXConfig.messageBorder, alpha)
 
         g.fill(left, top, right, bottom, bg)
         g.fill(left, top, right, top + 1, border)
         g.fill(left, bottom - 1, right, bottom, border)
         g.fill(left, top, left + 1, bottom, border)
         g.fill(right - 1, top, right, bottom, border)
+
         val contentTop = top + BUBBLE_PAD_Y
 
         // иконка по центру содержимого: голова скина игрока или PNG-аватар
