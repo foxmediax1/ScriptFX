@@ -33,6 +33,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
 import org.lwjgl.glfw.GLFW
 import java.io.File
+import net.foxmediax.scriptfx.gui.DocCategory
 
 class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPage(host) {
 
@@ -529,33 +530,31 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     private fun showCommandHints() {
-        val items = CommandDocs.ALL.map { doc ->
-            "${doc.template} — ${doc.description}" to {
-                val cur = edit.text?.toString().orEmpty()
-                val insert = doc.template
-                val next = if (cur.isEmpty() || cur.endsWith("\n")) cur + insert else "$cur\n$insert"
-                suppress = true
-                edit.setText(next)
-                edit.setSelection(next.length)
-                suppress = false
-                onEdited(next)
-            }
-        }
-        // все команды + переход в доки
-        overlays.actions(
-            "Команды скрипта (${CommandDocs.ALL.size})",
-            CommandDocs.ALL.map { doc ->
-                "${doc.template} — ${doc.description}" to {
-                    val cur = edit.text?.toString().orEmpty()
-                    val insert = doc.template
-                    val next = if (cur.isEmpty() || cur.endsWith("\n")) cur + insert else "$cur\n$insert"
-                    suppress = true
-                    edit.setText(next)
-                    edit.setSelection(next.length)
-                    suppress = false
-                    onEdited(next)
-                }
-            } + listOf("…полная документация" to { host.openDocumentation() })
-        )
+        val menu: List<Pair<String, () -> Unit>> =
+            DocCategory.entries.map { cat ->
+                val count = CommandDocs.ALL.count { it.category == cat }
+                ("${cat.title} ($count)" to { showCategory(cat) })
+            } + listOf("Документация" to { host.openDocumentation() })
+
+        overlays.actions("Подсказки команд", menu)
+    }
+
+    private fun showCategory(cat: DocCategory) {
+        val items: List<Pair<String, () -> Unit>> =
+            CommandDocs.ALL.filter { it.category == cat }.map { doc ->
+                ("${doc.template}\n${doc.description}" to { insertTemplate(doc.template) })
+            } + listOf("← Назад" to { showCommandHints() })
+
+        overlays.actions(cat.title, items)
+    }
+
+    private fun insertTemplate(template: String) {
+        val cur = edit.text?.toString().orEmpty()
+        val next = if (cur.isEmpty() || cur.endsWith("\n")) cur + template else "$cur\n$template"
+        suppress = true
+        edit.setText(next)
+        edit.setSelection(next.length)
+        suppress = false
+        onEdited(next)
     }
 }
