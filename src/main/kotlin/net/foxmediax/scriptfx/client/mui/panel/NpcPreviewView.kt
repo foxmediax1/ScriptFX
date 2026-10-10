@@ -177,92 +177,38 @@ class NpcPreviewView(
     }
 
     private fun updateBounds() {
-
-        if (
-            width <= 0 ||
-            height <= 0
-        ) {
-
+        if (width <= 0 || height <= 0) {
             NpcPreviewHelper.clearBounds()
-
             return
         }
 
-        /*
-         * ModernUI уже предоставляет нам
-         * абсолютные координаты окна.
-         *
-         * Никакого ручного обхода parent hierarchy
-         * здесь не требуется.
-         */
-        val location =
-            IntArray(2)
+        val location = IntArray(2)
+        getLocationInWindow(location)
 
-        getLocationInWindow(
-            location
-        )
+        // ModernUI отдаёт window-пиксели; InventoryScreen ждёт GUI-координаты.
+        val mc = net.minecraft.client.Minecraft.getInstance()
+        val window = mc.window
+        val guiScale = window.guiScale.toFloat().coerceAtLeast(1f)
 
-        val x0 =
-            location[0]
+        val x0 = (location[0] / guiScale).toInt()
+        val y0 = (location[1] / guiScale).toInt()
+        val x1 = ((location[0] + width) / guiScale).toInt()
+        val y1 = ((location[1] + height) / guiScale).toInt()
 
-        val y0 =
-            location[1]
+        val padTop = (PanelUi.dp(context, 28) / guiScale).toInt()
+        val padBottom = (PanelUi.dp(context, 22) / guiScale).toInt()
 
-        val x1 =
-            x0 + width
+        val previewX0 = x0 + 2
+        val previewY0 = y0 + padTop
+        val previewX1 = x1 - 2
+        val previewY1 = y1 - padBottom
 
-        val y1 =
-            y0 + height
-
-        /*
-         * Высота заголовка.
-         */
-        val padTop =
-            PanelUi.dp(
-                context,
-                28
-            )
-
-        /*
-         * Высота нижней подсказки.
-         */
-        val padBottom =
-            PanelUi.dp(
-                context,
-                22
-            )
-
-        val previewX0 =
-            x0 + 4
-
-        val previewY0 =
-            y0 + padTop
-
-        val previewX1 =
-            x1 - 4
-
-        val previewY1 =
-            y1 - padBottom
-
-        /*
-         * Защита от некорректных bounds.
-         */
-        if (
-            previewX1 <= previewX0 ||
-            previewY1 <= previewY0
-        ) {
-
+        if (previewX1 <= previewX0 || previewY1 <= previewY0) {
             NpcPreviewHelper.clearBounds()
-
             return
         }
 
-        NpcPreviewHelper.setBounds(
-            previewX0,
-            previewY0,
-            previewX1,
-            previewY1
-        )
+        NpcPreviewHelper.setBounds(previewX0, previewY0, previewX1, previewY1)
     }
 
     override fun onTouchEvent(
