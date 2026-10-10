@@ -248,23 +248,15 @@ class ScriptNpcEntity(
     override fun registerControllers(
         controllers: AnimatableManager.ControllerRegistrar
     ) {
-
         controllers.add(
             AnimationController<ScriptNpcEntity>(
                 "main"
             ) { state: AnimationTest<ScriptNpcEntity> ->
 
-                val animation =
-                    RawAnimation.begin()
-                        .thenLoop(
-                            sanitizeAnim(
-                                currentAnim()
-                            )
-                        )
+                val animation = RawAnimation.begin()
+                    .thenLoop(sanitizeAnim(currentAnim()))
 
-                state.setAndContinue(
-                    animation
-                )
+                state.setAndContinue(animation)
             }
         )
     }
