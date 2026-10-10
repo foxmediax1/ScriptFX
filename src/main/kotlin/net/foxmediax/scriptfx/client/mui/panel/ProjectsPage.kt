@@ -531,7 +531,6 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     private fun showCommandHints() {
         val items = CommandDocs.ALL.map { doc ->
             "${doc.template} — ${doc.description}" to {
-                // вставка шаблона в редактор
                 val cur = edit.text?.toString().orEmpty()
                 val insert = doc.template
                 val next = if (cur.isEmpty() || cur.endsWith("\n")) cur + insert else "$cur\n$insert"
@@ -542,8 +541,21 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
                 onEdited(next)
             }
         }
-        overlays.actions("Команды скрипта", items.take(12) + listOf(
-            "…ещё в документации (?)" to { host.openDocumentation() }
-        ))
+        // все команды + переход в доки
+        overlays.actions(
+            "Команды скрипта (${CommandDocs.ALL.size})",
+            CommandDocs.ALL.map { doc ->
+                "${doc.template} — ${doc.description}" to {
+                    val cur = edit.text?.toString().orEmpty()
+                    val insert = doc.template
+                    val next = if (cur.isEmpty() || cur.endsWith("\n")) cur + insert else "$cur\n$insert"
+                    suppress = true
+                    edit.setText(next)
+                    edit.setSelection(next.length)
+                    suppress = false
+                    onEdited(next)
+                }
+            } + listOf("…полная документация" to { host.openDocumentation() })
+        )
     }
 }
