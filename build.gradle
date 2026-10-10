@@ -7,7 +7,6 @@ plugins {
 }
 
 repositories {
-	maven { url "https://maven.shedaniel.me/" }
 	maven {
 		name = 'GeckoLib'
 		url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
@@ -39,9 +38,6 @@ dependencies {
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 	implementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
-
-	// Cloth Config (используется только клиентским экраном настроек)
-	implementation "me.shedaniel.cloth:cloth-config-fabric:${project.cloth_config_version}"
 
 	implementation "com.geckolib:geckolib-fabric-${minecraft_version}:${geckolib_version}"
 
