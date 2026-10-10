@@ -25,12 +25,16 @@ public abstract class CameraMixin {
     @Inject(method = "update", at = @At("TAIL"))
     private void scriptfx$overrideCamera(DeltaTracker deltaTracker, CallbackInfo ci) {
         CutsceneClient cutscene = CutsceneClient.INSTANCE;
-        if (!cutscene.getActive()) return;
 
-        cutscene.sample();
-
-        setPosition(cutscene.getCamX(), cutscene.getCamY(), cutscene.getCamZ());
-        setRotation(cutscene.getCamYaw(), cutscene.getCamPitch());
+        if (cutscene.getActive() || cutscene.getDialogCam()) {
+            cutscene.sample();
+            setPosition(cutscene.getCamX(), cutscene.getCamY(), cutscene.getCamZ());
+            setRotation(cutscene.getCamYaw(), cutscene.getCamPitch());
+        } else if (cutscene.getDialogFovActive()) {
+            cutscene.sample();
+        } else {
+            return;
+        }
 
         Float fov = cutscene.getFovOverride();
         if (fov != null) {
