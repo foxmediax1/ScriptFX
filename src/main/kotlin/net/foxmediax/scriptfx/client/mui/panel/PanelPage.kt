@@ -77,54 +77,41 @@ class PlaceholderPage(host: PanelHost, private val name: String) : PanelPage(hos
 
 class LogsPage(host: PanelHost) : PanelPage(host) {
 
-    private lateinit var box: LinearLayout
-    private lateinit var scroll: ScrollView
-
     override val breadcrumb: String? get() = "Логи"
 
+    private lateinit var box: LinearLayout
+    private lateinit var scroll: ScrollView
+    private var lastCount = -1
+
     override fun createView(ctx: Context): View {
-        val root = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            background = ColorDrawable(0xFF000000.toInt())
-        }
+        val root = PanelUi.pageRoot(ctx)
 
-        val top = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(PanelUi.dp(ctx, 4), PanelUi.dp(ctx, 4), PanelUi.dp(ctx, 4), PanelUi.dp(ctx, 4))
-        }
-        top.addView(
-            TextView(ctx).apply {
-                text = "Логи ScriptFX"
-                textSize = 13f
-                setTextColor(PanelUi.COL_TEXT)
-            },
-            LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f)
+        root.addView(
+            PanelUi.toolbar(
+                ctx,
+                "Логи ScriptFX",
+                "Обновить" to { refresh() }
+            ),
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
         )
-        top.addView(
-            PanelUi.flatButton(ctx, "Обновить") { refresh() },
-            PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP)
-        )
-        top.addView(
-            PanelUi.flatButton(ctx, "Очистить") {
-                ScriptFXLog.clear()
-                refresh()
-            },
-            PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP).apply {
-                leftMargin = PanelUi.dp(ctx, 6)
-            }
-        )
-        root.addView(top, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
 
+        scroll = ScrollView(ctx)
         box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(PanelUi.dp(ctx, 6), PanelUi.dp(ctx, 4), PanelUi.dp(ctx, 6), PanelUi.dp(ctx, 4))
+            setPadding(0, PanelUi.dp(ctx, 8), 0, 0)
         }
-        scroll = ScrollView(ctx)
         scroll.addView(box, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
         root.addView(scroll, LinearLayout.LayoutParams(PanelUi.MATCH, 0, 1f))
 
         refresh()
+        // лёгкий polling, пока страница жива
+        box.post(object : Runnable {
+            override fun run() {
+                if (!box.isAttachedToWindow) return
+                refresh()
+                box.postDelayed(this, 1500L)
+            }
+        })
         return root
     }
 
@@ -133,33 +120,32 @@ class LogsPage(host: PanelHost) : PanelPage(host) {
         box.removeAllViews()
         val ctx = box.context
         val entries = ScriptFXLog.snapshot()
+
         if (entries.isEmpty()) {
             box.addView(
-                TextView(ctx).apply {
-                    text = "Лог пуст"
-                    textSize = 13f
-                    setTextColor(PanelUi.COL_MUTED)
-                    gravity = Gravity.CENTER
-                    setPadding(0, PanelUi.dp(ctx, 24), 0, 0)
-                },
+                PanelUi.mutedText(ctx, "Лог пуст"),
                 PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
             )
             return
         }
+
         for (entry in entries.takeLast(200)) {
             val color = when (entry.level) {
-                ScriptFXLog.Level.ERROR -> 0xFFFF5555.toInt()
-                ScriptFXLog.Level.WARN -> 0xFFFFAA00.toInt()
+                ScriptFXLog.Level.ERROR -> PanelUi.COL_ERROR
+                ScriptFXLog.Level.WARN -> PanelUi.COL_WARNING
                 ScriptFXLog.Level.INFO -> PanelUi.COL_TEXT
             }
-            val levelTag = when (entry.level) {
+            val tag = when (entry.level) {
                 ScriptFXLog.Level.ERROR -> "ERROR"
                 ScriptFXLog.Level.WARN -> "WARN"
                 ScriptFXLog.Level.INFO -> "INFO"
             }
+            // Entry → String
+            val line = "[$tag] ${entry.message}"
+
             box.addView(
                 TextView(ctx).apply {
-                    text = "[$levelTag] ${entry.message}"
+                    text = line
                     textSize = 12f
                     setTextColor(color)
                     setPadding(0, PanelUi.dp(ctx, 1), 0, PanelUi.dp(ctx, 1))
