@@ -485,7 +485,9 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
             "NPC"
         ),
         "Триггеры" to listOf(""),           // section-only
-        "Примеры скриптов" to listOf("")  // section-only
+        "Примеры скриптов" to listOf(""),   // section-only
+        "Чат и сообщения" to listOf(""),    // section-only
+        "Панель управления" to listOf("")   // section-only
     )
 
     override fun createView(ctx: Context): View {
