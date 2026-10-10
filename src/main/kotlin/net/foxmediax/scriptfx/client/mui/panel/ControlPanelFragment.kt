@@ -30,17 +30,18 @@ import net.foxmediax.scriptfx.client.mui.panel.PanelUi.lp
 import net.foxmediax.scriptfx.client.mui.panel.PanelUi.px1
 import net.foxmediax.scriptfx.gui.FileBrowser
 import net.foxmediax.scriptfx.gui.PanelSection
-import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.client.Minecraft
 
 /**
- * Панель управления на Modern UI (замена ControlPanelScreen).
+ * Панель управления на Modern UI.
  * Всё, что трогает Minecraft (экраны), идёт через Minecraft.execute.
  */
 class ControlPanelFragment : Fragment() {
 
     companion object {
-        @JvmStatic var lastSection: PanelSection? = null
+        @JvmStatic
+        var lastSection: PanelSection? = null
+
         val fileBrowser: FileBrowser by lazy { FileBrowser() }
     }
 
@@ -50,7 +51,8 @@ class ControlPanelFragment : Fragment() {
     private var breadcrumbView: TextView? = null
     private val sidebarButtons = LinkedHashMap<PanelSection, Button>()
 
-    @Volatile private var rootView: View? = null
+    @Volatile
+    private var rootView: View? = null
 
     private val host: PanelHost = object : PanelHost {
         override fun navigate(section: PanelSection?) = requestLeave { show(section) }
@@ -79,7 +81,7 @@ class ControlPanelFragment : Fragment() {
         }
 
         override fun openScriptHints() {
-            ScriptFXLog.info("Откройте подсказки из редактора скрипта")
+            requestLeave { openDocsPage() }
         }
     }
 
@@ -98,17 +100,16 @@ class ControlPanelFragment : Fragment() {
             background = ColorDrawable(COL_PANEL)
         }
 
-        // шапка повыше
-        panel.addView(buildHeader(ctx), lp(MATCH, dp(ctx, 58)))
+        panel.addView(buildHeader(ctx), lp(MATCH, dp(ctx, 56)))
         panel.addView(divider(ctx), lp(MATCH, px1(ctx)))
 
-        val body = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        val body = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
 
-        // сайдбар пошире
         body.addView(buildSidebar(ctx), lp(dp(ctx, 156), MATCH))
         body.addView(divider(ctx), lp(px1(ctx), MATCH))
 
-        // контент: серая рамка + внутри чёрный экран
         val contentPad = dp(ctx, 14)
         val c = FrameLayout(ctx).apply {
             setPadding(contentPad, contentPad, contentPad, contentPad)
@@ -195,6 +196,8 @@ class ControlPanelFragment : Fragment() {
     }
 
     // ------------------------------------------------------------------
+    // Header:  [ScriptFX] | [⌂] [▲] | breadcrumb | [?] [✕]
+    // ------------------------------------------------------------------
 
     private fun buildHeader(ctx: Context): View {
         val header = LinearLayout(ctx).apply {
@@ -203,6 +206,7 @@ class ControlPanelFragment : Fragment() {
             background = ColorDrawable(COL_HEADER)
         }
 
+        // --- Logo ---
         val logo = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_VERTICAL
@@ -210,7 +214,10 @@ class ControlPanelFragment : Fragment() {
             background = ColorDrawable(COL_LOGO)
         }
 
-        val title = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        val title = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
         title.addView(
             TextView(ctx).apply {
                 text = "Script"
@@ -228,7 +235,6 @@ class ControlPanelFragment : Fragment() {
             lp(WRAP, WRAP)
         )
         logo.addView(title, lp(WRAP, WRAP))
-
         logo.addView(
             View(ctx).apply { background = ColorDrawable(COL_DIVIDER) },
             lp(MATCH, px1(ctx)).apply {
@@ -239,7 +245,7 @@ class ControlPanelFragment : Fragment() {
         logo.addView(
             TextView(ctx).apply {
                 text = "Панель управления"
-                textSize = 11f
+                textSize = 10f
                 setTextColor(COL_MUTED)
             },
             lp(WRAP, WRAP)
@@ -247,8 +253,16 @@ class ControlPanelFragment : Fragment() {
         header.addView(logo, lp(dp(ctx, 156), MATCH))
         header.addView(divider(ctx), lp(px1(ctx), MATCH))
 
-        val leftNav = navColumn(ctx)
-        leftNav.addView(PanelUi.iconButton(ctx, "⌂") { host.navigate(null) }, navLp(ctx, true))
+        // --- Left actions (horizontal) ---
+        val leftNav = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(ctx, 8), 0, dp(ctx, 8), 0)
+        }
+        leftNav.addView(
+            PanelUi.iconButton(ctx, "⌂") { host.navigate(null) },
+            iconLp(ctx)
+        )
         leftNav.addView(
             PanelUi.iconButton(ctx, "▲") {
                 host.requestLeave {
@@ -256,36 +270,52 @@ class ControlPanelFragment : Fragment() {
                     if (p == null || !p.goUp()) show(null)
                 }
             },
-            navLp(ctx, false)
+            iconLp(ctx, marginStartDp = 4)
         )
         header.addView(leftNav, lp(WRAP, MATCH))
         header.addView(divider(ctx), lp(px1(ctx), MATCH))
 
+        // --- Breadcrumb ---
         val crumbs = TextView(ctx).apply {
             textSize = 14f
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(ctx, 12), 0, dp(ctx, 12), 0)
+            setSingleLine(true)
         }
         breadcrumbView = crumbs
         header.addView(crumbs, LinearLayout.LayoutParams(0, MATCH, 1f))
         header.addView(divider(ctx), lp(px1(ctx), MATCH))
 
-        val rightNav = navColumn(ctx)
-        rightNav.addView(PanelUi.iconButton(ctx, "X") { host.closePanel() }, navLp(ctx, true))
-        rightNav.addView(PanelUi.iconButton(ctx, "?") { host.openDocumentation() }, navLp(ctx, false))
+        // --- Right actions (horizontal) ---
+        val rightNav = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(ctx, 8), 0, dp(ctx, 8), 0)
+        }
+        rightNav.addView(
+            PanelUi.iconButton(ctx, "?") { host.openDocumentation() },
+            iconLp(ctx)
+        )
+        rightNav.addView(
+            PanelUi.iconButton(ctx, "✕") { host.closePanel() },
+            iconLp(ctx, marginStartDp = 4)
+        )
         header.addView(rightNav, lp(WRAP, MATCH))
+
         return header
     }
 
-    private fun navColumn(ctx: Context) = LinearLayout(ctx).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER
-        setPadding(dp(ctx, 6), 0, dp(ctx, 6), 0)
+    /** Квадратный LayoutParams для iconButton (28×28 dp). */
+    private fun iconLp(ctx: Context, marginStartDp: Int = 0): LinearLayout.LayoutParams {
+        val s = dp(ctx, 28)
+        return LinearLayout.LayoutParams(s, s).apply {
+            if (marginStartDp != 0) leftMargin = dp(ctx, marginStartDp)
+            gravity = Gravity.CENTER_VERTICAL
+        }
     }
 
-    private fun navLp(ctx: Context, first: Boolean) =
-        lp(dp(ctx, 26), dp(ctx, 24)).apply { if (!first) topMargin = dp(ctx, 4) }
+    // ------------------------------------------------------------------
 
     private fun buildSidebar(ctx: Context): View {
         val side = LinearLayout(ctx).apply {
@@ -305,7 +335,9 @@ class ControlPanelFragment : Fragment() {
                 if (section == PanelSection.SETTINGS) host.openSettings()
                 else host.navigate(section)
             }
-            if (section != PanelSection.SETTINGS) sidebarButtons[section] = btn
+            if (section != PanelSection.SETTINGS) {
+                sidebarButtons[section] = btn
+            }
             side.addView(
                 btn,
                 lp(MATCH, WRAP).apply {
@@ -316,9 +348,10 @@ class ControlPanelFragment : Fragment() {
         return side
     }
 
-    private fun divider(ctx: Context): View = View(ctx).apply {
-        background = ColorDrawable(COL_DIVIDER)
-    }
+    private fun divider(ctx: Context): View =
+        View(ctx).apply {
+            background = ColorDrawable(COL_DIVIDER)
+        }
 
     private fun openDocsPage() {
         val ctx = context ?: return
