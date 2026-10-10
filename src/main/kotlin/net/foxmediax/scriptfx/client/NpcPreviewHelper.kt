@@ -105,6 +105,7 @@ object NpcPreviewHelper {
                     -1.0f,
                     1.0f
                 )
+
     }
 
     private fun createPreviewEntity(
@@ -124,6 +125,12 @@ object NpcPreviewHelper {
                 EntitySpawnReason.LOAD
             )
                 ?: return null
+
+        entity.setPos(0.0, 0.0, 0.0)
+        entity.xo = 0.0
+        entity.yo = 0.0
+        entity.zo = 0.0
+        entity.tickCount = 20 // чтобы анимация не стартовала с 0-го кадра «пустой»
 
         entity.npcId =
             def.id
@@ -226,81 +233,27 @@ object NpcPreviewHelper {
      * этот метод должен выполняться после extract ModernUI,
      * иначе ModernUI может перекрыть 3D-модель.
      */
-    fun renderInGui(
-        graphics: GuiGraphicsExtractor
-    ) {
+    fun renderInGui(graphics: GuiGraphicsExtractor) {
+        val def = definition ?: return
+        val b = bounds ?: return
+        val entity = ensureEntity(def) ?: return
 
-        val def =
-            definition
-                ?: return
+        val width = b.x1 - b.x0
+        val height = b.y1 - b.y0
+        if (width <= 8 || height <= 8) return
 
-        val b =
-            bounds
-                ?: return
+        val size = (minOf(width, height) * 0.45f)
+            .toInt()
+            .coerceIn(40, 90)
 
-        val entity =
-            ensureEntity(def)
-                ?: return
+        val cx = (b.x0 + b.x1) / 2f
+        val cy = (b.y0 + b.y1) / 2f
 
-        /*
-         * Для GeckoLib нужно дать animatable
-         * возможность обновлять своё состояние.
-         */
-        entity.tickCount++
-
-        val width =
-            b.x1 - b.x0
-
-        val height =
-            b.y1 - b.y0
-
-        if (
-            width <= 8 ||
-            height <= 8
-        ) {
-            return
-        }
-
-        val size =
-            (
-                    minOf(
-                        width,
-                        height
-                    ) * 0.45f
-                    )
-                .toInt()
-                .coerceIn(
-                    40,
-                    90
-                )
-
-        val cx =
-            (b.x0 + b.x1) / 2f
-
-        val cy =
-            (b.y0 + b.y1) / 2f
-
-        /*
-         * InventoryScreen использует mouse position
-         * для вычисления rotation.
-         */
-        val mouseX =
-            cx -
-                    angleX * 40f
-
-        val mouseY =
-            cy -
-                    angleY * 40f
+        val mouseX = cx - angleX * 40f
+        val mouseY = cy - angleY * 40f
 
         try {
-
-            /*
-             * Перед render-а нужно синхронизировать
-             * ресурсы текущего preview NPC.
-             */
-            CurrentNpcResources.apply(
-                entity
-            )
+            CurrentNpcResources.apply(entity)
 
             InventoryScreen.extractEntityInInventoryFollowsMouse(
                 graphics,
@@ -314,19 +267,16 @@ object NpcPreviewHelper {
                 mouseY,
                 entity
             )
-
         } catch (t: Throwable) {
-
-            /*
-             * Не даём одной ошибки GUI-render
-             * ломать весь экран.
-             */
-            if (
-                Minecraft.getInstance()
-                    .isSameThread
-            ) {
-                t.printStackTrace()
-            }
+            t.printStackTrace()
         }
+    }
+
+    fun clientTick() {
+        val entity = previewEntity ?: return
+        entity.tickCount++
+        entity.yRotO = entity.yRot
+        entity.yBodyRotO = entity.yBodyRot
+        entity.yHeadRotO = entity.yHeadRot
     }
 }
