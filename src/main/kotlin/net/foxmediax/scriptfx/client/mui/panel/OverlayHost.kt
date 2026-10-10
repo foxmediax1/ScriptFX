@@ -26,14 +26,27 @@ class OverlayHost(private val ctx: Context, private val layer: FrameLayout) {
     @Volatile var isOpen = false
         private set
 
-    private fun push(box: View, onCancel: (() -> Unit)? = null) {
+    private fun push(box: View, onCancel: (() -> Unit)? = null, widthDp: Int = 300, maxHeightDp: Int = 0) {
         val scrim = FrameLayout(ctx).apply {
             background = ColorDrawable(0x99000000.toInt())
-            isClickable = true                         // не пускает клики к странице
-            setOnClickListener { dismissTop() }        // клик мимо окна = отмена
+            isClickable = true
+            setOnClickListener { dismissTop() }
         }
-        box.isClickable = true                         // клики по самому окну не закрывают его
-        scrim.addView(box, FrameLayout.LayoutParams(dp(ctx, 300), WRAP, Gravity.CENTER))
+        box.isClickable = true
+
+        val content: View = if (maxHeightDp > 0) {
+            icyllis.modernui.widget.ScrollView(ctx).apply {
+                addView(box, FrameLayout.LayoutParams(MATCH, WRAP))
+            }
+        } else {
+            box
+        }
+
+        val h = if (maxHeightDp > 0) dp(ctx, maxHeightDp) else WRAP
+        scrim.addView(
+            content,
+            FrameLayout.LayoutParams(dp(ctx, widthDp), h, Gravity.CENTER)
+        )
         layer.addView(scrim, FrameLayout.LayoutParams(MATCH, MATCH))
         stack.add(Entry(scrim, onCancel))
         isOpen = true
@@ -131,10 +144,17 @@ class OverlayHost(private val ctx: Context, private val layer: FrameLayout) {
         val b = box(title, 0xFFFFFFFF.toInt())
         for ((label, action) in items) {
             b.addView(
-                PanelUi.flatButton(ctx, label) { dismissTop(false); action() },
-                lp(MATCH, WRAP).apply { topMargin = dp(ctx, 6) }
+                PanelUi.flatButton(ctx, label) {
+                    dismissTop(false)
+                    action()
+                }.apply {
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                    setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
+                },
+                lp(MATCH, WRAP).apply { topMargin = dp(ctx, 4) }
             )
         }
-        push(b)
+        // шире + ограничение высоты + скролл
+        push(b, widthDp = 420, maxHeightDp = 360)
     }
 }
