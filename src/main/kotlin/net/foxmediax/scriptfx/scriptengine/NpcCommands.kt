@@ -5,15 +5,14 @@ import net.foxmediax.scriptfx.npc.NpcInteractWait
 import net.foxmediax.scriptfx.npc.NpcManager
 import net.foxmediax.scriptfx.npc.ScriptNpcEntity
 import net.minecraft.server.level.ServerLevel
-import net.foxmediax.scriptfx.npc.NpcRuntime
 import kotlin.math.atan2
 import kotlin.math.hypot
-import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
 import net.minecraft.world.level.ClipContext
 import net.minecraft.world.phys.HitResult
 import net.minecraft.world.phys.Vec3
 import kotlin.math.cos
 import kotlin.math.sin
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 
 object NpcCommands {
 
@@ -94,6 +93,65 @@ object NpcCommands {
             CommandResult.Continue
         }
 
+        register("see_npc_K") { ctx, args ->
+            val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
+            if (id.isEmpty() || args.size < 4) {
+                ScriptFXLog.warn("see_npc_K: нужно see_npc_K \"id\" x y z")
+                return@register CommandResult.Continue
+            }
+
+            val ref = ctx.player
+            val x = parseCoord(args[1], ref?.x)
+            val y = parseCoord(args[2], ref?.y)
+            val z = parseCoord(args[3], ref?.z)
+            if (x == null || y == null || z == null) {
+                ScriptFXLog.warn("see_npc_K: неверные координаты")
+                return@register CommandResult.Continue
+            }
+
+            val level = (ref?.level() ?: ctx.server.overworld()) as ServerLevel
+            val entity = findNpc(level, id)
+            if (entity == null) {
+                ScriptFXLog.warn("see_npc_K: NPC '$id' не найден")
+                return@register CommandResult.Continue
+            }
+
+            // чтобы tick() с LookAt не перебил поворот
+            entity.setLookAtPlayer(false)
+            facePoint(entity, x, y, z)
+            ScriptFXLog.info("see_npc_K '$id' → $x $y $z")
+            CommandResult.Continue
+        }
+
+        // see_npc_C "id" yaw [pitch]  — поворот по горизонтали (и опционально pitch)
+        register("see_npc_C") { ctx, args ->
+            val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
+            val yawRaw = args.getOrNull(1)?.removeSurrounding("\"")?.trim()
+            if (id.isEmpty() || yawRaw == null) {
+                ScriptFXLog.warn("see_npc_C: нужно see_npc_C \"id\" градус [pitch]")
+                return@register CommandResult.Continue
+            }
+
+            val yaw = yawRaw.toFloatOrNull()
+            if (yaw == null) {
+                ScriptFXLog.warn("see_npc_C: градус должен быть числом, получено '$yawRaw'")
+                return@register CommandResult.Continue
+            }
+            val pitch = args.getOrNull(2)?.removeSurrounding("\"")?.toFloatOrNull() ?: 0f
+
+            val level = (ctx.player?.level() ?: ctx.server.overworld()) as ServerLevel
+            val entity = findNpc(level, id)
+            if (entity == null) {
+                ScriptFXLog.warn("see_npc_C: NPC '$id' не найден")
+                return@register CommandResult.Continue
+            }
+
+            entity.setLookAtPlayer(false)
+            faceYawPitch(entity, yaw, pitch)
+            ScriptFXLog.info("see_npc_C '$id' yaw=$yaw pitch=$pitch")
+            CommandResult.Continue
+        }
+
         // npc_interact_key "X" — скрипт ждёт нажатия (клиент шлёт пакет)
         register("npc_interact_key") { ctx, args ->
             val keyName = args.getOrNull(0)?.removeSurrounding("\"")?.uppercase() ?: "X"
@@ -122,7 +180,7 @@ object NpcCommands {
                 ?: ctx.server.playerList.players.firstOrNull()
                 ?: return@register CommandResult.Continue
 
-            // --- разбор аргументов (как было) ---
+            // --- разбор аргументов (без изменений) ---
             val joined = args.joinToString(" ")
             val parts = joined.split("::").map { it.trim() }.filter { it.isNotEmpty() }
             if (parts.isEmpty()) {
@@ -148,46 +206,22 @@ object NpcCommands {
                 }
             }
 
-            // --- NPC и исходная поза камеры ---
             val uuid = serverPlayer.uuid
             val level = serverPlayer.level() as ServerLevel
-            val npc = NpcRuntime.get(npcId)?.let { level.getEntity(it.entityUuid) } as? ScriptNpcEntity
-            if (npc == null) ScriptFXLog.warn("npc_dialog_hud: NPC '$npcId' не найден в мире для камеры")
+            val npc = findNpc(level, npcId)
+            if (npc == null) ScriptFXLog.warn("npc_dialog_hud: NPC '$npcId' не найден в мире (диалог без камеры и обводки)")
 
-            val wasInCutscene = CutsceneManager.isInCutscene(serverPlayer)
-            val origin = CamPose(
-                serverPlayer.x,
-                if (wasInCutscene) serverPlayer.y else serverPlayer.eyeY,
-                serverPlayer.z, serverPlayer.yRot, serverPlayer.xRot
-            )
-            val startedHere = npc != null && !wasInCutscene
-
-            if (npc != null) {
-                if (startedHere) {
-                    CutsceneManager.start(ctx.server, "player", listOf(serverPlayer))
-                    CutsceneManager.setLock(serverPlayer, true)
-                    CutsceneManager.setHud(serverPlayer, true)
-                }
-
-                npc.dialogFocus = uuid
-
-                val toPlayerYaw = Math.toDegrees(atan2(-(origin.x - npc.x), origin.z - npc.z))
-                val (cx, cz) = pickDialogCamera(level, npc, toPlayerYaw)
-                val yaw = Math.toDegrees(atan2(-(npc.x - cx), npc.z - cz)).toFloat()
-
-                CutsceneManager.moveCamera(serverPlayer, cx, npc.eyeY, cz, yaw, 0f, DIALOG_MOVE_TICKS)
-                CutsceneManager.setFov(serverPlayer, DIALOG_CAM_FOV, DIALOG_MOVE_TICKS)
-            }
+            // NPC поворачивается к игроку; камеру ведёт клиент (NpcDialogClient)
+            npc?.dialogFocus = uuid
 
             NpcDialogWait.begin(uuid)
-            val payload = net.foxmediax.scriptfx.network.NpcDialogOpenPayload(
-                npcId, text, buttons[0], buttons[1], buttons[2], buttons[3], buttons[4],
-                npc?.id ?: -1
+            ServerPlayNetworking.send(
+                serverPlayer,
+                net.foxmediax.scriptfx.network.NpcDialogOpenPayload(
+                    npcId, text, buttons[0], buttons[1], buttons[2], buttons[3], buttons[4],
+                    npc?.id ?: -1
+                )
             )
-
-            var phase = 0   // 0 = подъезд, 1 = ждём выбор, 2 = возврат камеры
-            var phaseEnd = ctx.server.tickCount + (if (npc != null) DIALOG_MOVE_TICKS + 2 else 0)
-            var chosen = 0
 
             fun finish(btn: Int): Boolean {
                 npc?.dialogFocus = null
@@ -198,28 +232,9 @@ object NpcCommands {
             }
 
             fun step(): Boolean {
-                val p = ctx.server.playerList.getPlayer(uuid) ?: return finish(0)
-                if (npc != null && !CutsceneManager.isInCutscene(p)) return finish(0)
-                val now = ctx.server.tickCount
-                when (phase) {
-                    0 -> if (now >= phaseEnd) {
-                        net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(p, payload)
-                        phase = 1
-                    }
-                    1 -> if (NpcDialogWait.isDone(uuid)) {
-                        chosen = NpcDialogWait.chosen(uuid)
-                        if (npc == null) return finish(chosen)
-                        CutsceneManager.moveCamera(p, origin.x, origin.y, origin.z, origin.yaw, origin.pitch, DIALOG_MOVE_TICKS)
-                        CutsceneManager.setFov(p, 0f, DIALOG_MOVE_TICKS)
-                        phaseEnd = now + DIALOG_MOVE_TICKS + 2
-                        phase = 2
-                    }
-                    2 -> if (now >= phaseEnd) {
-                        if (startedHere) CutsceneManager.endFor(p)
-                        return finish(chosen)
-                    }
-                }
-                return false
+                // игрок вышел из игры: не вешаем скрипт
+                ctx.server.playerList.getPlayer(uuid) ?: return finish(0)
+                return if (NpcDialogWait.isDone(uuid)) finish(NpcDialogWait.chosen(uuid)) else false
             }
 
             CommandResult.WaitUntil { step() }
@@ -286,6 +301,44 @@ object NpcCommands {
             return base + (if (off.isEmpty()) 0.0 else off.toDoubleOrNull() ?: return null)
         }
         return t.toDoubleOrNull()
+    }
+
+    private fun findNpc(level: ServerLevel, id: String): ScriptNpcEntity? {
+        val state = net.foxmediax.scriptfx.npc.NpcRuntime.get(id)
+        if (state != null) {
+            val e = level.getEntity(state.entityUuid) as? ScriptNpcEntity
+            if (e != null) return e
+        }
+        return level.getAllEntities()
+            .filterIsInstance<ScriptNpcEntity>()
+            .find { it.npcId == id }
+    }
+
+    /** Повернуть NPC лицом к точке (x,y,z в мире). */
+    private fun facePoint(entity: ScriptNpcEntity, x: Double, y: Double, z: Double) {
+        val dx = x - entity.x
+        val dy = y - entity.eyeY
+        val dz = z - entity.z
+        val horiz = hypot(dx, dz)
+        val yaw = Math.toDegrees(atan2(-dx, dz)).toFloat()
+        val pitch = Math.toDegrees(-atan2(dy, horiz)).toFloat().coerceIn(-90f, 90f)
+        faceYawPitch(entity, yaw, pitch)
+    }
+
+    private fun faceYawPitch(entity: ScriptNpcEntity, yaw: Float, pitch: Float) {
+        val y = yaw
+        val p = pitch.coerceIn(-90f, 90f)
+        entity.yRot = y
+        entity.xRot = p
+        entity.yRotO = y
+        entity.xRotO = p
+        entity.yHeadRot = y
+        entity.yBodyRot = y
+        entity.yHeadRotO = y
+        entity.yBodyRotO = y
+        // синхронизация с клиентом
+        entity.setYBodyRot(y)
+        entity.setYHeadRot(y)
     }
 
     /** "90", "~", "~180" -> угол в градусах. */
