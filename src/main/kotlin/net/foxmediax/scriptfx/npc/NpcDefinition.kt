@@ -26,14 +26,9 @@ data class NpcDefinition(
      * IMPORTANT:
      * These are complete resource locations, including the extension.
      */
-    val model: String =
-        "scriptfx:geckolib/models/female_models.geo.json",
-
-    val texture: String =
-        "scriptfx:textures/npc/temple_skins.png",
-
-    val animation: String =
-        "scriptfx:geckolib/animations/female_models.animation.json",
+    val model: String = "scriptfx:female_models",
+    val texture: String = "scriptfx:textures/npc/temple_skins.png",
+    val animation: String = "scriptfx:female_models",
 
     val defaultAnim: String = "idle",
     val defaultMode: String = NpcMode.INTERACT.id,
