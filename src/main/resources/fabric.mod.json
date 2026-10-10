@@ -53,8 +53,5 @@
 		"geckolib": ">=5.5",
 		"modernui": "*",
 		"forgeconfigapiport": ">=26.1.0"
-	},
-	"recommends": {
-		"cloth-config": "*"
 	}
 }
