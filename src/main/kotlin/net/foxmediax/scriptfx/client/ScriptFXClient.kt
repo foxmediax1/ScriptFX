@@ -145,7 +145,7 @@ object ScriptFXClient : ClientModInitializer {
                 client ->
 
             NpcInteractClient.tick()
-
+            NpcPreviewHelper.clientTick()
             NpcDialogClient.tick()
 
             while (
