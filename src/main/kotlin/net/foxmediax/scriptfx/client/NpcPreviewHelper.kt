@@ -233,21 +233,32 @@ object NpcPreviewHelper {
      * этот метод должен выполняться после extract ModernUI,
      * иначе ModernUI может перекрыть 3D-модель.
      */
+
+    @Volatile
+    var suppressRender: Boolean = false
+
     fun renderInGui(graphics: GuiGraphicsExtractor) {
+        if (suppressRender) return
         val def = definition ?: return
         val b = bounds ?: return
         val entity = ensureEntity(def) ?: return
 
         val width = b.x1 - b.x0
         val height = b.y1 - b.y0
-        if (width <= 8 || height <= 8) return
+        if (width <= 16 || height <= 16) return
 
-        val size = (minOf(width, height) * 0.45f)
+        // защита: если bounds почти на весь экран — координаты сломаны, не рисуем
+        val mc = Minecraft.getInstance()
+        val sw = mc.window.guiScaledWidth
+        val sh = mc.window.guiScaledHeight
+        if (width > sw * 0.55f || height > sh * 0.85f) return
+
+        val size = (minOf(width, height) * 0.38f)
             .toInt()
-            .coerceIn(40, 90)
+            .coerceIn(32, 72)
 
         val cx = (b.x0 + b.x1) / 2f
-        val cy = (b.y0 + b.y1) / 2f
+        val cy = (b.y0 + b.y1) / 2f + height * 0.05f
 
         val mouseX = cx - angleX * 40f
         val mouseY = cy - angleY * 40f
@@ -255,18 +266,24 @@ object NpcPreviewHelper {
         try {
             CurrentNpcResources.apply(entity)
 
-            InventoryScreen.extractEntityInInventoryFollowsMouse(
-                graphics,
-                b.x0,
-                b.y0,
-                b.x1,
-                b.y1,
-                size,
-                0.0f,
-                mouseX,
-                mouseY,
-                entity
-            )
+            // обрезать всё, что вылезает за рамку превью
+            graphics.enableScissor(b.x0, b.y0, b.x1, b.y1)
+            try {
+                InventoryScreen.extractEntityInInventoryFollowsMouse(
+                    graphics,
+                    b.x0,
+                    b.y0,
+                    b.x1,
+                    b.y1,
+                    size,
+                    0.0625f, // чуть выше «пола», меньше клиппинга ног
+                    mouseX,
+                    mouseY,
+                    entity
+                )
+            } finally {
+                graphics.disableScissor()
+            }
         } catch (t: Throwable) {
             t.printStackTrace()
         }
