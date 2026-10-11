@@ -10,7 +10,6 @@ import icyllis.modernui.view.LayoutInflater
 import icyllis.modernui.view.MotionEvent
 import icyllis.modernui.view.View
 import icyllis.modernui.view.ViewGroup
-import icyllis.modernui.widget.Button
 import icyllis.modernui.widget.FrameLayout
 import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
@@ -57,12 +56,15 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         const val FRAME_MS = 16L
-        const val MAX_ALPHA = 0.9f
+        const val MAX_ALPHA = 0.97f
 
-        const val COL_HEADER = 0xFF1E2A44.toInt()
-        const val COL_BODY = 0xFF101018.toInt()
-        const val COL_NAME = 0xFFFFD866.toInt()
-        const val COL_BTN = 0xFF181828.toInt()
+        const val COL_CARD = 0xF2141420.toInt()
+        const val COL_CARD_STROKE = 0x66C8B4FF
+        const val COL_BODY = 0xFFF2F2F7.toInt()
+        const val COL_BTN = 0xFF1B1B2C.toInt()
+        const val COL_BTN_HOVER = 0xFF2A2446.toInt()
+        const val COL_BTN_PRESSED = 0xFF3C3162.toInt()
+        const val COL_CHIP_TEXT = 0xFF14101F.toInt()
     }
 
     @Volatile private var rootView: View? = null
@@ -106,39 +108,51 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
 
         root.alpha = 0f
         root.isFocusableInTouchMode = true
-
-        val keyListener = View.OnKeyListener { _, keyCode, event ->
-            if (event.action != KeyEvent.ACTION_DOWN) return@OnKeyListener false
+        root.setOnKeyListener { _, keyCode, event ->
+            if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             val n = keyCode - GLFW.GLFW_KEY_1
             if (n in m.buttons.indices) { pick(m, n + 1); true } else false
         }
-        root.setOnKeyListener(keyListener)
 
-        // ---------- слева: имя + текст ----------
-        val left = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        // ---------- слева: карточка с именем и текстом ----------
+        val card = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = UiStyle.rounded(ctx, COL_CARD, 10f, COL_CARD_STROKE, 1)
+        }
 
-        left.addView(
+        val plate = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(ctx, 12), dp(ctx, 9), dp(ctx, 12), dp(ctx, 9))
+        }
+        plate.addView(
+            View(ctx).apply { background = UiStyle.rounded(ctx, UiStyle.ACCENT, 2f) },
+            LinearLayout.LayoutParams(dp(ctx, 3), dp(ctx, 16)).apply { rightMargin = dp(ctx, 8) }
+        )
+        plate.addView(
             TextView(ctx).apply {
                 text = m.npcName
                 textSize = 14f
-                setTextColor(COL_NAME)
+                setTextColor(UiStyle.ACCENT)
                 setSingleLine(true)
-                setPadding(dp(ctx, 10), dp(ctx, 5), dp(ctx, 10), dp(ctx, 5))
-                background = ColorDrawable(COL_HEADER)
             },
-            LinearLayout.LayoutParams(MATCH, WRAP)
+            LinearLayout.LayoutParams(0, WRAP, 1f)
+        )
+        card.addView(plate, LinearLayout.LayoutParams(MATCH, WRAP))
+        card.addView(
+            View(ctx).apply { background = ColorDrawable(0x33FFFFFF) },
+            LinearLayout.LayoutParams(MATCH, maxOf(1, dp(ctx, 1)))
         )
 
         val body = TextView(ctx).apply {
             textSize = 14f
-            setTextColor(0xFFFFFFFF.toInt())
-            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
+            setTextColor(COL_BODY)
+            setPadding(dp(ctx, 12), dp(ctx, 9), dp(ctx, 12), dp(ctx, 9))
         }
         bodyView = body
 
         val sv = ScrollView(ctx).apply {
-            background = ColorDrawable(COL_BODY)
-            // колесо или перетаскивание полосы — дальше не автопрокручиваем
+            // колесо или перетаскивание полосы: дальше не автопрокручиваем
             setOnGenericMotionListener { _, _ -> userScrolled = true; false }
             setOnTouchListener { _, e ->
                 if (e.action == MotionEvent.ACTION_DOWN) userScrolled = true
@@ -147,32 +161,25 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         }
         sv.addView(body, ViewGroup.LayoutParams(MATCH, WRAP))
         scroll = sv
-        left.addView(sv, LinearLayout.LayoutParams(MATCH, dp(ctx, 130)))
+        card.addView(sv, LinearLayout.LayoutParams(MATCH, dp(ctx, 130)))
 
         root.addView(
-            left,
-            FrameLayout.LayoutParams(dp(ctx, 240), WRAP, Gravity.CENTER_VERTICAL or Gravity.START)
+            card,
+            FrameLayout.LayoutParams(dp(ctx, 250), WRAP, Gravity.CENTER_VERTICAL or Gravity.START)
                 .apply { leftMargin = dp(ctx, 24) }
         )
 
-        // ---------- справа: кнопки ответов ----------
+        // ---------- справа: варианты ответа ----------
         val right = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         m.buttons.forEachIndexed { i, label ->
             right.addView(
-                Button(ctx).apply {
-                    text = "${i + 1}. $label"
-                    textSize = 13f
-                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                    background = ColorDrawable(COL_BTN)
-                    setOnClickListener { pick(m, i + 1) }
-                    setOnKeyListener(keyListener)
-                },
+                answerRow(ctx, m, i, label),
                 LinearLayout.LayoutParams(MATCH, WRAP).apply { if (i > 0) topMargin = dp(ctx, 6) }
             )
         }
         root.addView(
             right,
-            FrameLayout.LayoutParams(dp(ctx, 170), WRAP, Gravity.CENTER_VERTICAL or Gravity.END)
+            FrameLayout.LayoutParams(dp(ctx, 180), WRAP, Gravity.CENTER_VERTICAL or Gravity.END)
                 .apply { rightMargin = dp(ctx, 24) }
         )
 
@@ -180,6 +187,37 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         root.requestFocus()
         root.post(frame)
         return root
+    }
+
+    /** Кнопка-ответ: цифра в «чипе» + текст (длинный текст переносится, кнопка растёт). */
+    private fun answerRow(ctx: Context, m: NpcDialogModel, index: Int, label: String): View {
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = UiStyle.buttonBg(ctx, COL_BTN, COL_BTN_HOVER, COL_BTN_PRESSED, 8f)
+            setPadding(dp(ctx, 8), dp(ctx, 7), dp(ctx, 10), dp(ctx, 7))
+            isClickable = true
+            setOnClickListener { pick(m, index + 1) }
+        }
+        row.addView(
+            TextView(ctx).apply {
+                text = "${index + 1}"
+                textSize = 11f
+                gravity = Gravity.CENTER
+                setTextColor(COL_CHIP_TEXT)
+                background = UiStyle.rounded(ctx, UiStyle.ACCENT, 5f)
+            },
+            LinearLayout.LayoutParams(dp(ctx, 18), dp(ctx, 18)).apply { rightMargin = dp(ctx, 8) }
+        )
+        row.addView(
+            TextView(ctx).apply {
+                text = label
+                textSize = 13f
+                setTextColor(0xFFFFFFFF.toInt())
+            },
+            LinearLayout.LayoutParams(0, WRAP, 1f)
+        )
+        return row
     }
 
     override fun onDestroyView() {
@@ -198,10 +236,10 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
     }
 
     private fun pick(m: NpcDialogModel, button: Int) {
-        if (m.fade() <= 0.8f) return               // как раньше: ответ только после появления окна
+        if (m.fade() <= 0.8f) return               // ответ только после появления окна
         if (m.picked) return
         m.picked = true
-        m.onChoose(button)                         // дальше — в основной поток (см. NpcDialogClient)
+        m.onChoose(button)                         // дальше: в основной поток (см. NpcDialogClient)
     }
 
     private fun dp(ctx: Context, value: Int): Int =
