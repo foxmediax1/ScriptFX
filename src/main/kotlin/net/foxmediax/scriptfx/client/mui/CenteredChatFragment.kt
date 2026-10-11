@@ -25,20 +25,35 @@ import net.minecraft.client.multiplayer.chat.GuiMessage
 import org.lwjgl.glfw.GLFW
 import kotlin.math.max
 import kotlin.math.min
+import net.foxmediax.scriptfx.config.ScriptFXConfig
 
 /**
- * ВАЖНО: Modern UI работает в своём UI-потоке. Всё, что трогает Minecraft
- * (экраны, курсор, сеть, чат, команды), выполняем через Minecraft.execute { } (основной поток).
+ * Центрированный чат на Modern UI.
+ * Minecraft (сеть, чат, экраны) — только через Minecraft.execute { }.
  */
 class CenteredChatFragment : Fragment() {
 
     private companion object {
-        const val PANEL_W_DP = 420
-        const val PANEL_H_DP = 440
-        const val PANEL_MAX_H_RATIO = 0.8f
+        const val PANEL_W_DP = 460
+        const val PANEL_H_DP = 480
+        const val PANEL_MAX_H_RATIO = 0.82f
         const val MAX_LINES = 100
         const val POLL_MS = 250L
         const val MAX_SUGGEST_VISIBLE = 7
+
+        const val COL_SCRIM = 0x99080810.toInt()
+        const val COL_PANEL = 0xF01A1A1E.toInt()
+        const val COL_MSG_BG = 0xFF101014.toInt()
+        const val COL_INPUT_BG = 0xFF0C0C12.toInt()
+        const val COL_INPUT_BORDER = 0xFF2A2140.toInt()
+        const val COL_TEXT = 0xFFEDEDED.toInt()
+        const val COL_HINT = 0xFF888899.toInt()
+        const val COL_SUGGEST_BG = 0xE6121220.toInt()
+        const val COL_SUGGEST_SEL = 0x55FFFFFF.toInt()
+        const val COL_BTN = 0xFF2A2140.toInt()
+
+        const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
+        const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
     }
 
     @Volatile private var rootView: View? = null
@@ -49,12 +64,10 @@ class CenteredChatFragment : Fragment() {
 
     private var shownLines: List<String>? = null
 
-    // --- история введённого (стрелки вверх/вниз) ---
     private var history: List<String> = emptyList()
     private var historyIndex = -1
     private var draft = ""
 
-    // --- подсказки команд ---
     private var suggestions: List<Suggestion> = emptyList()
     private var suggestionIndex = 0
     private var suggestSeq = 0
@@ -68,78 +81,100 @@ class CenteredChatFragment : Fragment() {
         }
     }
 
+    // ------------------------------------------------------------------
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: DataSet?
     ): View {
         val ctx = requireContext()
-        val root = FrameLayout(ctx)
+        val root = FrameLayout(ctx).apply {
+            background = ColorDrawable(COL_SCRIM)
+        }
 
         val panel = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 20, 20, 20)
-            background = ColorDrawable(0xCC1A1A1E.toInt())
+            setPadding(dp(ctx, 14), dp(ctx, 12), dp(ctx, 14), dp(ctx, 12))
+            background = UiStyle.rounded(ctx, COL_PANEL, 10f, UiStyle.ACCENT, 1)
         }
 
-        val header = TextView(ctx).apply {
-            text = "Чат"
-            textSize = 16f
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 12)
+        // --- заголовок ---
+        val header = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
         }
+        header.addView(
+            TextView(ctx).apply {
+                text = "Чат"
+                textSize = 15f
+                gravity = Gravity.CENTER
+                setTextColor(UiStyle.ACCENT)
+            },
+            lp(MATCH, WRAP)
+        )
+        header.addView(
+            View(ctx).apply {
+                background = ColorDrawable(UiStyle.ACCENT_DARK)
+            },
+            LinearLayout.LayoutParams(MATCH, dp(ctx, 2)).apply {
+                topMargin = dp(ctx, 8)
+            }
+        )
         panel.addView(
             header,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            LinearLayout.LayoutParams(MATCH, WRAP).apply {
+                bottomMargin = dp(ctx, 8)
+            }
         )
 
-        val scrollView = ScrollView(ctx)
+        // --- сообщения ---
+        val scrollView = ScrollView(ctx).apply {
+            background = UiStyle.rounded(ctx, COL_MSG_BG, 6f)
+            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+        }
         scroll = scrollView
         val messages = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(8, 8, 8, 8)
+            setPadding(dp(ctx, 2), dp(ctx, 2), dp(ctx, 2), dp(ctx, 2))
         }
         messagesContainer = messages
-        scrollView.addView(
-            messages,
-            ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        )
+        scrollView.addView(messages, ViewGroup.LayoutParams(MATCH, WRAP))
         panel.addView(
             scrollView,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+            LinearLayout.LayoutParams(MATCH, 0, 1f).apply {
+                bottomMargin = dp(ctx, 6)
+            }
         )
 
+        // --- подсказки команд ---
         val sBox = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            setPadding(8, 4, 8, 4)
-            background = ColorDrawable(0xE6101018.toInt())
+            setPadding(dp(ctx, 6), dp(ctx, 4), dp(ctx, 6), dp(ctx, 4))
+            background = UiStyle.rounded(ctx, COL_SUGGEST_BG, 6f, UiStyle.ACCENT_DARK, 1)
         }
         suggestionBox = sBox
         panel.addView(
             sBox,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            LinearLayout.LayoutParams(MATCH, WRAP).apply {
+                bottomMargin = dp(ctx, 6)
+            }
         )
 
+        // --- ввод ---
         val bottom = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 12, 0, 0)
         }
 
         val edit = EditText(ctx).apply {
-            hint = "Сообщение..."
+            hint = "Напишите сообщение…"
             textSize = 14f
             setSingleLine(true)
+            setTextColor(COL_TEXT)
+            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
+            background = UiStyle.rounded(ctx, COL_INPUT_BG, 6f, COL_INPUT_BORDER, 1)
+            minimumHeight = dp(ctx, 36)
         }
         input = edit
 
@@ -153,7 +188,6 @@ class CenteredChatFragment : Fragment() {
             }
         })
 
-        // Modern UI EditText: нет setOnEditorActionListener — только setOnKeyListener
         edit.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
             when (keyCode) {
@@ -183,26 +217,37 @@ class CenteredChatFragment : Fragment() {
 
         val sendBtn = Button(ctx).apply {
             text = "➤"
+            textSize = 14f
+            setTextColor(COL_TEXT)
+            setPadding(dp(ctx, 12), dp(ctx, 8), dp(ctx, 12), dp(ctx, 8))
+            background = UiStyle.buttonBg(
+                ctx,
+                COL_BTN,
+                UiStyle.mix(COL_BTN, 0xFFFFFFFF.toInt(), 0.12f),
+                UiStyle.mix(COL_BTN, 0xFF000000.toInt(), 0.25f),
+                radiusDp = 6f
+            )
             setOnClickListener { sendCurrent() }
         }
 
-        bottom.addView(
-            edit,
-            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        )
+        bottom.addView(edit, LinearLayout.LayoutParams(0, WRAP, 1f))
         bottom.addView(
             sendBtn,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { leftMargin = 8 }
+            LinearLayout.LayoutParams(WRAP, WRAP).apply {
+                leftMargin = dp(ctx, 8)
+            }
         )
+        panel.addView(bottom, lp(MATCH, WRAP))
+
         panel.addView(
-            bottom,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            TextView(ctx).apply {
+                text = "Enter — отправить · Esc — закрыть · ↑↓ — история · Tab — подсказка"
+                textSize = 11f
+                gravity = Gravity.CENTER
+                setTextColor(COL_HINT)
+                setPadding(0, dp(ctx, 8), 0, 0)
+            },
+            lp(MATCH, WRAP)
         )
 
         val maxH = (ctx.resources.displayMetrics.heightPixels * PANEL_MAX_H_RATIO).toInt()
@@ -222,6 +267,7 @@ class CenteredChatFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        rootView?.removeCallbacks(poll)
         rootView = null
         scroll = null
         messagesContainer = null
@@ -235,61 +281,146 @@ class CenteredChatFragment : Fragment() {
     }
 
     // ------------------------------------------------------------------
-    // История сообщений чата (основной поток → UI-поток)
+    // История сообщений чата
+
+    private var shownKeys: List<String>? = null
 
     private fun requestRefresh() {
         val mc = Minecraft.getInstance()
         mc.execute {
-            val lines = chronological().map { msg ->
-                // GuiMessage в 26.1: content() — Component
-                msg.content().string
-            }
-            rootView?.post { applyHistory(lines) }
+            val msgs = chronological()
+            val keys = msgs.map { it.content().string }
+            rootView?.post { applyHistory(msgs, keys) }
         }
     }
 
-    /** Только основной поток Minecraft. */
     private fun chronological(): List<GuiMessage> {
         val chat = Minecraft.getInstance().gui.chat
         val all = (chat as ChatComponentAccessor).`scriptfx$getAllMessages`()
         if (all.isEmpty()) return emptyList()
 
         val copy = ArrayList(all)
-        // allMessages обычно newest-first
         val newestFirst = copy.size < 2 || copy.first().addedTime() >= copy.last().addedTime()
         if (newestFirst) copy.reverse()
         return copy.takeLast(MAX_LINES)
     }
 
-    /** UI-поток Modern UI. */
-    private fun applyHistory(lines: List<String>) {
-        if (lines == shownLines) return
-        shownLines = lines
-        val container = messagesContainer ?: return
-        container.removeAllViews()
-        if (lines.isEmpty()) addLine("Чат пуст") else lines.forEach { addLine(it) }
-        scroll?.post { scroll?.fullScroll(View.FOCUS_DOWN) }
-    }
-
-    private fun addLine(text: String) {
+    private fun addSystemLine(text: String) {
         val ctx = context ?: return
         val container = messagesContainer ?: return
-        val tv = TextView(ctx).apply {
-            this.text = text
-            textSize = 13f
-            setPadding(4, 4, 4, 4)
-        }
         container.addView(
-            tv,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
+            TextView(ctx).apply {
+                this.text = text
+                textSize = 12f
+                setTextColor(COL_HINT)
+                gravity = Gravity.CENTER
+                setPadding(dp(ctx, 8), dp(ctx, 12), dp(ctx, 8), dp(ctx, 12))
+            },
+            LinearLayout.LayoutParams(MATCH, WRAP)
         )
     }
 
+    private fun addChatBubble(component: net.minecraft.network.chat.Component) {
+        val ctx = context ?: return
+        val container = messagesContainer ?: return
+        val full = component.string.replace('\n', ' ').trim()
+        if (full.isEmpty()) return
+
+        val (prefix, body, prefixColor) = splitSpeaker(full)
+
+        val bubble = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6))
+            // фон + обводка из настроек мода (как на скрине)
+            background = UiStyle.rounded(
+                ctx,
+                ScriptFXConfig.messageBg,
+                6f,
+                ScriptFXConfig.messageBorder,
+                2
+            )
+        }
+
+        // «голова» / маркер слева
+        if (prefix.isNotEmpty()) {
+            bubble.addView(
+                TextView(ctx).apply {
+                    text = "👤"
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    setPadding(0, 0, dp(ctx, 8), 0)
+                },
+                LinearLayout.LayoutParams(WRAP, WRAP)
+            )
+        }
+
+        val textCol = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        if (prefix.isNotEmpty()) {
+            textCol.addView(
+                TextView(ctx).apply {
+                    text = prefix
+                    textSize = 13f
+                    setTextColor(prefixColor)
+                },
+                LinearLayout.LayoutParams(WRAP, WRAP)
+            )
+        }
+
+        textCol.addView(
+            TextView(ctx).apply {
+                text = body
+                textSize = 13f
+                setTextColor(COL_TEXT)
+            },
+            LinearLayout.LayoutParams(0, WRAP, 1f)
+        )
+
+        bubble.addView(textCol, LinearLayout.LayoutParams(0, WRAP, 1f))
+
+        container.addView(
+            bubble,
+            LinearLayout.LayoutParams(MATCH, WRAP).apply {
+                topMargin = dp(ctx, 4)
+                bottomMargin = dp(ctx, 4)
+            }
+        )
+    }
+
+    /** prefix включает ":", body — остаток. */
+    private fun splitSpeaker(full: String): Triple<String, String, Int> {
+        // printNPC: "[Имя]: текст" или "[Имя] [ремарка]: текст"
+        val bracket = Regex("""^(\[[^\]]+](?:\s*\[[^\]]+])?:\s*)(.*)""").find(full)
+        if (bracket != null) {
+            return Triple(bracket.groupValues[1], bracket.groupValues[2], UiStyle.ACCENT)
+        }
+        // игрок: "Ник: текст"
+        val player = Regex("""^([A-Za-z0-9_]{1,16}:\s*)(.*)""").find(full)
+        if (player != null) {
+            return Triple(player.groupValues[1], player.groupValues[2], 0xFFFFFF55.toInt()) // жёлтый как в оверлее
+        }
+        return Triple("", full, COL_TEXT)
+    }
+
+    private fun applyHistory(msgs: List<GuiMessage>, keys: List<String>) {
+        if (keys == shownKeys) return
+        shownKeys = keys
+        val container = messagesContainer ?: return
+        container.removeAllViews()
+        if (msgs.isEmpty()) {
+            addSystemLine("Чат пуст")
+        } else {
+            msgs.forEach { addChatBubble(it.content()) }
+        }
+        scroll?.post { scroll?.fullScroll(View.FOCUS_DOWN) }
+    }
+
     // ------------------------------------------------------------------
-    // История ввода (↑ / ↓)
+    // История ввода
 
     private fun loadSentHistory() {
         val mc = Minecraft.getInstance()
@@ -305,7 +436,7 @@ class CenteredChatFragment : Fragment() {
 
         if (historyIndex == -1) {
             if (delta > 0) return
-            draft = edit.text?.toString().orEmpty()
+            draft = edit.text.toString()
             historyIndex = history.size
         }
 
@@ -329,22 +460,21 @@ class CenteredChatFragment : Fragment() {
     }
 
     // ------------------------------------------------------------------
-    // Подсказки команд (Brigadier)
+    // Подсказки команд
 
     private fun requestSuggestions() {
-        val edit = input ?: return
-        val text = edit.text?.toString().orEmpty()
+        val text = input?.text?.toString().orEmpty()
         if (!text.startsWith("/")) {
             hideSuggestions()
             return
         }
-        val caret = edit.selectionStart.coerceIn(0, text.length)
+        val caret = input?.selectionStart?.coerceAtLeast(0) ?: text.length
         val seq = ++suggestSeq
 
         val mc = Minecraft.getInstance()
         mc.execute {
             try {
-                val connection = mc.player?.connection
+                val connection = mc.connection
                 if (connection == null) {
                     rootView?.post { hideSuggestions() }
                     return@execute
@@ -400,20 +530,16 @@ class CenteredChatFragment : Fragment() {
                 text = suggestions[i].text
                 textSize = 13f
                 setTextColor(if (selected) 0xFFFFFF55.toInt() else 0xFFAAAAAA.toInt())
-                setPadding(6, 3, 6, 3)
-                if (selected) background = ColorDrawable(0x55FFFFFF)
+                setPadding(dp(ctx, 6), dp(ctx, 4), dp(ctx, 6), dp(ctx, 4))
+                if (selected) {
+                    background = UiStyle.rounded(ctx, COL_SUGGEST_SEL, 4f)
+                }
                 setOnClickListener {
                     suggestionIndex = i
                     applySuggestion()
                 }
             }
-            box.addView(
-                tv,
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-            )
+            box.addView(tv, LinearLayout.LayoutParams(MATCH, WRAP))
         }
         box.visibility = View.VISIBLE
     }
@@ -445,7 +571,7 @@ class CenteredChatFragment : Fragment() {
     }
 
     private fun sendCurrent() {
-        val raw = input?.text?.toString()?.trim().orEmpty()
+        val raw = input!!.text.toString().trim()
         if (raw.isEmpty()) return
 
         val mc = Minecraft.getInstance()
@@ -461,8 +587,9 @@ class CenteredChatFragment : Fragment() {
         }
     }
 
-    private fun dp(ctx: Context, value: Int): Int {
-        val density = ctx.resources.displayMetrics.density
-        return (value * density + 0.5f).toInt()
-    }
+    private fun lp(w: Int, h: Int) = LinearLayout.LayoutParams(w, h)
+
+    private fun dp(ctx: Context, value: Int): Int =
+        (value * ctx.resources.displayMetrics.density + 0.5f).toInt()
+
 }
