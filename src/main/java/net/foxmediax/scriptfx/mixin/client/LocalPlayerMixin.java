@@ -15,7 +15,7 @@ public abstract class LocalPlayerMixin {
     private static boolean scriptfx$shouldLock() {
         boolean cutscene = CutsceneClient.INSTANCE.getActive()
                 && CutsceneClient.INSTANCE.getLocked();
-        boolean dialog = NpcDialogClient.INSTANCE.isActive();
+        boolean dialog = NpcDialogClient.INSTANCE.getLocksInput();
         return cutscene || dialog;
     }
 
