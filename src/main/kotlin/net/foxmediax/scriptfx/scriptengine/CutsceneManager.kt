@@ -212,9 +212,37 @@ object CutsceneManager {
         x: Double, y: Double, z: Double,
         yaw: Float, pitch: Float
     ) {
-        player.teleportTo(level, x, y, z, emptySet<Relative>(), yaw, pitch, true)
+        val bx = net.minecraft.util.Mth.floor(x)
+        val bz = net.minecraft.util.Mth.floor(z)
+        val cx = bx shr 4
+        val cz = bz shr 4
+
+        // принудительно FULL-чанки 3×3 вокруг камеры
+        for (dx in -1..1) {
+            for (dz in -1..1) {
+                level.getChunk(cx + dx, cz + dz)
+            }
+        }
+
+        val ok = player.teleportTo(
+            level,
+            x,
+            y,
+            z,
+            emptySet<Relative>(),
+            yaw,
+            pitch,
+            true
+        )
         player.resetFallDistance()
         player.setDeltaMovement(Vec3.ZERO)
+
+        // обновить tracking (если метод есть в 26.1)
+        runCatching { level.chunkSource.chunkMap.move(player) }
+
+        if (!ok) {
+            ScriptFXLog.warn("cutscene teleport failed: $x $y $z")
+        }
     }
 
     private fun resolveLevel(server: MinecraftServer, worldKey: String): ServerLevel? {
