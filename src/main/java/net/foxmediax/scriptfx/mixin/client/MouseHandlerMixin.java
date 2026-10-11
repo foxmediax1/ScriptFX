@@ -15,7 +15,8 @@ public class MouseHandlerMixin {
     private void scriptfx$lockMouse(CallbackInfo ci) {
         boolean cutsceneLock = CutsceneClient.INSTANCE.getActive()
                 && CutsceneClient.INSTANCE.getLocked();
-        boolean dialogLock = NpcDialogClient.INSTANCE.isActive();
+        // НЕ isActive() — иначе мышь мертва, пока model != null
+        boolean dialogLock = NpcDialogClient.INSTANCE.getLocksInput();
 
         if (cutsceneLock || dialogLock) {
             ci.cancel();
