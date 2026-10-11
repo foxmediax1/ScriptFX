@@ -21,6 +21,16 @@ object NpcDialogClient {
     val isActive: Boolean
         get() = model != null
 
+    /**
+     * Блокировать WASD/мышь только пока идёт подлёт или открыт диалог.
+     * Во время отлёта (closing) и после — не блокировать.
+     */
+    val locksInput: Boolean
+        get() {
+            if (model == null || closing) return false
+            return screen != null || CutsceneClient.dialogCam
+        }
+
     fun open(payload: NpcDialogOpenPayload) {
         val buttons = listOf(
             payload.button1,
@@ -46,8 +56,8 @@ object NpcDialogClient {
                 npcY = focus.eyeY,
                 npcZ = focus.z,
                 durationTicks = 12,
-                approach = 0.40f,
-                targetFov = 42f
+                targetFov = 40f,
+                distance = 1.55
             ) {
                 if (model === m && !closing) {
                     Minecraft.getInstance().execute { show(m) }
@@ -60,22 +70,43 @@ object NpcDialogClient {
 
     fun close() {
         if (model == null || closing) return
-        closing = true
+        closing = true   // ← сразу locksInput = false → мышь снова живая
 
         val s = screen
         screen = null
         val mc = Minecraft.getInstance()
-        if (mc.screen === s) {
-            mc.setScreen(null)
-        }
-
+        if (mc.screen === s) mc.setScreen(null)
         clearOutline()
+
+        if (!CutsceneClient.dialogCam && !CutsceneClient.dialogFovActive) {
+            CutsceneClient.clearDialogCamera()
+            model = null
+            focusEntityId = -1
+            closing = false
+            return
+        }
 
         CutsceneClient.startDialogReturn(durationTicks = 12) {
             model = null
             focusEntityId = -1
             closing = false
         }
+    }
+
+    /** Закрыть сразу, без анимации отлёта. */
+    fun forceClose() {
+        closing = true
+        val s = screen
+        screen = null
+        val mc = Minecraft.getInstance()
+        if (mc.screen === s) {
+            mc.setScreen(null)
+        }
+        clearOutline()
+        CutsceneClient.clearDialogCamera()
+        model = null
+        focusEntityId = -1
+        closing = false
     }
 
     fun tick() {
@@ -133,7 +164,6 @@ object NpcDialogClient {
         outlined = null
     }
 
-    /** Вызов из UI-потока Modern UI → сеть и экран через execute. */
     private fun choose(button: Int) {
         Minecraft.getInstance().execute {
             if (ClientPlayNetworking.canSend(NpcDialogChoicePayload.TYPE)) {
@@ -142,4 +172,5 @@ object NpcDialogClient {
             close()
         }
     }
+
 }
