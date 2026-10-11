@@ -10,13 +10,15 @@ import net.foxmediax.scriptfx.network.CutscenePayload
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import org.lwjgl.glfw.GLFW
+import kotlin.math.atan2
+import kotlin.math.sqrt
 
 /**
- * Клиентское состояние катсцены, интерполяция камеры, letterbox и Ctrl+Alt+End.
+ * Клиентское состояние катсцены, интерполяция камеры, letterbox, Ctrl+Alt+End
+ * и диалоговая камера (подлёт / отлёт к NPC).
  *
- * Логика: раз в клиентский тик двигаем "тиковое" состояние (tick*), старое значение
- * уходит в prev*. Каждый кадр mixin вызывает sample(), которая смешивает prev и tick
- * по доле тика, прошедшей с момента последнего тика.
+ * Логика: раз в клиентский тик двигаем tick*, старое уходит в prev*.
+ * Каждый кадр mixin вызывает sample() — смешивание prev/tick.
  */
 object CutsceneClient {
 
@@ -45,17 +47,32 @@ object CutsceneClient {
     var fovOverride: Float? = null
         private set
 
-    /** FOV-приближение для диалога (работает и без полной катсцены). */
+    /** FOV-приближение для диалога (и без полной катсцены). */
     var dialogFovActive = false
         private set
 
+    /** Клиентская камера диалога (без серверной катсцены). */
+    var dialogCam = false
+        private set
+
+    val cameraControlled: Boolean
+        get() = active || dialogCam
+
     private var dialogRestoreFov = 70f
+    private var pendingDialogFovClear = false
+    private var dialogReturnTimeout = -1
 
     // ---- Состояние на последнем тике и на предыдущем ----
-    private var tickX = 0.0; private var tickY = 0.0; private var tickZ = 0.0
-    private var tickYaw = 0f; private var tickPitch = 0f
-    private var prevX = 0.0; private var prevY = 0.0; private var prevZ = 0.0
-    private var prevYaw = 0f; private var prevPitch = 0f
+    private var tickX = 0.0
+    private var tickY = 0.0
+    private var tickZ = 0.0
+    private var tickYaw = 0f
+    private var tickPitch = 0f
+    private var prevX = 0.0
+    private var prevY = 0.0
+    private var prevZ = 0.0
+    private var prevYaw = 0f
+    private var prevPitch = 0f
 
     private var tickFov: Float? = null
     private var prevFov: Float? = null
@@ -64,10 +81,16 @@ object CutsceneClient {
     private var tickCounter = 0L
 
     // ---- Анимация движения ----
-    private var moveFromX = 0.0; private var moveFromY = 0.0; private var moveFromZ = 0.0
-    private var moveFromYaw = 0f; private var moveFromPitch = 0f
-    private var moveToX = 0.0; private var moveToY = 0.0; private var moveToZ = 0.0
-    private var moveToYaw = 0f; private var moveToPitch = 0f
+    private var moveFromX = 0.0
+    private var moveFromY = 0.0
+    private var moveFromZ = 0.0
+    private var moveFromYaw = 0f
+    private var moveFromPitch = 0f
+    private var moveToX = 0.0
+    private var moveToY = 0.0
+    private var moveToZ = 0.0
+    private var moveToYaw = 0f
+    private var moveToPitch = 0f
     private var moveStartTick = 0L
     private var moveDurationTicks = 0
     private var isMoving = false
@@ -79,13 +102,7 @@ object CutsceneClient {
     private var fovDurationTicks = 0
     private var fovAnimating = false
 
-    /** Клиентская камера диалога (без серверной катсцены). */
-    var dialogCam = false
-        private set
-
-    val cameraControlled: Boolean
-        get() = active || dialogCam
-
+    // ---- Точка возврата после диалога ----
     private var retX = 0.0
     private var retY = 0.0
     private var retZ = 0.0
@@ -166,7 +183,6 @@ object CutsceneClient {
             }
 
             CutscenePayload.FOV -> {
-                // value <= 0: вернуть FOV из настроек игрока
                 val target = if (payload.value <= 0f) baseFov() else payload.value.coerceIn(10f, 170f)
                 if (payload.durationTicks <= 0) {
                     fovAnimating = false
@@ -183,18 +199,17 @@ object CutsceneClient {
         }
     }
 
-    /** Мгновенно ставит камеру в точку без интерполяции. */
     private fun snapTo(x: Double, y: Double, z: Double, yaw: Float, pitch: Float) {
         tickX = x; tickY = y; tickZ = z; tickYaw = yaw; tickPitch = pitch
         prevX = x; prevY = y; prevZ = z; prevYaw = yaw; prevPitch = pitch
         camX = x; camY = y; camZ = z; camYaw = yaw; camPitch = pitch
     }
 
-    /** FOV из настроек игрока (без эффектов вроде спринта). */
-    private fun baseFov(): Float = Minecraft.getInstance().options.fov().get().toFloat()
+    private fun baseFov(): Float =
+        Minecraft.getInstance().options.fov().get().toFloat()
 
     // ------------------------------------------------------------------
-    // Тики и кадры
+    // Тики
     // ------------------------------------------------------------------
 
     private fun onTick(client: Minecraft) {
@@ -210,6 +225,17 @@ object CutsceneClient {
 
         if (active || dialogCam) advanceMove()
         advanceFov()
+
+        // watchdog: если return «завис» — принудительный сброс
+        if (dialogReturnTimeout >= 0) {
+            dialogReturnTimeout--
+            if (dialogReturnTimeout < 0 && (dialogCam || dialogFovActive)) {
+                val cb = onMoveDone
+                onMoveDone = null
+                clearDialogCamera()
+                cb?.invoke()
+            }
+        }
     }
 
     private fun advanceMove() {
@@ -257,11 +283,11 @@ object CutsceneClient {
             }
             return
         }
-        val t = elapsed.toFloat() / fovDurationTicks
+        val t = elapsed.toFloat() / fovDurationTicks.coerceAtLeast(1)
         tickFov = lerp(fovFrom, fovTo, smoothstep(t))
     }
 
-    /** Вызывается из CameraMixin раз за кадр, перед чтением camX/camY/... и fovOverride. */
+    /** Вызывается из CameraMixin раз за кадр. */
     fun sample() {
         val partial = ((System.nanoTime() - lastTickNanos) / 50_000_000f).coerceIn(0f, 1f)
         camX = lerp(prevX, tickX, partial)
@@ -313,17 +339,35 @@ object CutsceneClient {
         prevFov = null
         fovOverride = null
 
+        // без NpcDialogClient.close() — иначе цикл close → return → clear
+        clearDialogCamera()
+    }
+
+    /** Полный сброс диалоговой камеры + возврат взгляда игроку. */
+    fun clearDialogCamera() {
+        dialogCam = false
         dialogFovActive = false
         pendingDialogFovClear = false
-
-        dialogCam = false
+        dialogReturnTimeout = -1
+        isMoving = false
+        fovAnimating = false
+        tickFov = null
+        prevFov = null
+        fovOverride = null
         onMoveDone = null
 
-        NpcDialogClient.close()
+        val p = Minecraft.getInstance().player
+        if (p != null) {
+            p.yRot = retYaw
+            p.xRot = retPitch
+            p.yRotO = retYaw
+            p.xRotO = retPitch
+            p.yHeadRot = retYaw
+        }
     }
 
     // ------------------------------------------------------------------
-    // Рендер
+    // Рендер letterbox
     // ------------------------------------------------------------------
 
     private fun renderLetterbox(graphics: GuiGraphicsExtractor) {
@@ -351,9 +395,11 @@ object CutsceneClient {
         if (diff < -180f) diff += 360f
         return from + diff * t
     }
+
+    // ------------------------------------------------------------------
+    // Диалог: FOV-only
     // ------------------------------------------------------------------
 
-    /** Плавное приближение при открытии диалога. */
     fun startDialogFocus(targetFov: Float = 42f, durationTicks: Int = 8) {
         val base = (tickFov ?: baseFov()).coerceIn(10f, 170f)
         dialogRestoreFov = base
@@ -373,20 +419,14 @@ object CutsceneClient {
         lastTickNanos = System.nanoTime()
     }
 
-    /** Возврат FOV при закрытии диалога. */
     fun endDialogFocus(durationTicks: Int = 8) {
         if (!dialogFovActive) return
 
         val from = tickFov ?: baseFov()
-        // если катсцена ещё сама держит FOV — не форсим «ваниль»
         val to = if (active) from else dialogRestoreFov
 
         if (!active && kotlin.math.abs(from - to) < 0.05f) {
-            dialogFovActive = false
-            tickFov = null
-            prevFov = null
-            fovOverride = null
-            fovAnimating = false
+            clearDialogCamera()
             return
         }
 
@@ -398,26 +438,27 @@ object CutsceneClient {
         lastTickNanos = System.nanoTime()
 
         if (!active) {
-            // после окончания анимации сбросим в advanceFov через флаг
-            // помечаем «нужно очистить после анимации»
             dialogFovActive = true
             pendingDialogFovClear = true
         }
     }
 
-    private var pendingDialogFovClear = false
+    // ------------------------------------------------------------------
+    // Диалог: подлёт / отлёт
+    // ------------------------------------------------------------------
 
     /**
      * Подлёт к NPC. Камера едет от глаз игрока к точке между игроком и NPC
-     * и смотрит на NPC. Учитывает текущий угол взгляда как стартовый.
+     * и смотрит на NPC. Стартовый угол = текущий взгляд игрока.
      */
     fun startDialogApproach(
         npcX: Double,
-        npcY: Double, // лучше eyeY NPC
+        npcY: Double,
         npcZ: Double,
         durationTicks: Int = 12,
-        approach: Float = 0.40f, // 0 = стоим на месте, 1 = в точке NPC
+        approach: Float = 0.40f, // больше не используем как долю пути
         targetFov: Float = 42f,
+        distance: Double = 1.6,  // блоков от NPC
         onDone: (() -> Unit)? = null
     ) {
         val mc = Minecraft.getInstance()
@@ -426,7 +467,6 @@ object CutsceneClient {
             return
         }
 
-        // откуда: текущий взгляд игрока
         val fromX = p.x
         val fromY = p.eyeY
         val fromZ = p.z
@@ -436,15 +476,20 @@ object CutsceneClient {
         retX = fromX; retY = fromY; retZ = fromZ
         retYaw = fromYaw; retPitch = fromPitch
 
-        val t = approach.coerceIn(0.15f, 0.75f)
-        val toX = fromX + (npcX - fromX) * t
-        val toY = fromY + (npcY - fromY) * t
-        val toZ = fromZ + (npcZ - fromZ) * t
+        // точка на луче NPC → игрок, на расстоянии distance от NPC
+        var dx = fromX - npcX
+        var dz = fromZ - npcZ
+        val len = sqrt(dx * dx + dz * dz).coerceAtLeast(0.001)
+        dx /= len
+        dz /= len
 
-        // смотрим на NPC из конечной точки
+        val dist = distance.coerceIn(1.0, 3.5)
+        val toX = npcX + dx * dist
+        val toY = npcY // глаза NPC
+        val toZ = npcZ + dz * dist
+
         val (lookYaw, lookPitch) = lookAngles(toX, toY, toZ, npcX, npcY, npcZ)
 
-        // стартовые тиковые значения = игрок
         tickX = fromX; tickY = fromY; tickZ = fromZ
         tickYaw = fromYaw; tickPitch = fromPitch
         prevX = fromX; prevY = fromY; prevZ = fromZ
@@ -459,7 +504,6 @@ object CutsceneClient {
         isMoving = true
         onMoveDone = onDone
 
-        // лёгкий FOV
         val base = baseFov()
         dialogRestoreFov = base
         fovFrom = base
@@ -472,6 +516,7 @@ object CutsceneClient {
         dialogFovActive = true
 
         dialogCam = true
+        dialogReturnTimeout = -1
         lastTickNanos = System.nanoTime()
     }
 
@@ -481,6 +526,13 @@ object CutsceneClient {
         onDone: (() -> Unit)? = null
     ) {
         if (!dialogCam && !dialogFovActive) {
+            clearDialogCamera()
+            onDone?.invoke()
+            return
+        }
+
+        if (!dialogCam) {
+            clearDialogCamera()
             onDone?.invoke()
             return
         }
@@ -501,15 +553,10 @@ object CutsceneClient {
         fovAnimating = true
         dialogFovActive = true
 
+        dialogReturnTimeout = durationTicks + 5
+
         onMoveDone = {
-            // полный сброс диалоговой камеры
-            dialogCam = false
-            dialogFovActive = false
-            isMoving = false
-            fovAnimating = false
-            tickFov = null
-            prevFov = null
-            fovOverride = null
+            clearDialogCamera()
             onDone?.invoke()
         }
         lastTickNanos = System.nanoTime()
@@ -522,9 +569,9 @@ object CutsceneClient {
         val dx = tx - ox
         val dy = ty - oy
         val dz = tz - oz
-        val horiz = kotlin.math.sqrt(dx * dx + dz * dz)
-        val yaw = Math.toDegrees(kotlin.math.atan2(-dx, dz)).toFloat()
-        val pitch = Math.toDegrees(-kotlin.math.atan2(dy, horiz)).toFloat()
+        val horiz = sqrt(dx * dx + dz * dz)
+        val yaw = Math.toDegrees(atan2(-dx, dz)).toFloat()
+        val pitch = Math.toDegrees(-atan2(dy, horiz)).toFloat()
         return yaw to pitch.coerceIn(-90f, 90f)
     }
 }
