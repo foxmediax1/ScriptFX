@@ -16,6 +16,8 @@ import net.foxmediax.scriptfx.config.ScriptFXConfig
 import net.foxmediax.scriptfx.network.CameraPayload
 import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
 import net.foxmediax.scriptfx.network.NpcInteractListenPayload
+import net.foxmediax.scriptfx.network.QuestSyncPayload
+import net.foxmediax.scriptfx.network.QuestToastPayload
 import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.foxmediax.scriptfx.npc.NpcEntities
 import net.foxmediax.scriptfx.npc.NpcInteractClient
@@ -110,6 +112,7 @@ object ScriptFXClient : ClientModInitializer {
             CameraOverlay.clear()
             CutsceneClient.clear()
             NpcPreviewHelper.clear()
+            QuestClient.clear()
         }
 
         /*
@@ -168,6 +171,12 @@ object ScriptFXClient : ClientModInitializer {
                     MuiScreens.openControlPanel()
                 }
             }
+
+            while (ScriptFXKeybinds.openQuestJournal.consumeClick()) {
+                if (client.player != null && client.screen == null) {
+                    MuiScreens.openQuestJournal()
+                }
+            }
         }
 
         CutsceneClient.init()
@@ -189,5 +198,17 @@ object ScriptFXClient : ClientModInitializer {
                 payload
             )
         }
+
+        ClientPlayNetworking.registerGlobalReceiver(QuestSyncPayload.TYPE) { payload, _ ->
+            QuestClient.receiveSync(payload.json)
+        }
+        ClientPlayNetworking.registerGlobalReceiver(QuestToastPayload.TYPE) { payload, _ ->
+            QuestClient.receiveToast(payload)
+        }
+
+        HudElementRegistry.addLast(
+            ScriptFX.id("quest_toast"),
+            HudElement { graphics, _ -> QuestClient.renderToast(graphics) }
+        )
     }
 }
