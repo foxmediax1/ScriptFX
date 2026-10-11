@@ -103,4 +103,23 @@ object MuiScreens {
     @JvmStatic
     fun createNpcDialog(model: NpcDialogModel): Screen =
         MuiModApi.get().createScreen(NpcDialogFragment(model), NpcDialogCallback, null, "NPC")
+
+    /** Журнал: мир виден затемнённым, игра не ставится на паузу. */
+    private object JournalCallback : ScreenCallback {
+        override fun hasDefaultBackground(): Boolean = true
+        override fun shouldBlurBackground(): Boolean = false
+        override fun isPauseScreen(): Boolean = false
+    }
+
+    @JvmStatic
+    fun openQuestJournal() {
+        val mc = Minecraft.getInstance()
+        val screen: Screen = MuiModApi.get().createScreen(
+            QuestJournalFragment(),
+            JournalCallback,
+            null,
+            "Quests"
+        )
+        mc.setScreen(screen)
+    }
 }
