@@ -45,22 +45,25 @@ object CutsceneCommands {
 
         // camera_move x y z yaw pitch duration
         register("camera_move") { context, args ->
-            val x = args.getOrNull(0)?.toDoubleOrNull()
-            val y = args.getOrNull(1)?.toDoubleOrNull()
-            val z = args.getOrNull(2)?.toDoubleOrNull()
-            val yaw = args.getOrNull(3)?.toFloatOrNull()
-            val pitch = args.getOrNull(4)?.toFloatOrNull()
+            val player = resolveActive(context).firstOrNull()
+                ?: return@register CommandResult.Continue
+
+            val x = parseCoord(args.getOrNull(0), player.x)
+            val y = parseCoord(args.getOrNull(1), player.y)
+            val z = parseCoord(args.getOrNull(2), player.z)
+            val yaw = parseCoord(args.getOrNull(3), player.yRot.toDouble())?.toFloat()
+            val pitch = parseCoord(args.getOrNull(4), player.xRot.toDouble())?.toFloat()
             val durationRaw = args.getOrNull(5) ?: "1.sec"
+
             if (x == null || y == null || z == null || yaw == null || pitch == null) {
-                ScriptFXLog.warn("camera_move: нужны x y z yaw pitch duration")
+                ScriptFXLog.warn("camera_move: нужны x y z yaw pitch duration (можно ~)")
                 return@register CommandResult.Continue
             }
+
             val ticks = CommandRegistry.parseDurationTicks(durationRaw).toInt().coerceAtLeast(1)
-            val targets = resolveActive(context)
-            for (p in targets) {
+            for (p in resolveActive(context)) {
                 CutsceneManager.moveCamera(p, x, y, z, yaw, pitch, ticks)
             }
-            // Ждём окончания движения, чтобы следующая команда шла после
             CommandResult.Wait(ticks.toLong())
         }
 
@@ -175,5 +178,17 @@ object CutsceneCommands {
             .filter { CutsceneManager.isInCutscene(it) }
         val bound = context.player
         return if (bound != null) inCutscene.filter { it == bound } else inCutscene
+    }
+
+    // рядом с хелперами
+    private fun parseCoord(raw: String?, base: Double): Double? {
+        if (raw == null) return null
+        val t = raw.trim().removeSurrounding("\"")
+        if (t == "~") return base
+        if (t.startsWith("~")) {
+            val off = t.substring(1).toDoubleOrNull() ?: return null
+            return base + off
+        }
+        return t.toDoubleOrNull()
     }
 }
