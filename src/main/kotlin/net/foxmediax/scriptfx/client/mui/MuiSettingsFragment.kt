@@ -90,23 +90,13 @@ class MuiSettingsFragment(
         val maxH = (ctx.resources.displayMetrics.heightPixels * 0.88f).toInt()
         root.addView(
             panel,
-            FrameLayout.LayoutParams(dp(ctx, 460), min(dp(ctx, 540), maxH), Gravity.CENTER)
+            FrameLayout.LayoutParams(
+                dp(ctx, 480),
+                min(dp(ctx, 560), maxH),
+                Gravity.CENTER
+            )
         )
         return root
-    }
-
-    override fun onDestroyView() {
-        ScriptFXConfig.save()
-        pageSettings = null
-        pagePicker = null
-        hexFields.clear()
-        swatches.clear()
-        previewBorder = null
-        previewInner = null
-        picker = null
-        pickerHex = null
-        pickerPreview = null
-        super.onDestroyView()
     }
 
     // ------------------------------------------------------------------
@@ -115,7 +105,7 @@ class MuiSettingsFragment(
     private fun buildSettingsPage(ctx: Context): View {
         val page = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(20, 20, 20, 20)
+            setPadding(dp(ctx, 16), dp(ctx, 16), dp(ctx, 16), dp(ctx, 12))
         }
 
         page.addView(
@@ -123,14 +113,15 @@ class MuiSettingsFragment(
                 text = "Настройки ScriptFX"
                 textSize = 16f
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, 12)
+                setTextColor(0xFFFFFFFF.toInt())
+                setPadding(0, 0, 0, dp(ctx, 10))
             },
             lp(MATCH, WRAP)
         )
 
         val list = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(4, 4, 4, 4)
+            setPadding(dp(ctx, 4), 0, dp(ctx, 10), dp(ctx, 8)) // справа место под скроллбар
         }
         val scroll = ScrollView(ctx)
         scroll.addView(list, ViewGroup.LayoutParams(MATCH, WRAP))
@@ -142,39 +133,51 @@ class MuiSettingsFragment(
         val modes = MessageDisplayMode.values()
         val modeBtn = Button(ctx).apply {
             text = ScriptFXConfig.messageMode.displayName
+            textSize = 12f
+            setSingleLine(true)
+            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+            background = UiStyle.buttonBg(
+                ctx, 0xFF101010.toInt(),
+                UiStyle.mix(0xFF101010.toInt(), 0xFFFFFFFF.toInt(), 0.10f),
+                UiStyle.mix(0xFF101010.toInt(), 0xFF000000.toInt(), 0.30f)
+            )
             setOnClickListener {
                 val next = modes[(ScriptFXConfig.messageMode.ordinal + 1) % modes.size]
                 ScriptFXConfig.messageMode = next
                 text = next.displayName
             }
         }
-        list.addView(row(ctx, "Вид сообщений скриптов и чата", modeBtn), lp(MATCH, WRAP))
+        list.addView(row(ctx, "Вид сообщений скриптов и чата", modeBtn, dp(ctx, 150)), lp(MATCH, WRAP))
 
         list.addView(
             switchRow(ctx, "Системные сообщения по центру", ScriptFXConfig.centerSystemMessages) {
                 ScriptFXConfig.centerSystemMessages = it
-            }, lp(MATCH, WRAP)
+            },
+            lp(MATCH, WRAP)
         )
         list.addView(
             switchRow(ctx, "Показывать подсказки", ScriptFXConfig.showHints) {
                 ScriptFXConfig.showHints = it
-            }, lp(MATCH, WRAP)
+            },
+            lp(MATCH, WRAP)
         )
         list.addView(
             switchRow(ctx, "Обводка NPC в диалоге", ScriptFXConfig.npcOutline) {
                 ScriptFXConfig.npcOutline = it
-            }, lp(MATCH, WRAP)
+            },
+            lp(MATCH, WRAP)
         )
 
-        // максимум скриптов: 1..50
         val seekLabel = TextView(ctx).apply {
             text = "Макс. количество скриптов: ${ScriptFXConfig.maxScripts}"
-            textSize = 14f
-            setPadding(0, 8, 0, 4)
+            textSize = 13f
+            setTextColor(0xFFEDEDED.toInt())
+            setPadding(0, dp(ctx, 8), 0, dp(ctx, 4))
         }
         val seek = SeekBar(ctx).apply {
             max = 49
-            progress = ScriptFXConfig.maxScripts - 1
+            progress = (ScriptFXConfig.maxScripts - 1).coerceIn(0, 49)
+            minimumHeight = dp(ctx, 24)
         }
         seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
@@ -189,51 +192,75 @@ class MuiSettingsFragment(
 
         val themeEdit = EditText(ctx).apply {
             setSingleLine(true)
-            textSize = 14f
+            textSize = 13f
             setText(ScriptFXConfig.theme)
+            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+            minimumHeight = dp(ctx, 32)
         }
         themeEdit.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {}
             override fun afterTextChanged(s: Editable) {
-                ScriptFXConfig.theme = s.toString()
+                ScriptFXConfig.theme = s.toString().ifBlank { "dark" }
             }
         })
         escHandler(themeEdit)
         list.addView(row(ctx, "Тема оформления", themeEdit, dp(ctx, 140)), lp(MATCH, WRAP))
 
-        // --- Сообщения: цвета ---
+        // --- Цвета ---
         list.addView(sectionTitle(ctx, "Цвета сообщений"), lp(MATCH, WRAP))
         list.addView(colorRow(ctx, "Фон сообщения", ColorTarget.BG), lp(MATCH, WRAP))
         list.addView(colorRow(ctx, "Обводка сообщения", ColorTarget.BORDER), lp(MATCH, WRAP))
 
-        // приблизительный предпросмотр
-        val border = FrameLayout(ctx).apply { setPadding(2, 2, 2, 2) }
+        val border = FrameLayout(ctx).apply {
+            setPadding(dp(ctx, 2), dp(ctx, 2), dp(ctx, 2), dp(ctx, 2))
+            background = ColorDrawable(ScriptFXConfig.messageBorder)
+        }
         val inner = TextView(ctx).apply {
             text = "[Пример]: Так выглядит сообщение"
             textSize = 13f
-            setPadding(12, 8, 12, 8)
+            setTextColor(0xFFEDEDED.toInt())
+            setPadding(dp(ctx, 12), dp(ctx, 8), dp(ctx, 12), dp(ctx, 8))
+            background = ColorDrawable(ScriptFXConfig.messageBg)
         }
         border.addView(inner, FrameLayout.LayoutParams(MATCH, WRAP))
         previewBorder = border
         previewInner = inner
-        list.addView(border, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = 8 })
+        list.addView(border, LinearLayout.LayoutParams(MATCH, WRAP).apply {
+            topMargin = dp(ctx, 10)
+        })
 
         val showBtn = Button(ctx).apply {
             text = "Показать в игре"
+            textSize = 12f
+            setPadding(dp(ctx, 10), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6))
+            background = UiStyle.buttonBg(
+                ctx, 0xFF101010.toInt(),
+                UiStyle.mix(0xFF101010.toInt(), 0xFFFFFFFF.toInt(), 0.10f),
+                UiStyle.mix(0xFF101010.toInt(), 0xFF000000.toInt(), 0.30f)
+            )
             setOnClickListener {
-                val mc = Minecraft.getInstance()
-                mc.execute { CenterMessageOverlay.preview() }
+                Minecraft.getInstance().execute { CenterMessageOverlay.preview() }
             }
         }
-        list.addView(showBtn, LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = 8 })
+        list.addView(showBtn, LinearLayout.LayoutParams(WRAP, WRAP).apply {
+            topMargin = dp(ctx, 8)
+        })
 
-        // --- Готово ---
         val done = Button(ctx).apply {
             text = "Готово"
+            textSize = 13f
+            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
+            background = UiStyle.buttonBg(
+                ctx, 0xFF2A2140.toInt(),
+                UiStyle.mix(0xFF2A2140.toInt(), 0xFFFFFFFF.toInt(), 0.10f),
+                UiStyle.mix(0xFF2A2140.toInt(), 0xFF000000.toInt(), 0.30f)
+            )
             setOnClickListener { closeScreen() }
         }
-        page.addView(done, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = 12 })
+        page.addView(done, LinearLayout.LayoutParams(MATCH, WRAP).apply {
+            topMargin = dp(ctx, 10)
+        })
 
         return page
     }
@@ -241,31 +268,39 @@ class MuiSettingsFragment(
     private fun colorRow(ctx: Context, label: String, target: ColorTarget): View {
         val box = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(0, 6, 0, 6)
+            setPadding(0, dp(ctx, 6), 0, dp(ctx, 6))
         }
         box.addView(
-            TextView(ctx).apply { text = label; textSize = 14f; setPadding(0, 0, 0, 4) },
+            TextView(ctx).apply {
+                text = label
+                textSize = 13f
+                setTextColor(0xFFEDEDED.toInt())
+                setPadding(0, 0, 0, dp(ctx, 4))
+            },
             lp(MATCH, WRAP)
         )
 
         val line = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(ctx, 36)
         }
 
-        // образец цвета: клик открывает палитру
         val swatch = View(ctx).apply {
-            background = ColorDrawable(colorOf(target))
+            background = UiStyle.rounded(ctx, colorOf(target), 4f)
             setOnClickListener { openPicker(target) }
         }
         swatches[target] = swatch
-        line.addView(swatch, lp(dp(ctx, 40), dp(ctx, 24)).apply { rightMargin = 8 })
+        line.addView(swatch, lp(dp(ctx, 36), dp(ctx, 24)).apply {
+            rightMargin = dp(ctx, 8)
+        })
 
-        // HEX-поле
         val hex = EditText(ctx).apply {
             setSingleLine(true)
-            textSize = 14f
+            textSize = 12f
             setText(ColorHex.format(colorOf(target)))
+            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+            minimumHeight = dp(ctx, 32)
         }
         hexFields[target] = hex
         hex.addTextChangedListener(object : TextWatcher {
@@ -275,18 +310,25 @@ class MuiSettingsFragment(
                 if (suppress) return
                 val parsed = ColorHex.parse(s.toString(), colorOf(target) ushr 24) ?: return
                 setColorOf(target, parsed)
-                swatches[target]?.background = ColorDrawable(parsed)
+                swatches[target]?.background = UiStyle.rounded(ctx, parsed, 4f)
                 refreshPreview()
             }
         })
         escHandler(hex)
-        line.addView(hex, lp(0, WRAP).also { it.weight = 1f })
+        line.addView(hex, LinearLayout.LayoutParams(0, WRAP, 1f))
 
         val paletteBtn = Button(ctx).apply {
             text = "Палитра"
+            textSize = 12f
+            setPadding(dp(ctx, 10), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6))
+            background = UiStyle.buttonBg(
+                ctx, 0xFF101010.toInt(),
+                UiStyle.mix(0xFF101010.toInt(), 0xFFFFFFFF.toInt(), 0.10f),
+                UiStyle.mix(0xFF101010.toInt(), 0xFF000000.toInt(), 0.30f)
+            )
             setOnClickListener { openPicker(target) }
         }
-        line.addView(paletteBtn, lp(WRAP, WRAP).apply { leftMargin = 8 })
+        line.addView(paletteBtn, lp(WRAP, WRAP).apply { leftMargin = dp(ctx, 8) })
 
         box.addView(line, lp(MATCH, WRAP))
         return box
@@ -433,28 +475,58 @@ class MuiSettingsFragment(
 
     private fun sectionTitle(ctx: Context, title: String) = TextView(ctx).apply {
         text = title
-        textSize = 15f
-        setPadding(0, 14, 0, 6)
+        textSize = 13f
+        setTextColor(0xFFC8B4FF.toInt())
+        setPadding(0, dp(ctx, 14), 0, dp(ctx, 6))
     }
 
-    private fun row(ctx: Context, label: String, control: View, controlW: Int = WRAP): LinearLayout {
+    private fun row(
+        ctx: Context,
+        label: String,
+        control: View,
+        controlW: Int = dp(ctx, 160)
+    ): LinearLayout {
         val r = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, 6, 0, 6)
+            minimumHeight = dp(ctx, 36)
+            setPadding(0, dp(ctx, 4), 0, dp(ctx, 4))
         }
-        r.addView(TextView(ctx).apply { text = label; textSize = 14f }, lp(0, WRAP).also { it.weight = 1f })
-        r.addView(control, lp(controlW, WRAP))
+        r.addView(
+            TextView(ctx).apply {
+                text = label
+                textSize = 13f
+                setTextColor(0xFFEDEDED.toInt())
+                setSingleLine(true)
+            },
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+                rightMargin = dp(ctx, 10)
+                gravity = Gravity.CENTER_VERTICAL
+            }
+        )
+        r.addView(
+            control,
+            LinearLayout.LayoutParams(controlW, WRAP).apply {
+                gravity = Gravity.CENTER_VERTICAL or Gravity.END
+            }
+        )
         return r
     }
 
-    private fun switchRow(ctx: Context, label: String, initial: Boolean, onChange: (Boolean) -> Unit): LinearLayout {
-        val sw = Switch(ctx)
-        sw.isChecked = initial
-        sw.setOnCheckedChangeListener { _, checked -> onChange(checked) }
-        return row(ctx, label, sw)
+    private fun switchRow(
+        ctx: Context,
+        label: String,
+        initial: Boolean,
+        onChange: (Boolean) -> Unit
+    ): LinearLayout {
+        val sw = Switch(ctx).apply {
+            isChecked = initial
+            // не растягивать на всю ширину
+            minimumWidth = dp(ctx, 48)
+            setOnCheckedChangeListener { _, checked -> onChange(checked) }
+        }
+        return row(ctx, label, sw, dp(ctx, 56))
     }
-
     private fun dp(ctx: Context, value: Int): Int {
         val density = ctx.resources.displayMetrics.density
         return (value * density + 0.5f).toInt()
