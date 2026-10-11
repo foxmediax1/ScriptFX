@@ -30,6 +30,12 @@ object CommandRegistry {
         return handler(context, command.args)
     }
 
+    init {
+        registerDefaults()
+        NpcCommands.install { name, handler -> register(name, handler) }
+        QuestCommands.install { name, handler -> register(name, handler) }
+    }
+
     private fun registerDefaults() {
 
         register("print") { context, args ->
