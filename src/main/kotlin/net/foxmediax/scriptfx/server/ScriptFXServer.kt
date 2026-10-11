@@ -27,6 +27,7 @@ import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
 import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
 import net.foxmediax.scriptfx.npc.NpcDialogWait
 import net.foxmediax.scriptfx.npc.NpcInteractWait
+import net.foxmediax.scriptfx.quest.QuestManager
 import net.foxmediax.scriptfx.scriptengine.CutsceneManager
 
 object ScriptFXServer : ModInitializer {
@@ -102,6 +103,17 @@ object ScriptFXServer : ModInitializer {
         }
         ServerPlayNetworking.registerGlobalReceiver(NpcDialogChoicePayload.TYPE) { payload, ctx ->
             NpcDialogWait.notifyChoice(ctx.player().uuid, payload.button)
+        }
+
+        ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
+            TriggerManager.onPlayerJoin(server, handler.player)
+            QuestManager.onJoin(handler.player)
+        }
+
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
+            CutsceneManager.endFor(handler.player)
+            TriggerManager.onPlayerLeave(handler.player.uuid)
+            QuestManager.onLeave(handler.player.uuid)
         }
     }
 
