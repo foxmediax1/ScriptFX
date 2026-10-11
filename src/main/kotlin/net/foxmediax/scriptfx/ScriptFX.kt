@@ -13,6 +13,8 @@ import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
 import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
 import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
 import net.foxmediax.scriptfx.network.NpcInteractListenPayload
+import net.foxmediax.scriptfx.network.QuestSyncPayload
+import net.foxmediax.scriptfx.network.QuestToastPayload
 import net.foxmediax.scriptfx.npc.NpcEntities
 
 object ScriptFX : ModInitializer {
@@ -37,6 +39,8 @@ object ScriptFX : ModInitializer {
 		)
 		PayloadTypeRegistry.clientboundPlay().register(NpcDialogOpenPayload.TYPE, NpcDialogOpenPayload.CODEC)
 		PayloadTypeRegistry.serverboundPlay().register(NpcDialogChoicePayload.TYPE, NpcDialogChoicePayload.CODEC)
+		PayloadTypeRegistry.clientboundPlay().register(QuestSyncPayload.TYPE, QuestSyncPayload.CODEC)
+		PayloadTypeRegistry.clientboundPlay().register(QuestToastPayload.TYPE, QuestToastPayload.CODEC)
 
 		// Регистрируем реальный (GeckoLib) тип NPC-сущности, используемый npc_spawn.
 		NpcEntities.register()
