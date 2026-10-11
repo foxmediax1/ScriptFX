@@ -95,10 +95,12 @@ object PanelUi {
     /** Фон со скруглением и состояниями, производными от базового цвета. */
     fun btnBg(ctx: Context, base: Int, radiusDp: Float = 6f): Drawable =
         UiStyle.buttonBg(
-            ctx, base,
+            ctx,
+            base,
             hover = UiStyle.mix(base, 0xFFFFFFFF.toInt(), 0.10f),
             pressed = UiStyle.mix(base, 0xFF000000.toInt(), 0.30f),
             radiusDp = radiusDp
+            // hoverStroke по умолчанию = UiStyle.ACCENT
         )
 
     private fun styled(
@@ -114,34 +116,32 @@ object PanelUi {
     }
 
     fun sidebarButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        styled(ctx, label, 14f, COL_TEXT, COL_BTN, 8, 10, onClick).apply {
+        styled(ctx, label, 15f, COL_TEXT, COL_BTN, 10, 12, onClick).apply {
             gravity = Gravity.CENTER
-            minHeight = dp(ctx, 42)
+            minHeight = dp(ctx, 48)
         }
 
     fun flatButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        styled(ctx, label, 12f, COL_TEXT, COL_BTN, 8, 6, onClick)
+        styled(ctx, label, 13f, COL_TEXT, COL_BTN, 10, 8, onClick)
 
     /** Кнопка с акцентом (сохранить, применить). */
     fun accentButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        styled(ctx, label, 12f, COL_TEXT, COL_BTN_SELECTED, 10, 6, onClick)
+        styled(ctx, label, 13f, COL_TEXT, COL_BTN_SELECTED, 12, 8, onClick)
 
     /** Опасное действие (удалить, прервать). */
     fun dangerButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        styled(ctx, label, 12f, COL_DANGER_TEXT, COL_BTN_DANGER, 8, 6, onClick)
+        styled(ctx, label, 13f, COL_DANGER_TEXT, COL_BTN_DANGER, 10, 8, onClick)
 
     fun iconButton(ctx: Context, glyph: String, onClick: () -> Unit): TextView {
-        val size = dp(ctx, 28)
+        val size = dp(ctx, 32)
         return TextView(ctx).apply {
             text = glyph
-            textSize = 14f
+            textSize = 15f
             gravity = Gravity.CENTER
             setTextColor(COL_TEXT)
-            background = btnBg(ctx, COL_BTN, 5f)
+            background = btnBg(ctx, COL_BTN, 6f)
             minWidth = size
             minHeight = size
-            width = size
-            height = size
             setPadding(0, 0, 0, 0)
             isClickable = true
             setOnClickListener { onClick() }
@@ -155,42 +155,41 @@ object PanelUi {
     fun sectionTitle(ctx: Context, text: String): TextView =
         TextView(ctx).apply {
             this.text = text
-            textSize = 13f
+            textSize = 14f
             setTextColor(COL_ACCENT)
-            setPadding(0, dp(ctx, 8), 0, dp(ctx, 2))
+            setPadding(0, dp(ctx, 10), 0, dp(ctx, 4))
         }
 
     fun pageTitle(ctx: Context, text: String): TextView =
         TextView(ctx).apply {
             this.text = text
-            textSize = 15f
+            textSize = 16f
             setTextColor(COL_TEXT)
         }
 
-    fun bodyText(ctx: Context, text: String, size: Float = 12f): TextView =
+    fun bodyText(ctx: Context, text: String, size: Float = 13f): TextView =
         TextView(ctx).apply {
             this.text = text
             textSize = size
             setTextColor(COL_TEXT)
-            setPadding(0, dp(ctx, 2), 0, dp(ctx, 2))
+            setPadding(0, dp(ctx, 3), 0, dp(ctx, 3))
         }
 
-    fun mutedText(ctx: Context, text: String, size: Float = 12f): TextView =
+    fun mutedText(ctx: Context, text: String, size: Float = 13f): TextView =
         TextView(ctx).apply {
             this.text = text
             textSize = size
             setTextColor(COL_MUTED)
-            setPadding(0, dp(ctx, 2), 0, dp(ctx, 2))
+            setPadding(0, dp(ctx, 3), 0, dp(ctx, 3))
         }
 
-    fun dimText(ctx: Context, text: String, size: Float = 11f): TextView =
+    fun dimText(ctx: Context, text: String, size: Float = 12f): TextView =
         TextView(ctx).apply {
             this.text = text
             textSize = size
             setTextColor(COL_DIM)
-            setPadding(0, dp(ctx, 2), 0, dp(ctx, 2))
+            setPadding(0, dp(ctx, 3), 0, dp(ctx, 3))
         }
-
     fun errorText(ctx: Context, text: String, size: Float = 12f): TextView =
         TextView(ctx).apply {
             this.text = text
@@ -207,7 +206,7 @@ object PanelUi {
         LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             background = ColorDrawable(COL_CONTENT)
-            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
+            setPadding(dp(ctx, 14), dp(ctx, 12), dp(ctx, 14), dp(ctx, 12))
         }
 
     fun navColumn(ctx: Context): LinearLayout =
@@ -220,8 +219,8 @@ object PanelUi {
     fun card(ctx: Context): LinearLayout =
         LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = UiStyle.rounded(ctx, COL_CARD, 8f)
-            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+            background = ColorDrawable(COL_CARD) // или UiStyle.rounded, если уже так
+            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
         }
 
     fun horizontalRow(ctx: Context): LinearLayout =
