@@ -100,17 +100,17 @@ class ControlPanelFragment : Fragment() {
             background = ColorDrawable(COL_PANEL)
         }
 
-        panel.addView(buildHeader(ctx), lp(MATCH, dp(ctx, 56)))
+        panel.addView(buildHeader(ctx), lp(MATCH, dp(ctx, 64)))
         panel.addView(divider(ctx), lp(MATCH, px1(ctx)))
 
         val body = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
         }
 
-        body.addView(buildSidebar(ctx), lp(dp(ctx, 156), MATCH))
+        body.addView(buildSidebar(ctx), lp(dp(ctx, 200), MATCH))
         body.addView(divider(ctx), lp(px1(ctx), MATCH))
 
-        val contentPad = dp(ctx, 14)
+        val contentPad = dp(ctx, 18)
         val c = FrameLayout(ctx).apply {
             setPadding(contentPad, contentPad, contentPad, contentPad)
             background = ColorDrawable(COL_HEADER)
@@ -120,8 +120,8 @@ class ControlPanelFragment : Fragment() {
         panel.addView(body, LinearLayout.LayoutParams(MATCH, 0, 1f))
 
         val dm = ctx.resources.displayMetrics
-        val panelW = (dm.widthPixels * 0.78f).toInt().coerceIn(dp(ctx, 560), dp(ctx, 960))
-        val panelH = (dm.heightPixels * 0.72f).toInt().coerceIn(dp(ctx, 380), dp(ctx, 640))
+        val panelW = (dm.widthPixels * 0.90f).toInt().coerceIn(dp(ctx, 840), dp(ctx, 1440))
+        val panelH = (dm.heightPixels * 0.88f).toInt().coerceIn(dp(ctx, 570), dp(ctx, 960))
 
         root.addView(
             panel,
@@ -183,10 +183,10 @@ class ControlPanelFragment : Fragment() {
     }
 
     private fun refreshSidebar() {
+        val ctx = context ?: return
         sidebarButtons.forEach { (section, btn) ->
-            btn.background = ColorDrawable(
-                if (section == selected) COL_BTN_SELECTED else COL_BTN
-            )
+            val base = if (section == selected) COL_BTN_SELECTED else COL_BTN
+            btn.background = PanelUi.btnBg(ctx, base)
         }
     }
 
@@ -250,7 +250,7 @@ class ControlPanelFragment : Fragment() {
             },
             lp(WRAP, WRAP)
         )
-        header.addView(logo, lp(dp(ctx, 156), MATCH))
+        header.addView(logo, lp(dp(ctx, 200), MATCH))
         header.addView(divider(ctx), lp(px1(ctx), MATCH))
 
         // --- Left actions (horizontal) ---
@@ -277,7 +277,7 @@ class ControlPanelFragment : Fragment() {
 
         // --- Breadcrumb ---
         val crumbs = TextView(ctx).apply {
-            textSize = 14f
+            textSize = 15f
             setTextColor(0xFFFFFFFF.toInt())
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(ctx, 12), 0, dp(ctx, 12), 0)
@@ -308,7 +308,7 @@ class ControlPanelFragment : Fragment() {
 
     /** Квадратный LayoutParams для iconButton (28×28 dp). */
     private fun iconLp(ctx: Context, marginStartDp: Int = 0): LinearLayout.LayoutParams {
-        val s = dp(ctx, 28)
+        val s = dp(ctx, 32)
         return LinearLayout.LayoutParams(s, s).apply {
             if (marginStartDp != 0) leftMargin = dp(ctx, marginStartDp)
             gravity = Gravity.CENTER_VERTICAL
@@ -320,7 +320,7 @@ class ControlPanelFragment : Fragment() {
     private fun buildSidebar(ctx: Context): View {
         val side = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(ctx, 10), dp(ctx, 10), dp(ctx, 10), dp(ctx, 10))
+            setPadding(dp(ctx, 12), dp(ctx, 12), dp(ctx, 12), dp(ctx, 12))
             background = ColorDrawable(COL_SIDEBAR)
         }
         val order = listOf(
@@ -341,7 +341,7 @@ class ControlPanelFragment : Fragment() {
             side.addView(
                 btn,
                 lp(MATCH, WRAP).apply {
-                    topMargin = if (side.childCount == 0) 0 else dp(ctx, 8)
+                    topMargin = if (side.childCount == 0) 0 else dp(ctx, 10)
                 }
             )
         }
