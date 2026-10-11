@@ -10,6 +10,7 @@ import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.TextView
 import net.foxmediax.scriptfx.client.NpcPreviewHelper
 import net.foxmediax.scriptfx.npc.NpcDefinition
+import net.minecraft.client.Minecraft
 
 /**
  * Правая колонка NPC-редактора.
@@ -185,25 +186,26 @@ class NpcPreviewView(
         val location = IntArray(2)
         getLocationInWindow(location)
 
-        // ModernUI отдаёт window-пиксели; InventoryScreen ждёт GUI-координаты.
-        val mc = net.minecraft.client.Minecraft.getInstance()
-        val window = mc.window
-        val guiScale = window.guiScale.toFloat().coerceAtLeast(1f)
+        val mc = Minecraft.getInstance()
+        val guiScale = mc.window.guiScale.toFloat().coerceAtLeast(1f)
 
+        // window px → GUI
         val x0 = (location[0] / guiScale).toInt()
         val y0 = (location[1] / guiScale).toInt()
         val x1 = ((location[0] + width) / guiScale).toInt()
         val y1 = ((location[1] + height) / guiScale).toInt()
 
-        val padTop = (PanelUi.dp(context, 28) / guiScale).toInt()
-        val padBottom = (PanelUi.dp(context, 22) / guiScale).toInt()
+        // отступы под «Превью» и «Тяни — поворот»
+        val padTop = (PanelUi.dp(context, 26) / guiScale).toInt().coerceAtLeast(14)
+        val padBottom = (PanelUi.dp(context, 20) / guiScale).toInt().coerceAtLeast(12)
+        val padX = 4
 
-        val previewX0 = x0 + 2
+        val previewX0 = x0 + padX
         val previewY0 = y0 + padTop
-        val previewX1 = x1 - 2
+        val previewX1 = x1 - padX
         val previewY1 = y1 - padBottom
 
-        if (previewX1 <= previewX0 || previewY1 <= previewY0) {
+        if (previewX1 - previewX0 < 24 || previewY1 - previewY0 < 24) {
             NpcPreviewHelper.clearBounds()
             return
         }
