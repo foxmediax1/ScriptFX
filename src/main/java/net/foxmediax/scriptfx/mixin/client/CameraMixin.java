@@ -31,7 +31,7 @@ public abstract class CameraMixin {
             setPosition(cutscene.getCamX(), cutscene.getCamY(), cutscene.getCamZ());
             setRotation(cutscene.getCamYaw(), cutscene.getCamPitch());
         } else if (cutscene.getDialogFovActive()) {
-            cutscene.sample();
+            cutscene.sample(); // только FOV
         } else {
             return;
         }
