@@ -11,6 +11,8 @@ import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
 import icyllis.modernui.widget.TextView
 import kotlin.math.max
+import icyllis.modernui.graphics.drawable.Drawable
+import net.foxmediax.scriptfx.client.mui.UiStyle
 
 /**
  * Общий стиль и фабрики виджетов панели ScriptFX (Modern UI).
@@ -87,52 +89,46 @@ object PanelUi {
         }
 
     // -------------------------------------------------------------------------
-    // Buttons
+    // Buttons (скруглённые, с состояниями наведения и нажатия)
     // -------------------------------------------------------------------------
 
+    /** Фон со скруглением и состояниями, производными от базового цвета. */
+    fun btnBg(ctx: Context, base: Int, radiusDp: Float = 6f): Drawable =
+        UiStyle.buttonBg(
+            ctx, base,
+            hover = UiStyle.mix(base, 0xFFFFFFFF.toInt(), 0.10f),
+            pressed = UiStyle.mix(base, 0xFF000000.toInt(), 0.30f),
+            radiusDp = radiusDp
+        )
+
+    private fun styled(
+        ctx: Context, label: String, size: Float, textColor: Int, base: Int,
+        padH: Int, padV: Int, onClick: () -> Unit
+    ): Button = Button(ctx).apply {
+        text = label
+        this.textSize = size
+        setTextColor(textColor)
+        background = btnBg(ctx, base)
+        setPadding(dp(ctx, padH), dp(ctx, padV), dp(ctx, padH), dp(ctx, padV))
+        setOnClickListener { onClick() }
+    }
+
     fun sidebarButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        Button(ctx).apply {
-            text = label
-            textSize = 14f
-            setTextColor(COL_TEXT)
-            background = ColorDrawable(COL_BTN)
+        styled(ctx, label, 14f, COL_TEXT, COL_BTN, 8, 10, onClick).apply {
             gravity = Gravity.CENTER
-            setPadding(dp(ctx, 8), dp(ctx, 10), dp(ctx, 8), dp(ctx, 10))
             minHeight = dp(ctx, 42)
-            setOnClickListener { onClick() }
         }
 
     fun flatButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        Button(ctx).apply {
-            text = label
-            textSize = 12f
-            setTextColor(COL_TEXT)
-            background = ColorDrawable(COL_BTN)
-            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
-            setOnClickListener { onClick() }
-        }
+        styled(ctx, label, 12f, COL_TEXT, COL_BTN, 8, 6, onClick)
 
     /** Кнопка с акцентом (сохранить, применить). */
     fun accentButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        Button(ctx).apply {
-            text = label
-            textSize = 12f
-            setTextColor(COL_TEXT)
-            background = ColorDrawable(COL_BTN_SELECTED)
-            setPadding(dp(ctx, 10), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6))
-            setOnClickListener { onClick() }
-        }
+        styled(ctx, label, 12f, COL_TEXT, COL_BTN_SELECTED, 10, 6, onClick)
 
     /** Опасное действие (удалить, прервать). */
     fun dangerButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        Button(ctx).apply {
-            text = label
-            textSize = 12f
-            setTextColor(COL_DANGER_TEXT)
-            background = ColorDrawable(COL_BTN_DANGER)
-            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
-            setOnClickListener { onClick() }
-        }
+        styled(ctx, label, 12f, COL_DANGER_TEXT, COL_BTN_DANGER, 8, 6, onClick)
 
     fun iconButton(ctx: Context, glyph: String, onClick: () -> Unit): TextView {
         val size = dp(ctx, 28)
@@ -141,22 +137,14 @@ object PanelUi {
             textSize = 14f
             gravity = Gravity.CENTER
             setTextColor(COL_TEXT)
-            background = ColorDrawable(COL_BTN)
-            // фиксированный квадрат — без «прыгающей» высоты от глифа
+            background = btnBg(ctx, COL_BTN, 5f)
             minWidth = size
             minHeight = size
-            width = size   // если API позволяет; иначе только через LayoutParams
+            width = size
             height = size
             setPadding(0, 0, 0, 0)
+            isClickable = true
             setOnClickListener { onClick() }
-        }
-    }
-
-    fun iconLp(ctx: Context, marginStartDp: Int = 0): LinearLayout.LayoutParams {
-        val s = dp(ctx, 28)
-        return LinearLayout.LayoutParams(s, s).apply {
-            if (marginStartDp != 0) leftMargin = dp(ctx, marginStartDp)
-            gravity = Gravity.CENTER_VERTICAL
         }
     }
 
@@ -232,7 +220,7 @@ object PanelUi {
     fun card(ctx: Context): LinearLayout =
         LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = ColorDrawable(COL_CARD)
+            background = UiStyle.rounded(ctx, COL_CARD, 8f)
             setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
         }
 
@@ -285,7 +273,7 @@ object PanelUi {
     ): LinearLayout {
         val row = horizontalRow(ctx).apply {
             setPadding(dp(ctx, 6), dp(ctx, 6), dp(ctx, 6), dp(ctx, 6))
-            background = ColorDrawable(COL_BTN)
+            background = btnBg(ctx, COL_BTN, 4f)
             if (onClick != null) {
                 isClickable = true
                 setOnClickListener { onClick() }
