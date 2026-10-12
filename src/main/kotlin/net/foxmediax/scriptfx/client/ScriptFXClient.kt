@@ -22,7 +22,10 @@ import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.foxmediax.scriptfx.npc.NpcEntities
 import net.foxmediax.scriptfx.npc.NpcInteractClient
 import net.minecraft.server.permissions.Permissions
-
+import net.foxmediax.scriptfx.client.particles.ParticleRuntime
+import net.foxmediax.scriptfx.client.particles.ParticleWorldRenderer
+import net.foxmediax.scriptfx.network.ParticlePayload
+import net.foxmediax.scriptfx.particles.ParticleRegistry
 object ScriptFXClient : ClientModInitializer {
 
     private val REQUIRED_PERMISSION =
@@ -33,6 +36,8 @@ object ScriptFXClient : ClientModInitializer {
         ScriptFXKeybinds
 
         ScriptFXConfig.load()
+        ParticleRegistry.reload()
+        ParticleWorldRenderer.init()
 
         ClientPlayNetworking.registerGlobalReceiver(
             CameraPayload.TYPE
@@ -113,6 +118,7 @@ object ScriptFXClient : ClientModInitializer {
             CutsceneClient.clear()
             NpcPreviewHelper.clear()
             QuestClient.clear()
+            ParticleRuntime.clear()
         }
 
         /*
@@ -147,6 +153,9 @@ object ScriptFXClient : ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register {
                 client ->
 
+            val dt = 1f / 20f  // или из timer, если доступен
+            ParticleRuntime.tick(dt)
+
             NpcInteractClient.tick()
             NpcPreviewHelper.clientTick()
             NpcDialogClient.tick()
@@ -177,6 +186,8 @@ object ScriptFXClient : ClientModInitializer {
                     MuiScreens.openQuestJournal()
                 }
             }
+
+            ParticleRuntime.tick(1f / 20f)
         }
 
         CutsceneClient.init()
@@ -210,5 +221,12 @@ object ScriptFXClient : ClientModInitializer {
             ScriptFX.id("quest_toast"),
             HudElement { graphics, _ -> QuestClient.renderToast(graphics) }
         )
+
+        ParticleRegistry.reload()
+        ParticleWorldRenderer.init()
+
+        ClientPlayNetworking.registerGlobalReceiver(ParticlePayload.TYPE) { payload, _ ->
+            ParticleRuntime.handlePayload(payload)
+        }
     }
 }
