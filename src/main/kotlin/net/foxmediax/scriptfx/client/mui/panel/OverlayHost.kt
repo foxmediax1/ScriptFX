@@ -9,6 +9,7 @@ import icyllis.modernui.widget.EditText
 import icyllis.modernui.widget.FrameLayout
 import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.TextView
+import net.foxmediax.scriptfx.client.NpcPreviewHelper
 import net.foxmediax.scriptfx.client.mui.panel.PanelUi.MATCH
 import net.foxmediax.scriptfx.client.mui.panel.PanelUi.WRAP
 import net.foxmediax.scriptfx.client.mui.panel.PanelUi.dp
@@ -26,7 +27,12 @@ class OverlayHost(private val ctx: Context, private val layer: FrameLayout) {
     @Volatile var isOpen = false
         private set
 
-    private fun push(box: View, onCancel: (() -> Unit)? = null, widthDp: Int = 300, maxHeightDp: Int = 0) {
+    private fun push(
+        box: View,
+        onCancel: (() -> Unit)? = null,
+        widthDp: Int = 300,
+        maxHeightDp: Int = 0
+    ) {
         val scrim = FrameLayout(ctx).apply {
             background = ColorDrawable(0x99000000.toInt())
             isClickable = true
@@ -50,6 +56,8 @@ class OverlayHost(private val ctx: Context, private val layer: FrameLayout) {
         layer.addView(scrim, FrameLayout.LayoutParams(MATCH, MATCH))
         stack.add(Entry(scrim, onCancel))
         isOpen = true
+        // 3D-превью рисуется в Screen afterExtract поверх всего UI — глушим, пока открыт оверлей
+        NpcPreviewHelper.suppressRender = true
     }
 
     /** cancelled = true вызывает onCancel окна (Esc или клик мимо). */
@@ -57,11 +65,13 @@ class OverlayHost(private val ctx: Context, private val layer: FrameLayout) {
         val e = stack.removeLastOrNull() ?: return
         layer.removeView(e.view)
         isOpen = stack.isNotEmpty()
+        NpcPreviewHelper.suppressRender = isOpen
         if (cancelled) e.onCancel?.invoke()
     }
 
     fun clear() {
         while (stack.isNotEmpty()) dismissTop(false)
+        NpcPreviewHelper.suppressRender = false
     }
 
     private fun box(title: String, titleColor: Int): LinearLayout = LinearLayout(ctx).apply {
@@ -69,7 +79,11 @@ class OverlayHost(private val ctx: Context, private val layer: FrameLayout) {
         setPadding(dp(ctx, 12), dp(ctx, 10), dp(ctx, 12), dp(ctx, 12))
         background = ColorDrawable(0xFF1E1E1E.toInt())
         addView(
-            TextView(ctx).apply { text = title; textSize = 14f; setTextColor(titleColor) },
+            TextView(ctx).apply {
+                text = title
+                textSize = 14f
+                setTextColor(titleColor)
+            },
             lp(MATCH, WRAP)
         )
     }
@@ -94,12 +108,20 @@ class OverlayHost(private val ctx: Context, private val layer: FrameLayout) {
         b.addView(text(message), lp(MATCH, WRAP))
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         row.addView(
-            PanelUi.flatButton(ctx, yes) { dismissTop(false); onYes() },
+            PanelUi.flatButton(ctx, yes) {
+                dismissTop(false)
+                onYes()
+            },
             LinearLayout.LayoutParams(0, WRAP, 1f)
         )
         row.addView(
-            PanelUi.flatButton(ctx, no) { dismissTop(false); onNo() },
-            LinearLayout.LayoutParams(0, WRAP, 1f).apply { leftMargin = dp(ctx, 8) }
+            PanelUi.flatButton(ctx, no) {
+                dismissTop(false)
+                onNo()
+            },
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+                leftMargin = dp(ctx, 8)
+            }
         )
         b.addView(row, lp(MATCH, WRAP))
         push(b, onCancel)
@@ -121,15 +143,31 @@ class OverlayHost(private val ctx: Context, private val layer: FrameLayout) {
         edit.setOnKeyListener { _, keyCode, event ->
             if (event.action == KeyEvent.ACTION_DOWN &&
                 (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER)
-            ) { ok(); true } else false
+            ) {
+                ok()
+                true
+            } else {
+                false
+            }
         }
-        b.addView(edit, lp(MATCH, WRAP).apply { topMargin = dp(ctx, 6); bottomMargin = dp(ctx, 10) })
+        b.addView(
+            edit,
+            lp(MATCH, WRAP).apply {
+                topMargin = dp(ctx, 6)
+                bottomMargin = dp(ctx, 10)
+            }
+        )
 
         val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        row.addView(PanelUi.flatButton(ctx, "OK") { ok() }, LinearLayout.LayoutParams(0, WRAP, 1f))
+        row.addView(
+            PanelUi.flatButton(ctx, "OK") { ok() },
+            LinearLayout.LayoutParams(0, WRAP, 1f)
+        )
         row.addView(
             PanelUi.flatButton(ctx, "Отмена") { dismissTop() },
-            LinearLayout.LayoutParams(0, WRAP, 1f).apply { leftMargin = dp(ctx, 8) }
+            LinearLayout.LayoutParams(0, WRAP, 1f).apply {
+                leftMargin = dp(ctx, 8)
+            }
         )
         b.addView(row, lp(MATCH, WRAP))
         push(b)
@@ -151,10 +189,11 @@ class OverlayHost(private val ctx: Context, private val layer: FrameLayout) {
                     gravity = Gravity.START or Gravity.CENTER_VERTICAL
                     setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
                 },
-                lp(MATCH, WRAP).apply { topMargin = dp(ctx, 4) }
+                lp(MATCH, WRAP).apply {
+                    topMargin = dp(ctx, 4)
+                }
             )
         }
-        // шире + ограничение высоты + скролл
         push(b, widthDp = 420, maxHeightDp = 360)
     }
 }
