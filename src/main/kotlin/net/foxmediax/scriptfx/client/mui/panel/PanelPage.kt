@@ -2,6 +2,7 @@ package net.foxmediax.scriptfx.client.mui.panel
 
 import icyllis.modernui.core.Context
 import icyllis.modernui.graphics.drawable.ColorDrawable
+import icyllis.modernui.util.Log.d
 import icyllis.modernui.view.Gravity
 import icyllis.modernui.view.View
 import icyllis.modernui.widget.FrameLayout
@@ -15,9 +16,9 @@ import net.foxmediax.scriptfx.npc.NpcDefinition
 import net.foxmediax.scriptfx.npc.NpcRegistry
 import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.client.Minecraft
-import icyllis.modernui.widget.EditText
 import net.foxmediax.scriptfx.client.NpcPreviewHelper
 import net.foxmediax.scriptfx.client.mui.UiStyle
+import net.foxmediax.scriptfx.particles.ParticleRegistry
 
 interface PanelHost {
     fun navigate(section: PanelSection?)
@@ -636,17 +637,6 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
     private lateinit var detailBox: LinearLayout
     private lateinit var previewView: NpcPreviewView
 
-    // поля левой формы (создание / быстрый ввод)
-    private lateinit var nameEdit: EditText
-    private lateinit var modelEdit: EditText
-    private lateinit var posX: EditText
-    private lateinit var posY: EditText
-    private lateinit var posZ: EditText
-    private lateinit var rotX: EditText
-    private lateinit var rotY: EditText
-    private lateinit var rotZ: EditText
-    private lateinit var commandEdit: EditText
-
     override fun createView(ctx: Context): View {
         this.ctx = ctx
         NpcRegistry.reload()
@@ -708,7 +698,8 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
 
         // === ЦЕНТР: превью ===
         val previewWrap = FrameLayout(ctx).apply {
-            background = UiStyle.rounded(ctx, 0xFF0C0C10.toInt(), 8f, 0xFF2A2A34.toInt(), 1)
+            // серый, чтобы чёрные части скина не сливались
+            background = UiStyle.rounded(ctx, 0xFF3A3A42.toInt(), 8f, 0xFF55555E.toInt(), 1)
             setPadding(PanelUi.dp(ctx, 4), PanelUi.dp(ctx, 4), PanelUi.dp(ctx, 4), PanelUi.dp(ctx, 4))
         }
         previewView = NpcPreviewView(ctx)
@@ -752,88 +743,14 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
     private fun buildLeftForm(ctx: Context, box: LinearLayout) {
         box.addView(
             TextView(ctx).apply {
-                text = "NPC-редактор"
-                textSize = 16f
+                text = "Проекты и список NPC"
+                textSize = 15f
                 setTextColor(PanelUi.COL_TEXT)
                 setPadding(0, 0, 0, PanelUi.dp(ctx, 10))
             },
             PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
         )
-
-        box.addView(fieldLabel(ctx, "Имя NPC"), PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-        nameEdit = fieldEdit(ctx, "")
-        box.addView(nameEdit, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-
-        box.addView(fieldLabel(ctx, "Модель"), PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-        modelEdit = fieldEdit(ctx, "scriptfx:female_models")
-        box.addView(modelEdit, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-
-        box.addView(fieldLabel(ctx, "Позиция (X, Y, Z)"), PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-        val posRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        posX = fieldEdit(ctx, "0.0"); posY = fieldEdit(ctx, "0.0"); posZ = fieldEdit(ctx, "0.0")
-        posRow.addView(posX, LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f))
-        posRow.addView(posY, LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f).apply {
-            leftMargin = PanelUi.dp(ctx, 4)
-        })
-        posRow.addView(posZ, LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f).apply {
-            leftMargin = PanelUi.dp(ctx, 4)
-        })
-        box.addView(posRow, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-
-        box.addView(fieldLabel(ctx, "Поворот (X, Y, Z)"), PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-        val rotRow = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        rotX = fieldEdit(ctx, "0.0"); rotY = fieldEdit(ctx, "0.0"); rotZ = fieldEdit(ctx, "0.0")
-        rotRow.addView(rotX, LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f))
-        rotRow.addView(rotY, LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f).apply {
-            leftMargin = PanelUi.dp(ctx, 4)
-        })
-        rotRow.addView(rotZ, LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f).apply {
-            leftMargin = PanelUi.dp(ctx, 4)
-        })
-        box.addView(rotRow, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-
-        box.addView(fieldLabel(ctx, "Команда / скрипт"), PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-        commandEdit = fieldEdit(ctx, "")
-        box.addView(commandEdit, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-
-        box.addView(
-            PanelUi.accentButton(ctx, "👤  Добавить NPC") { addNpcFromForm() },
-            LinearLayout.LayoutParams(PanelUi.MATCH, PanelUi.WRAP).apply {
-                topMargin = PanelUi.dp(ctx, 14)
-            }
-        )
-
-        box.addView(
-            TextView(ctx).apply {
-                text = "Проекты и список NPC"
-                textSize = 12f
-                setTextColor(PanelUi.COL_MUTED)
-                setPadding(0, PanelUi.dp(ctx, 14), 0, PanelUi.dp(ctx, 6))
-            },
-            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
-        )
-        // список проектов/npc дописывается в refresh() ниже leftForm
-    }
-
-    private fun fieldLabel(ctx: Context, text: String) = TextView(ctx).apply {
-        this.text = text
-        textSize = 12f
-        setTextColor(PanelUi.COL_MUTED)
-        setPadding(0, PanelUi.dp(ctx, 8), 0, PanelUi.dp(ctx, 3))
-    }
-
-    private fun fieldEdit(ctx: Context, initial: String) = EditText(ctx).apply {
-        setSingleLine(true)
-        textSize = 13f
-        setTextColor(PanelUi.COL_TEXT)
-        setText(initial)
-        setPadding(PanelUi.dp(ctx, 8), PanelUi.dp(ctx, 7), PanelUi.dp(ctx, 8), PanelUi.dp(ctx, 7))
-        background = UiStyle.rounded(ctx, 0xFF0C0C12.toInt(), 6f, 0xFF2A2A34.toInt(), 1)
-        minimumHeight = PanelUi.dp(ctx, 34)
+        // listBox добавляется в ensureListBox() / refresh()
     }
 
     // ------------------------------------------------------------------
@@ -854,21 +771,22 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
                 "/scriptfx/projects/*/npc"
         }
 
-        // убрать старый список под формой (всё после кнопки — пересоберём хвост)
-        // проще: хранить listBox отдельно
         ensureListBox()
         listBox.removeAllViews()
 
         when {
             project == null -> {
-                val projects = NpcRegistry.listProjects() // или свой API списка проектов
+                val projects = NpcRegistry.listProjects()
                 if (projects.isEmpty()) {
-                    listBox.addView(hint("Нет проектов"), PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+                    listBox.addView(
+                        hint("Нет проектов"),
+                        PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+                    )
                 } else {
-                    for (name in projects) {
+                    for (projectName in projects) {
                         listBox.addView(
-                            listChip(name) {
-                                selectedProject = name
+                            listChip(projectName) {
+                                selectedProject = projectName
                                 selectedDef = null
                                 refresh()
                             },
@@ -879,6 +797,7 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
                     }
                 }
             }
+
             def == null -> {
                 listBox.addView(
                     listChip("← Проекты") {
@@ -890,13 +809,15 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
                 )
                 val defs = NpcRegistry.listNpcs(project)
                 if (defs.isEmpty()) {
-                    listBox.addView(hint("Нет .fxnpc — «Создать…»"), PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+                    listBox.addView(
+                        hint("Нет .fxnpc — «Создать…»"),
+                        PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+                    )
                 } else {
-                    for (d in defs) {
+                    for (npcDef in defs) {
                         listBox.addView(
-                            listChip(d.id) {
-                                selectedDef = d
-                                fillFormFrom(d)
+                            listChip(npcDef.id) {
+                                selectedDef = npcDef
                                 refresh()
                             },
                             LinearLayout.LayoutParams(PanelUi.MATCH, PanelUi.WRAP).apply {
@@ -906,6 +827,7 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
                     }
                 }
             }
+
             else -> {
                 listBox.addView(
                     listChip("← Список NPC") {
@@ -917,7 +839,6 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
             }
         }
 
-        // правая панель
         detailBox.removeAllViews()
         if (def != null && project != null) {
             buildDetailPanel(project, def)
@@ -942,12 +863,6 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         leftForm.addView(listBox, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
     }
 
-    private fun fillFormFrom(def: NpcDefinition) {
-        nameEdit.setText(def.id)
-        modelEdit.setText(def.model)
-        commandEdit.setText(def.onInteractScript)
-    }
-
     private fun buildDetailPanel(project: String, def: NpcDefinition) {
         detailBox.addView(
             TextView(ctx).apply {
@@ -959,35 +874,145 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
             PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
         )
 
-        propReadonly("id", def.id)
-        propEdit("displayName", def.displayName) { v ->
+        // --- идентичность ---
+        sectionTitle("Основное")
+        propReadonly("ID NPC", def.id)
+        propEdit("Отображаемое имя", def.displayName) { v ->
             save(project, def.copy(displayName = v.ifBlank { def.id }))
         }
-        propEdit("defaultMode", def.defaultMode) { v ->
-            save(project, def.copy(defaultMode = v.ifBlank { "interact" }))
+
+        // --- GeckoLib ---
+        sectionTitle("Модель / анимация")
+        propEdit("Модель", def.model) { v ->
+            save(project, def.copy(model = v.trim()))
         }
-        propEdit("defaultAnim", def.defaultAnim) { v ->
+        propEdit("Текстура", def.texture) { v ->
+            save(project, def.copy(texture = v.trim()))
+        }
+        propEdit("Анимация", def.animation) { v ->
+            save(project, def.copy(animation = v.trim()))
+        }
+        propEdit("Стандартная анимация", def.defaultAnim) { v ->
             save(project, def.copy(defaultAnim = v.ifBlank { "idle" }))
         }
-        propEdit("model", def.model) { v ->
-            save(project, def.copy(model = v))
+
+        // --- поведение ---
+        sectionTitle("Поведение")
+        propEdit("Стандартный режим", def.defaultMode) { v ->
+            save(project, def.copy(defaultMode = v.ifBlank { "interact" }))
         }
-        propEdit("texture", def.texture) { v ->
-            save(project, def.copy(texture = v))
+        // быстрый выбор режима
+        val modes = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        for (m in listOf("Диалог", "Интеракт", "Торговля")) {
+            modes.addView(
+                PanelUi.flatButton(ctx, m) {
+                    save(project, def.copy(defaultMode = m))
+                },
+                PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP).apply {
+                    rightMargin = PanelUi.dp(ctx, 6)
+                }
+            )
         }
-        propEdit("animation", def.animation) { v ->
-            save(project, def.copy(animation = v))
+        detailBox.addView(
+            modes,
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP).apply {
+                bottomMargin = PanelUi.dp(ctx, 6)
+            }
+        )
+
+        propEdit("Скрипт после интеракции с NPC", def.onInteractScript) { v ->
+            save(project, def.copy(onInteractScript = v.trim()))
         }
-        propEdit("maxHealth", def.maxHealth.toString()) { v ->
+        propEdit("Кнопка-интеракции с NPC", def.interactKey) { v ->
+            save(project, def.copy(interactKey = v.ifBlank { "X" }))
+        }
+
+        // --- характеристики ---
+        sectionTitle("Характеристики")
+        propEdit("Здоровье", def.maxHealth.toString()) { v ->
             val h = v.toFloatOrNull() ?: def.maxHealth
             save(project, def.copy(maxHealth = h.coerceIn(1f, 1000f)))
         }
-        propEdit("onInteractScript", def.onInteractScript) { v ->
-            save(project, def.copy(onInteractScript = v.trim()))
+        propEdit("Скорость", def.speed.toString()) { v ->
+            val s = v.toFloatOrNull() ?: def.speed
+            save(project, def.copy(speed = s.coerceIn(0.01f, 2f)))
         }
-        propEdit("interactKey", def.interactKey) { v ->
-            save(project, def.copy(interactKey = v.ifBlank { "X" }))
+
+        // --- флаги ---
+        sectionTitle("Флаги")
+        propToggle("Смотреть на игрока", def.lookAtPlayer) { on ->
+            save(project, def.copy(lookAtPlayer = on))
         }
+        propToggle("Гравитация", def.gravity) { on ->
+            save(project, def.copy(gravity = on))
+        }
+        propToggle("Неуязвимость", def.invulnerable) { on ->
+            save(project, def.copy(invulnerable = on))
+        }
+        propToggle("Коллизия", def.collide) { on ->
+            save(project, def.copy(collide = on))
+        }
+        propToggle("Имя над головой", def.nametag) { on ->
+            save(project, def.copy(nametag = on))
+        }
+        propToggle("Издавание звука", def.silent) { on ->
+            save(project, def.copy(silent = on))
+        }
+
+        // --- удаление ---
+        detailBox.addView(
+            PanelUi.flatButton(ctx, "Удалить NPC") {
+                overlays.confirm(
+                    message = "Удалить «${def.id}» безвозвратно?",
+                    yes = "Удалить",
+                    no = "Отмена",
+                    onYes = {
+                        NpcRegistry.delete(project, def.id)
+                        selectedDef = null
+                        NpcRegistry.reload()
+                        refresh()
+                    }
+                )
+            },
+            PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP).apply {
+                topMargin = PanelUi.dp(ctx, 16)
+            }
+        )
+    }
+
+    private fun sectionTitle(title: String) {
+        detailBox.addView(
+            TextView(ctx).apply {
+                text = title
+                textSize = 12f
+                setTextColor(PanelUi.COL_ACCENT)
+                setPadding(0, PanelUi.dp(ctx, 12), 0, PanelUi.dp(ctx, 4))
+            },
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+        )
+    }
+
+    private fun propToggle(key: String, value: Boolean, onChange: (Boolean) -> Unit) {
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, PanelUi.dp(ctx, 5), 0, PanelUi.dp(ctx, 5))
+        }
+        row.addView(
+            TextView(ctx).apply {
+                text = key
+                textSize = 12f
+                setTextColor(PanelUi.COL_MUTED)
+            },
+            LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f)
+        )
+        row.addView(
+            PanelUi.flatButton(ctx, if (value) "ON" else "OFF") {
+                onChange(!value)
+            },
+            PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP)
+        )
+        detailBox.addView(row, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
     }
 
     /** Строка свойства: ключ | значение | ✏️ */
@@ -1058,28 +1083,6 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         setPadding(0, PanelUi.dp(ctx, 8), 0, 0)
     }
 
-    private fun addNpcFromForm() {
-        val project = selectedProject
-        if (project == null) {
-            overlays.actions("Сначала выберите проект", listOf("ОК" to {}))
-            return
-        }
-        val id = nameEdit.text?.toString()?.trim().orEmpty()
-        if (id.isEmpty()) {
-            overlays.actions("Укажите имя NPC", listOf("ОК" to {}))
-            return
-        }
-        val def = NpcDefinition(
-            id = id,
-            displayName = id,
-            model = modelEdit.text?.toString()?.trim().orEmpty().ifBlank { "scriptfx:female_models" },
-            onInteractScript = commandEdit.text?.toString()?.trim().orEmpty()
-        )
-        save(project, def)
-        selectedDef = def
-        refresh()
-    }
-
     private fun openCreate() {
         // твой существующий openCreate() — оставь как был
         val project = selectedProject
@@ -1093,7 +1096,7 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
             val def = NpcDefinition(id = clean, displayName = clean)
             save(project, def)
             selectedDef = def
-            fillFormFrom(def)
+            // fillFormFrom(def) — убрать
             refresh()
         }
     }
@@ -1105,5 +1108,151 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         NpcRegistry.reload()
         selectedDef = NpcRegistry.get(project, def.id) ?: def
         refresh()
+    }
+}
+
+class ParticlesPage(host: PanelHost) : PanelPage(host) {
+
+    override val breadcrumb: String get() = "Частицы"
+
+    private lateinit var ctx: Context
+    private lateinit var listBox: LinearLayout
+    private lateinit var overlays: OverlayHost
+
+    override fun createView(ctx: Context): View {
+        this.ctx = ctx
+        ParticleRegistry.reload()
+
+        val root = FrameLayout(ctx).apply {
+            background = ColorDrawable(PanelUi.COL_CONTENT)
+        }
+        val overlayLayer = FrameLayout(ctx)
+        overlays = OverlayHost(ctx, overlayLayer)
+
+        val page = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(PanelUi.dp(ctx, 12), PanelUi.dp(ctx, 10), PanelUi.dp(ctx, 12), PanelUi.dp(ctx, 10))
+        }
+
+        val top = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        top.addView(
+            TextView(ctx).apply {
+                text = "Эффекты Snowstorm"
+                textSize = 16f
+                setTextColor(PanelUi.COL_TEXT)
+            },
+            LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f)
+        )
+        top.addView(
+            PanelUi.flatButton(ctx, "Обновить") {
+                ParticleRegistry.reload()
+                refreshList()
+            },
+            PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP)
+        )
+        top.addView(
+            PanelUi.flatButton(ctx, "Стоп все") {
+                // локально на клиенте
+                net.foxmediax.scriptfx.client.particles.ParticleRuntime.handlePayload(
+                    net.foxmediax.scriptfx.network.ParticlePayload(
+                        net.foxmediax.scriptfx.network.ParticlePayload.STOP_ALL,
+                        "", "", 0.0, 0.0, 0.0
+                    )
+                )
+            },
+            PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP).apply {
+                leftMargin = PanelUi.dp(ctx, 6)
+            }
+        )
+        page.addView(top, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+
+        page.addView(
+            TextView(ctx).apply {
+                text = "Файлы: config/scriptfx/projects/*/particles/*.particle.json"
+                textSize = 11f
+                setTextColor(PanelUi.COL_MUTED)
+                setPadding(0, PanelUi.dp(ctx, 6), 0, PanelUi.dp(ctx, 8))
+            },
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+        )
+
+        val scroll = ScrollView(ctx)
+        listBox = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        scroll.addView(listBox, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+        page.addView(scroll, LinearLayout.LayoutParams(PanelUi.MATCH, 0, 1f))
+
+        root.addView(page, FrameLayout.LayoutParams(PanelUi.MATCH, PanelUi.MATCH))
+        root.addView(overlayLayer, FrameLayout.LayoutParams(PanelUi.MATCH, PanelUi.MATCH))
+
+        refreshList()
+        return root
+    }
+
+    private fun refreshList() {
+        listBox.removeAllViews()
+        val effects = ParticleRegistry.list()
+        if (effects.isEmpty()) {
+            listBox.addView(
+                TextView(ctx).apply {
+                    text = "Нет эффектов. Положи .particle.json в projects/*/particles/"
+                    textSize = 13f
+                    setTextColor(PanelUi.COL_MUTED)
+                },
+                PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+            )
+            return
+        }
+        for (fx in effects) {
+            val row = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, PanelUi.dp(ctx, 4), 0, PanelUi.dp(ctx, 4))
+            }
+            row.addView(
+                TextView(ctx).apply {
+                    text = fx.identifier
+                    textSize = 13f
+                    setTextColor(PanelUi.COL_TEXT)
+                },
+                LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f)
+            )
+            row.addView(
+                PanelUi.flatButton(ctx, "Play") {
+                    playAtPlayer(fx.identifier)
+                },
+                PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP)
+            )
+            row.addView(
+                PanelUi.flatButton(ctx, "Stop") {
+                    net.foxmediax.scriptfx.client.particles.ParticleRuntime.handlePayload(
+                        net.foxmediax.scriptfx.network.ParticlePayload(
+                            net.foxmediax.scriptfx.network.ParticlePayload.STOP,
+                            fx.identifier, "", 0.0, 0.0, 0.0
+                        )
+                    )
+                },
+                PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP).apply {
+                    leftMargin = PanelUi.dp(ctx, 4)
+                }
+            )
+            listBox.addView(row, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+        }
+    }
+
+    private fun playAtPlayer(effectId: String) {
+        val p = net.minecraft.client.Minecraft.getInstance().player ?: return
+        net.foxmediax.scriptfx.client.particles.ParticleRuntime.handlePayload(
+            net.foxmediax.scriptfx.network.ParticlePayload(
+                net.foxmediax.scriptfx.network.ParticlePayload.PLAY,
+                effectId,
+                "",
+                p.x,
+                p.y + 1.0,
+                p.z
+            )
+        )
     }
 }
