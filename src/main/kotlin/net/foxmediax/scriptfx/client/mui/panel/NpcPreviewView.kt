@@ -67,7 +67,7 @@ class NpcPreviewView(
 
         background =
             ColorDrawable(
-                0xFF0A0A0C.toInt()
+                0xFF3A3A42.toInt()
             )
 
         val column =
