@@ -14,6 +14,8 @@ object CommandRegistry {
 
     init { registerDefaults()
         NpcCommands.install { name, handler -> register(name, handler) }
+        ParticleCommands.install { name, handler -> register(name, handler) }
+        QuestCommands.install { name, handler -> register(name, handler) }
     }
 
     fun register(name: String, handler: CommandHandler) {
@@ -28,12 +30,6 @@ object CommandRegistry {
             return CommandResult.Continue
         }
         return handler(context, command.args)
-    }
-
-    init {
-        registerDefaults()
-        NpcCommands.install { name, handler -> register(name, handler) }
-        QuestCommands.install { name, handler -> register(name, handler) }
     }
 
     private fun registerDefaults() {

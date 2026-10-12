@@ -176,10 +176,11 @@ class ControlPanelFragment : Fragment() {
     private fun createPage(section: PanelSection?): PanelPage = when (section) {
         null -> HomePage(host)
         PanelSection.PROJECTS -> ProjectsPage(host, fileBrowser)
-        PanelSection.CUTSCENES -> CutscenesPage(host)
         PanelSection.NPC_EDITOR -> NpcEditorPage(host)
+        PanelSection.PARTICLES -> ParticlesPage(host)
         PanelSection.LOGS -> LogsPage(host)
-        else -> PlaceholderPage(host, section.displayName)
+        PanelSection.SETTINGS -> PlaceholderPage(host, "Настройки") // если открывается иначе — как у тебя сейчас
+        else -> HomePage(host)
     }
 
     private fun refreshSidebar() {
@@ -325,8 +326,8 @@ class ControlPanelFragment : Fragment() {
         }
         val order = listOf(
             PanelSection.PROJECTS,
-            PanelSection.CUTSCENES,
             PanelSection.NPC_EDITOR,
+            PanelSection.PARTICLES,
             PanelSection.LOGS,
             PanelSection.SETTINGS
         )
