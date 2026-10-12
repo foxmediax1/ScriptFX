@@ -6,6 +6,7 @@ import kotlin.random.Random
 import net.minecraft.client.Minecraft
 import net.foxmediax.scriptfx.particles.molang.SimpleMolang
 import net.foxmediax.scriptfx.particles.ParticleRegistry
+import net.foxmediax.scriptfx.particles.Flipbook
 
 private val rng = kotlin.random.Random.Default
 
@@ -31,21 +32,11 @@ data class LiveParticle(
     val ax: Float = 0f,
     val ay: Float = 0f,
     val az: Float = 0f,
-    val flipbook: ParticleEffect.Flipbook? = null,
+    val flipbook: Flipbook? = null,
     val baseUvX: Float = 0f,
     val baseUvY: Float = 0f,
     val texW: Float = 128f,
     val texH: Float = 128f
-)
-
-data class Flipbook(
-    val sizeU: Float,
-    val sizeV: Float,
-    val stepU: Float,
-    val stepV: Float,
-    val maxFrame: Int,
-    val stretchToLifetime: Boolean = true,
-    val flipbook: Flipbook? = null
 )
 
 class ActiveEmitter(
@@ -194,16 +185,16 @@ object ParticleRuntime {
             while (pit.hasNext()) {
                 val p = pit.next()
                 p.age += dtSec
-                p.flipbook?.let { fb: ParticleEffect.Flipbook ->
+                p.flipbook?.let { fb ->
                     val t = if (fb.stretchToLifetime && p.maxAge > 0f) {
                         (p.age / p.maxAge).coerceIn(0f, 0.999f)
                     } else {
                         p.age
                     }
                     val frame = if (fb.stretchToLifetime) {
-                        (t * fb.maxFrame).toInt().coerceIn(0, fb.maxFrame - 1)
+                        (t * fb.maxFrame).toInt().coerceIn(0, (fb.maxFrame - 1).coerceAtLeast(0))
                     } else {
-                        (p.age * fb.maxFrame).toInt().coerceIn(0, fb.maxFrame - 1)
+                        (p.age * fb.maxFrame).toInt().coerceIn(0, (fb.maxFrame - 1).coerceAtLeast(0))
                     }
                     val u = p.baseUvX + fb.stepU * frame
                     val v = p.baseUvY + fb.stepV * frame
