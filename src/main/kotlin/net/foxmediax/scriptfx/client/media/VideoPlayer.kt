@@ -1,9 +1,11 @@
 package net.foxmediax.scriptfx.client.media
 
 import com.mojang.blaze3d.platform.NativeImage
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
 import net.foxmediax.scriptfx.media.MediaRegistry
 import net.foxmediax.scriptfx.media.Mp4Decoder
 import net.foxmediax.scriptfx.media.VideoMeta
+import net.foxmediax.scriptfx.network.MediaEndPayload
 import net.foxmediax.scriptfx.network.MediaPayload
 import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.client.Minecraft
@@ -52,7 +54,7 @@ object VideoPlayer {
         val key = "${meta.project}/${meta.id}"
         val frameIds = cache.getOrPut(key) { loadFrames(key, meta.frames) }
         if (frameIds.isEmpty()) {
-            ScriptFXLog.warn("VideoPlayer: failed to load textures for $key")
+            ScriptFXLog.warn("VideoPlayer: texture load failed for $key")
             return
         }
 
@@ -73,14 +75,16 @@ object VideoPlayer {
         meta.soundId?.let { sid ->
             MediaClient.handle(MediaPayload.soundPlay(sid, 1f, 1f, meta.loop))
         }
-        ScriptFXLog.info("VideoPlayer: play $key (${frameIds.size} frames)")
+        ScriptFXLog.info("VideoPlayer: play $key (${frameIds.size} frames, preview=${payload.preview})")
     }
 
     fun stop(id: String) {
         val k = id.trim()
         if (k.isEmpty()) return
-        if (sessions.isEmpty()) MediaClient.endVideoMute()
         sessions.removeAll { it.id == k || it.id == k.substringAfterLast('/') }
+        if (sessions.isEmpty()) {
+            MediaClient.endVideoMute()
+        }
     }
 
     fun stopAll() {
@@ -89,7 +93,7 @@ object VideoPlayer {
     }
 
     /**
-     * @param blit (textureId, x, y, width, height) — реализуй через свой GuiGraphics/DrawContext
+     * @param blit (texture, x, y, width, height) в GUI-пикселях
      */
     fun render(screenW: Int, screenH: Int, blit: (Identifier, Int, Int, Int, Int) -> Unit) {
         if (sessions.isEmpty()) return
@@ -104,9 +108,14 @@ object VideoPlayer {
                     s.startMs = now
                     idx = 0
                 } else {
+                    val endedId = s.id
+                    val wasPreview = s.preview
                     it.remove()
                     if (sessions.isEmpty()) {
                         MediaClient.endVideoMute()
+                    }
+                    if (!wasPreview) {
+                        notifyServerVideoEnded(endedId)
                     }
                     continue
                 }
@@ -119,7 +128,10 @@ object VideoPlayer {
             val fw: Int
             val fh: Int
             if (s.w <= 0f || s.h <= 0f) {
-                fx = 0; fy = 0; fw = screenW; fh = screenH
+                fx = 0
+                fy = 0
+                fw = screenW
+                fh = screenH
             } else {
                 fx = (s.x * screenW).toInt()
                 fy = (s.y * screenH).toInt()
@@ -130,10 +142,20 @@ object VideoPlayer {
         }
     }
 
+    private fun notifyServerVideoEnded(videoId: String) {
+        try {
+            if (ClientPlayNetworking.canSend(MediaEndPayload.TYPE)) {
+                ClientPlayNetworking.send(MediaEndPayload(videoId))
+            }
+        } catch (t: Throwable) {
+            ScriptFXLog.warn("VideoPlayer: media_end failed: ${t.message}")
+        }
+    }
+
     private fun loadFrames(cacheKey: String, files: List<java.io.File>): List<Identifier> {
         val mc = Minecraft.getInstance()
         val list = ArrayList<Identifier>()
-        val safe = cacheKey.replace(Regex("[^a-z0-9_/.-]"), "_")
+        val safe = cacheKey.lowercase().replace(Regex("[^a-z0-9_/.-]"), "_")
         files.forEachIndexed { i, file ->
             val texId = Identifier.fromNamespaceAndPath("scriptfx", "dyn_video/$safe/$i")
             try {
