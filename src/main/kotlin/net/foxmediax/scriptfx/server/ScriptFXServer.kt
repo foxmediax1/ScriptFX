@@ -23,12 +23,14 @@ import net.foxmediax.scriptfx.scriptengine.ScriptContext
 import net.foxmediax.scriptfx.scriptengine.CameraCommands
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.foxmediax.scriptfx.network.CutsceneInterruptPayload
+import net.foxmediax.scriptfx.network.MediaEndPayload
 import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
 import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
 import net.foxmediax.scriptfx.npc.NpcDialogWait
 import net.foxmediax.scriptfx.npc.NpcInteractWait
 import net.foxmediax.scriptfx.quest.QuestManager
 import net.foxmediax.scriptfx.scriptengine.CutsceneManager
+import net.foxmediax.scriptfx.scriptengine.MediaCommands
 
 object ScriptFXServer : ModInitializer {
 
@@ -114,6 +116,11 @@ object ScriptFXServer : ModInitializer {
             CutsceneManager.endFor(handler.player)
             TriggerManager.onPlayerLeave(handler.player.uuid)
             QuestManager.onLeave(handler.player.uuid)
+        }
+        ServerPlayNetworking.registerGlobalReceiver(MediaEndPayload.TYPE) { payload, context ->
+            val player = context.player()
+            // стоп на этом клиенте уже произошёл; шлём stop всем / себе + spectator
+            MediaCommands.onVideoEnded(player, payload.videoId)
         }
     }
 
