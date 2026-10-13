@@ -16,7 +16,6 @@ import icyllis.modernui.widget.EditText
 import icyllis.modernui.widget.FrameLayout
 import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
-import icyllis.modernui.widget.SeekBar
 import icyllis.modernui.widget.Switch
 import icyllis.modernui.widget.TextView
 import net.foxmediax.scriptfx.client.CenterMessageOverlay
@@ -168,28 +167,6 @@ class MuiSettingsFragment(
             lp(MATCH, WRAP)
         )
 
-        val seekLabel = TextView(ctx).apply {
-            text = "Макс. количество скриптов: ${ScriptFXConfig.maxScripts}"
-            textSize = 13f
-            setTextColor(0xFFEDEDED.toInt())
-            setPadding(0, dp(ctx, 8), 0, dp(ctx, 4))
-        }
-        val seek = SeekBar(ctx).apply {
-            max = 49
-            progress = (ScriptFXConfig.maxScripts - 1).coerceIn(0, 49)
-            minimumHeight = dp(ctx, 24)
-        }
-        seek.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(bar: SeekBar, progress: Int, fromUser: Boolean) {
-                ScriptFXConfig.maxScripts = progress + 1
-                seekLabel.text = "Макс. количество скриптов: ${progress + 1}"
-            }
-            override fun onStartTrackingTouch(bar: SeekBar) {}
-            override fun onStopTrackingTouch(bar: SeekBar) {}
-        })
-        list.addView(seekLabel, lp(MATCH, WRAP))
-        list.addView(seek, lp(MATCH, WRAP))
-
         val themeEdit = EditText(ctx).apply {
             setSingleLine(true)
             textSize = 13f
@@ -247,6 +224,71 @@ class MuiSettingsFragment(
             topMargin = dp(ctx, 8)
         })
 
+        // --- Медиа / FFmpeg ---
+        list.addView(sectionTitle(ctx, "Медиа (видео MP4)"), lp(MATCH, WRAP))
+
+        list.addView(
+            TextView(ctx).apply {
+                text = "Путь к ffmpeg.exe. Нужен для воспроизведения .mp4 из projects/*/video/. " +
+                        "Если пусто — ищется команда ffmpeg в PATH системы."
+                textSize = 11f
+                setTextColor(0xFF888888.toInt())
+                setPadding(0, 0, 0, dp(ctx, 6))
+            },
+            lp(MATCH, WRAP)
+        )
+
+        val ffmpegEdit = EditText(ctx).apply {
+            setText(ScriptFXConfig.ffmpegPath.orEmpty(), TextView.BufferType.EDITABLE)
+            setSingleLine(true)
+            textSize = 12f
+            setTextColor(0xFFEDEDED.toInt())
+            setHintTextColor(0xFF666666.toInt())
+            hint = "C:\\ffmpeg\\bin\\ffmpeg.exe"
+            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+            background = ColorDrawable(0xFF1A1A22.toInt())
+        }
+        ffmpegEdit.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable) {
+                val t = s.toString().trim()
+                ScriptFXConfig.ffmpegPath = t.ifEmpty { null }
+            }
+        })
+        escHandler(ffmpegEdit)
+        list.addView(ffmpegEdit, LinearLayout.LayoutParams(MATCH, WRAP).apply {
+            bottomMargin = dp(ctx, 6)
+        })
+
+        val ffmpegStatus = TextView(ctx).apply {
+            textSize = 11f
+            setTextColor(0xFFAAAAAA.toInt())
+            text = ffmpegStatusText()
+        }
+        list.addView(ffmpegStatus, lp(MATCH, WRAP))
+
+        val checkBtn = Button(ctx).apply {
+            text = "Проверить ffmpeg"
+            textSize = 12f
+            setPadding(dp(ctx, 10), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6))
+            background = UiStyle.buttonBg(
+                ctx, 0xFF101010.toInt(),
+                UiStyle.mix(0xFF101010.toInt(), 0xFFFFFFFF.toInt(), 0.10f),
+                UiStyle.mix(0xFF101010.toInt(), 0xFF000000.toInt(), 0.30f)
+            )
+            setOnClickListener {
+                // сохраняем путь и проверяем
+                ScriptFXConfig.ffmpegPath = ffmpegEdit.text?.toString()?.trim()?.ifEmpty { null }
+                net.foxmediax.scriptfx.media.Mp4Decoder.ffmpegPath = ScriptFXConfig.ffmpegPath
+                ffmpegStatus.text = ffmpegStatusText(runProbe = true)
+            }
+        }
+        list.addView(checkBtn, LinearLayout.LayoutParams(WRAP, WRAP).apply {
+            topMargin = dp(ctx, 6)
+            bottomMargin = dp(ctx, 8)
+        })
+
         val done = Button(ctx).apply {
             text = "Готово"
             textSize = 13f
@@ -263,6 +305,26 @@ class MuiSettingsFragment(
         })
 
         return page
+    }
+
+    private fun ffmpegStatusText(runProbe: Boolean = false): String {
+        val path = ScriptFXConfig.ffmpegPath?.trim().orEmpty()
+        val bin = if (path.isNotEmpty()) path else "ffmpeg (PATH)"
+        if (!runProbe) {
+            return if (path.isNotEmpty()) "Сейчас: $path" else "Сейчас: поиск в PATH системы"
+        }
+        return try {
+            val cmd = if (path.isNotEmpty()) path else "ffmpeg"
+            val p = ProcessBuilder(cmd, "-version")
+                .redirectErrorStream(true)
+                .start()
+            val first = p.inputStream.bufferedReader().readLine() ?: ""
+            val ok = p.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) && p.exitValue() == 0
+            if (ok) "OK: $first"
+            else "Не запустился: $bin (проверь путь или установку)"
+        } catch (e: Exception) {
+            "Ошибка: ${e.message}"
+        }
     }
 
     private fun colorRow(ctx: Context, label: String, target: ColorTarget): View {
@@ -454,6 +516,8 @@ class MuiSettingsFragment(
     }
 
     private fun closeScreen() {
+        ScriptFXConfig.save()
+        net.foxmediax.scriptfx.media.Mp4Decoder.ffmpegPath = ScriptFXConfig.ffmpegPath
         val mc = Minecraft.getInstance()
         val back = onBack
         mc.execute { if (back != null) back() else mc.setScreen(parent) }
