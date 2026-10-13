@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory
 import net.foxmediax.scriptfx.network.CutscenePayload
 import net.foxmediax.scriptfx.network.CutsceneInterruptPayload
 import net.foxmediax.scriptfx.config.ScriptFXConfig
+import net.foxmediax.scriptfx.network.MediaEndPayload
 import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
 import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
 import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
@@ -46,6 +47,7 @@ object ScriptFX : ModInitializer {
 
 		PayloadTypeRegistry.clientboundPlay().register(ParticlePayload.TYPE, ParticlePayload.CODEC)
 		PayloadTypeRegistry.clientboundPlay().register(MediaPayload.TYPE, MediaPayload.CODEC)
+		PayloadTypeRegistry.serverboundPlay().register(MediaEndPayload.TYPE, MediaEndPayload.CODEC)
 
 		// Регистрируем реальный (GeckoLib) тип NPC-сущности, используемый npc_spawn.
 		NpcEntities.register()
