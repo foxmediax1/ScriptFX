@@ -26,6 +26,9 @@ import net.foxmediax.scriptfx.client.particles.ParticleRuntime
 import net.foxmediax.scriptfx.client.particles.ParticleWorldRenderer
 import net.foxmediax.scriptfx.network.ParticlePayload
 import net.foxmediax.scriptfx.particles.ParticleRegistry
+import net.foxmediax.scriptfx.client.media.MediaClient
+import net.foxmediax.scriptfx.media.MediaRegistry
+import net.foxmediax.scriptfx.network.MediaPayload
 object ScriptFXClient : ClientModInitializer {
 
     private val REQUIRED_PERMISSION =
@@ -38,6 +41,7 @@ object ScriptFXClient : ClientModInitializer {
         ScriptFXConfig.load()
         ParticleRegistry.reload()
         ParticleWorldRenderer.init()
+        MediaRegistry.reload()
 
         ClientPlayNetworking.registerGlobalReceiver(
             CameraPayload.TYPE
@@ -119,6 +123,7 @@ object ScriptFXClient : ClientModInitializer {
             NpcPreviewHelper.clear()
             QuestClient.clear()
             ParticleRuntime.clear()
+            MediaClient.clear()
         }
 
         /*
@@ -227,6 +232,10 @@ object ScriptFXClient : ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(ParticlePayload.TYPE) { payload, _ ->
             ParticleRuntime.handlePayload(payload)
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(MediaPayload.TYPE) { payload, _ ->
+            MediaClient.handle(payload)
         }
     }
 }
