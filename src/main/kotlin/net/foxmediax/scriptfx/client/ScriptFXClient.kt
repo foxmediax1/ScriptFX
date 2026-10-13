@@ -29,6 +29,8 @@ import net.foxmediax.scriptfx.particles.ParticleRegistry
 import net.foxmediax.scriptfx.client.media.MediaClient
 import net.foxmediax.scriptfx.media.MediaRegistry
 import net.foxmediax.scriptfx.network.MediaPayload
+import net.minecraft.client.Minecraft
+
 object ScriptFXClient : ClientModInitializer {
 
     private val REQUIRED_PERMISSION =
@@ -237,5 +239,26 @@ object ScriptFXClient : ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(MediaPayload.TYPE) { payload, _ ->
             MediaClient.handle(payload)
         }
+
+        HudElementRegistry.addLast(
+            ScriptFX.id("scriptfx_video"),
+            HudElement { graphics, _ ->
+                val mc = Minecraft.getInstance()
+                val sw = mc.window.guiScaledWidth
+                val sh = mc.window.guiScaledHeight
+                net.foxmediax.scriptfx.client.media.VideoPlayer.render(sw, sh) { tex, x, y, w, h ->
+                    graphics.blit(
+                        net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,
+                        tex,
+                        x, y,
+                        0f, 0f,
+                        w, h,
+                        w, h,
+                        w, h,
+                        0xFFFFFFFF.toInt()
+                    )
+                }
+            }
+        )
     }
 }
