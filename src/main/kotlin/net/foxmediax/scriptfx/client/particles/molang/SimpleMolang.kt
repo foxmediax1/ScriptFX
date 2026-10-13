@@ -7,8 +7,13 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
- * Урезанный Molang для частиц (фаза 2).
- * Поддерживает: числа, + - * /, скобки, Math.*, variable.particle_random_1..4
+ * Урезанный Molang для частиц (Snowstorm subset).
+ *
+ * Поддержка:
+ * - числа, + - * /, скобки
+ * - variable.* / v.* (particle_age, particle_lifetime, particle_random_1..4, emitter_age, emitter_lifetime)
+ * - math.* : random, floor, ceil, abs, sin, cos, sqrt, min, max, clamp, lerp
+ * - тернарный оператор: condition ? a : b  (condition != 0 → a)
  */
 object SimpleMolang {
 
@@ -18,16 +23,28 @@ object SimpleMolang {
         val random3: Float = Random.nextFloat(),
         val random4: Float = Random.nextFloat(),
         val particleAge: Float = 0f,
-        val particleLifetime: Float = 1f
+        val particleLifetime: Float = 1f,
+        val emitterAge: Float = 0f,
+        val emitterLifetime: Float = 1f
     ) {
-        fun varValue(name: String): Float = when (name.lowercase()) {
-            "particle_random_1", "variable.particle_random_1" -> random1
-            "particle_random_2", "variable.particle_random_2" -> random2
-            "particle_random_3", "variable.particle_random_3" -> random3
-            "particle_random_4", "variable.particle_random_4" -> random4
-            "particle_age", "variable.particle_age" -> particleAge
-            "particle_lifetime", "variable.particle_lifetime" -> particleLifetime
-            else -> 0f
+        fun varValue(name: String): Float {
+            val n = name.lowercase()
+                .removePrefix("variable.")
+                .removePrefix("v.")
+            return when (n) {
+                "particle_random_1" -> random1
+                "particle_random_2" -> random2
+                "particle_random_3" -> random3
+                "particle_random_4" -> random4
+                "particle_age" -> particleAge
+                "particle_lifetime" -> particleLifetime
+                "emitter_age" -> emitterAge
+                "emitter_lifetime" -> emitterLifetime
+                // normalized age 0..1 (часто в Snowstorm)
+                "particle_age_relative", "relative_age" ->
+                    if (particleLifetime > 1e-6f) (particleAge / particleLifetime).coerceIn(0f, 1f) else 0f
+                else -> 0f
+            }
         }
     }
 
@@ -38,7 +55,7 @@ object SimpleMolang {
         return runCatching { parseExpr(t, ctx) }.getOrDefault(def)
     }
 
-    // ---- parser (рекурсивный спуск) ----
+    // ---- parser ----
 
     private class P(val s: String, var i: Int = 0) {
         fun skip() { while (i < s.length && s[i].isWhitespace()) i++ }
@@ -59,9 +76,21 @@ object SimpleMolang {
 
     private fun parseExpr(src: String, ctx: Ctx): Float {
         val p = P(src)
-        val v = parseAdd(p, ctx)
+        val v = parseTernary(p, ctx)
         p.skip()
         return v
+    }
+
+    /** a ? b : c */
+    private fun parseTernary(p: P, ctx: Ctx): Float {
+        val cond = parseAdd(p, ctx)
+        p.skip()
+        if (p.peek() != '?') return cond
+        p.next()
+        val a = parseTernary(p, ctx)
+        p.match(':')
+        val b = parseTernary(p, ctx)
+        return if (cond != 0f) a else b
     }
 
     private fun parseAdd(p: P, ctx: Ctx): Float {
@@ -85,7 +114,7 @@ object SimpleMolang {
                 '/' -> {
                     p.next()
                     val d = parseUnary(p, ctx)
-                    v = if (d == 0f) 0f else v / d
+                    v = if (kotlin.math.abs(d) < 1e-8f) 0f else v / d
                 }
                 else -> return v
             }
@@ -102,7 +131,7 @@ object SimpleMolang {
     private fun parsePrimary(p: P, ctx: Ctx): Float {
         p.skip()
         if (p.match('(')) {
-            val v = parseAdd(p, ctx)
+            val v = parseTernary(p, ctx)
             p.match(')')
             return v
         }
@@ -115,28 +144,20 @@ object SimpleMolang {
         val id = p.ident()
         if (id.isEmpty()) return 0f
 
-        // Math.xxx( / math.xxx(
-        val lower = id.lowercase()
-        if (lower.startsWith("math.") || lower.startsWith("math")) {
-            val fn = lower.removePrefix("math.").removePrefix("math")
-            // уже math.xxx в id
-        }
         if (p.match('(')) {
             val args = mutableListOf<Float>()
             p.skip()
             if (p.peek() != ')') {
-                args.add(parseAdd(p, ctx))
-                while (p.match(',')) args.add(parseAdd(p, ctx))
+                args.add(parseTernary(p, ctx))
+                while (p.match(',')) args.add(parseTernary(p, ctx))
             }
             p.match(')')
-            return callFn(id, args, ctx)
+            return callFn(id, args)
         }
-
-        // variable.xxx или просто имя
         return ctx.varValue(id)
     }
 
-    private fun callFn(name: String, args: List<Float>, ctx: Ctx): Float {
+    private fun callFn(name: String, args: List<Float>): Float {
         val n = name.lowercase().removePrefix("math.")
         return when (n) {
             "random" -> {
