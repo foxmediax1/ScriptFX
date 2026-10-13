@@ -9,7 +9,7 @@ import net.foxmediax.scriptfx.quest.QuestRegistry
 object ScriptManager {
 
     private val loadedScripts = mutableMapOf<String, List<ScriptCommand>>()
-    private val scheduler = ScriptScheduler(limit = { ScriptFXConfig.maxScripts })
+    private val scheduler = ScriptScheduler()
 
     fun reload() {
         loadedScripts.clear()
