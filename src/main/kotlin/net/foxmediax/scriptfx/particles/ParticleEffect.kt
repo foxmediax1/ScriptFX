@@ -188,8 +188,9 @@ data class ParticleEffect(
                 var uvH = 8f
                 var texW = 128f
                 var texH = 128f
+                var flipbook: Flipbook? = null
+                var facing = "rotate_xyz"
                 comps.getAsJsonObject("minecraft:particle_appearance_billboard")?.let { o ->
-                    var flipbook: Flipbook? = null
                     val sz = o.get("size")
                     if (sz != null && sz.isJsonArray) {
                         val a = sz.asJsonArray
@@ -198,6 +199,9 @@ data class ParticleEffect(
                         sizeExprX = exprOrNull(a.getOrNull(0))
                         sizeExprY = exprOrNull(a.getOrNull(1))
                     }
+
+                    o.get("facing_camera_mode")?.asString?.let { facing = it }
+
                     o.getAsJsonObject("uv")?.let { uv ->
                         texW = num(uv, "texture_width", 128f)
                         texH = num(uv, "texture_height", 128f)
@@ -205,23 +209,30 @@ data class ParticleEffect(
                         val us = vec2(uv, "uv_size")
                         uvX = u[0]
                         uvY = u[1]
-                        uvW = if (us[0] != 0f) us[0] else 8f
-                        uvH = if (us[1] != 0f) us[1] else 8f
+                        if (us[0] != 0f) uvW = us[0]
+                        if (us[1] != 0f) uvH = us[1]
 
                         uv.getAsJsonObject("flipbook")?.let { fb ->
                             val sizeUv = vec2(fb, "size_UV")
                             val stepUv = vec2(fb, "step_UV")
+                            val maxFrame = num(fb, "max_frame", 1f).toInt().coerceAtLeast(1)
+                            val stretch = when {
+                                fb.has("stretch_to_lifetime") ->
+                                    fb.get("stretch_to_lifetime")!!.asBoolean
+                                else -> !fb.has("frames_per_second")
+                            }
+                            val sizeU = if (sizeUv[0] != 0f) sizeUv[0] else uvW
+                            val sizeV = if (sizeUv[1] != 0f) sizeUv[1] else uvH
                             flipbook = Flipbook(
-                                sizeU = if (sizeUv[0] != 0f) sizeUv[0] else 16f,
-                                sizeV = if (sizeUv[1] != 0f) sizeUv[1] else 16f,
+                                sizeU = sizeU,
+                                sizeV = sizeV,
                                 stepU = stepUv[0],
                                 stepV = stepUv[1],
-                                maxFrame = num(fb, "max_frame", 1f).toInt().coerceAtLeast(1),
-                                stretchToLifetime = fb.get("stretch_to_lifetime")?.asBoolean ?: true
+                                maxFrame = maxFrame,
+                                stretchToLifetime = stretch
                             )
-                            // базовый размер кадра для UV
-                            uvW = flipbook!!.sizeU
-                            uvH = flipbook!!.sizeV
+                            uvW = sizeU
+                            uvH = sizeV
                         }
                     }
                 }
