@@ -244,12 +244,77 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
 
     private fun openEntry(entry: FileEntry) {
         if (entry.isDirectory) {
+            // video/<id>/ — превью ролика
+            if (browser.currentDir.name.equals("video", ignoreCase = true)) {
+                openVideoPreview(entry.name)
+                return
+            }
             browser.goInto(entry)
             refreshList()
-        } else if (entry.file.extension == "sfxs") {
-            openEditor(entry.file)
+            return
+        }
+
+        val ext = entry.file.extension.lowercase()
+        when (ext) {
+            "ogg" -> openAudioPreview(entry.file)
+            "mp4" -> openVideoPreview(entry.file.nameWithoutExtension)
+            "sfxs", "txt", "json", "fxnpc", "md", "log" -> openEditor(entry.file)
+            else -> {
+                // неизвестное — пробуем как текст
+                openEditor(entry.file)
+            }
         }
     }
+
+    private var previewSound: net.foxmediax.scriptfx.client.media.FileSoundInstance? = null
+
+    private fun openAudioPreview(file: java.io.File) {
+        val items = listOf(
+            "▶ Play" to {
+                previewSound?.let {
+                    net.minecraft.client.Minecraft.getInstance().soundManager.stop(it)
+                }
+                val inst = net.foxmediax.scriptfx.client.media.FileSoundInstance(
+                    file, 1f, 1f, false
+                )
+                previewSound = inst
+                net.minecraft.client.Minecraft.getInstance().soundManager.play(inst)
+                Unit
+            },
+            "■ Stop" to {
+                previewSound?.let {
+                    net.minecraft.client.Minecraft.getInstance().soundManager.stop(it)
+                }
+                previewSound = null
+                Unit
+            }
+        )
+        overlays.actions(file.name, items)
+    }
+
+    private fun openVideoPreview(videoId: String) {
+        net.foxmediax.scriptfx.media.MediaRegistry.reload()
+        if (net.foxmediax.scriptfx.media.MediaRegistry.video(videoId) == null) {
+            ScriptFXLog.warn("Видео '$videoId' не найдено в video/")
+            return
+        }
+        net.foxmediax.scriptfx.client.media.MediaClient.handle(
+            net.foxmediax.scriptfx.network.MediaPayload.videoPlay(
+                id = videoId,
+                preview = true
+            )
+        )
+        val items = listOf(
+            "■ Stop" to {
+                net.foxmediax.scriptfx.client.media.MediaClient.handle(
+                    net.foxmediax.scriptfx.network.MediaPayload.videoStop(videoId)
+                )
+                Unit
+            }
+        )
+        overlays.actions("Видео: $videoId", items)
+    }
+
 
     // ------------------------------------------------------------------
     // Меню действий
