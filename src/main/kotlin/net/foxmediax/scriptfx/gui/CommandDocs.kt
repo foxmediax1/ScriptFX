@@ -6,7 +6,8 @@ enum class DocCategory(val title: String) {
     TRIGGERS("Триггеры"),
     SCREEN("Эффекты экрана"),
     CUTSCENE("Катсцена и камера"),
-    NPC("NPC и диалоги")
+    NPC("NPC и диалоги"),
+    PARTICLES("Частицы")
 }
 
 data class CommandDoc(
@@ -81,6 +82,20 @@ object CommandDocs {
         doc(DocCategory.NPC, "npc_dialog_hud \"id\" :: dialog_window_text \"текст\" :: button1 = \"Да\" :: button2 = \"Нет\"",
             "Диалог с NPC (до 5 кнопок). Номер выбора попадает в dialog_button"),
         doc(DocCategory.NPC, "if dialog_button == 1 {", "Выполняет блок, если выбрана кнопка 1"),
-        doc(DocCategory.NPC, "}", "Закрывает блок if (обязательна для каждого if)")
+        doc(DocCategory.NPC, "}", "Закрывает блок if (обязательна для каждого if)"),
+
+        // ---------- Частицы ----------
+        doc(DocCategory.PARTICLES, "particle_play \"id\" ~ ~1 ~",
+            "Запускает эффект частиц в точке. id из description.identifier. Координаты: число или ~ / ~N"),
+        doc(DocCategory.PARTICLES, "particle_stop \"id\"",
+            "Останавливает эмиттеры с этим id"),
+        doc(DocCategory.PARTICLES, "particle_stop_all",
+            "Останавливает все клиентские эмиттеры частиц"),
+        doc(DocCategory.PARTICLES, "particle_attach \"effectId\" \"npcId\" 0 1 0",
+            "Привязывает эффект к NPC. Смещение ox oy oz (по умолчанию 0 1 0)"),
+        doc(DocCategory.PARTICLES, "particle_detach \"npcId\"",
+            "Снимает все эффекты с NPC"),
+        doc(DocCategory.PARTICLES, "particle_detach \"npcId\" \"effectId\"",
+            "Снимает только указанный эффект с NPC")
     )
 }
