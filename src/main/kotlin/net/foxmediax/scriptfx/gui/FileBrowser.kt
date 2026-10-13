@@ -113,11 +113,9 @@ class FileBrowser {
     fun createProject(name: String) {
         if (!isSafeName(name)) return
         val projectDir = File(projectsDir, name.trim())
-        if (!projectDir.exists()) {
-            projectDir.mkdirs()
-            File(projectDir, "scripts").mkdirs()
-            File(projectDir, "avatars").mkdirs()
-        }
+        projectDir.mkdirs()
+        listOf("scripts", "quests", "particles", "npc", "audio", "video", "avatars")
+            .forEach { File(projectDir, it).mkdirs() }
         goTo(projectDir)
     }
 
