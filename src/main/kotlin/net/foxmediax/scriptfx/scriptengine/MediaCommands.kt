@@ -7,6 +7,9 @@ import net.minecraft.server.level.ServerPlayer
 
 object MediaCommands {
 
+    private val savedModes =
+        java.util.concurrent.ConcurrentHashMap<java.util.UUID, net.minecraft.world.level.GameType>()
+
     fun install(register: (String, CommandHandler) -> Unit) {
 
         // sound_play <id> [volume] [pitch] [loop|true]
@@ -52,7 +55,10 @@ object MediaCommands {
                 ScriptFXLog.warn("video_play: '$id' не найден в projects/*/video/")
                 return@register CommandResult.Continue
             }
-            var x = 0f; var y = 0f; var w = 0f; var h = 0f
+            var x = 0f;
+            var y = 0f;
+            var w = 0f;
+            var h = 0f
             val a1 = args.getOrNull(1)?.lowercase()
             if (a1 != null && a1 != "fullscreen" && args.size >= 5) {
                 x = args[1].toFloatOrNull() ?: 0f
@@ -61,6 +67,7 @@ object MediaCommands {
                 h = args[4].toFloatOrNull() ?: 1f
             }
             broadcast(ctx, MediaPayload.videoPlay(id, x, y, w, h, preview = false))
+            for (p in targets(ctx)) enterSpectator(p)
             CommandResult.Continue
         }
 
@@ -70,6 +77,7 @@ object MediaCommands {
                 broadcast(ctx, MediaPayload.videoStopAll())
             } else {
                 broadcast(ctx, MediaPayload.videoStop(id))
+                for (p in targets(ctx)) leaveSpectator(p)
             }
             CommandResult.Continue
         }
@@ -83,5 +91,61 @@ object MediaCommands {
                 ServerPlayNetworking.send(p, payload)
             }
         }
+    }
+
+    fun onVideoEnded(player: net.minecraft.server.level.ServerPlayer, videoId: String) {
+        val id = videoId.trim()
+        if (net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.canSend(
+                player, net.foxmediax.scriptfx.network.MediaPayload.TYPE
+            )
+        ) {
+            net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(
+                player,
+                if (id.isEmpty()) net.foxmediax.scriptfx.network.MediaPayload.videoStopAll()
+                else net.foxmediax.scriptfx.network.MediaPayload.videoStop(id)
+            )
+        }
+        leaveSpectator(player)
+        ScriptFXLog.info("Media: video ended '$id' by ${player.scoreboardName}")
+    }
+
+    private fun enterSpectator(p: net.minecraft.server.level.ServerPlayer) {
+        if (savedModes.containsKey(p.uuid)) return
+        // 26.1: подставь актуальное получение режима, если gameMode() другое
+        val current = try {
+            p.gameMode().let { gm ->
+                // часто: gm.gameModeForPlayer
+                val m = gm.javaClass.methods.firstOrNull {
+                    it.name == "getGameModeForPlayer" || it.name == "getGameMode" || it.name == "gameModeForPlayer"
+                }
+                when {
+                    m != null && m.parameterCount == 0 ->
+                        m.invoke(gm) as net.minecraft.world.level.GameType
+
+                    else -> net.minecraft.world.level.GameType.SURVIVAL
+                }
+            }
+        } catch (_: Throwable) {
+            net.minecraft.world.level.GameType.SURVIVAL
+        }
+        savedModes[p.uuid] = current
+        p.setGameMode(net.minecraft.world.level.GameType.SPECTATOR)
+        ScriptFXLog.info("Media: ${p.scoreboardName} → SPECTATOR (was $current)")
+    }
+
+    fun leaveSpectator(p: net.minecraft.server.level.ServerPlayer) {
+        val prev = savedModes.remove(p.uuid) ?: return
+        p.setGameMode(prev)
+        ScriptFXLog.info("Media: ${p.scoreboardName} → $prev (restore)")
+    }
+
+    fun onPlayerLeave(p: net.minecraft.server.level.ServerPlayer) {
+        leaveSpectator(p)
+    }
+
+    private fun targets(ctx: ScriptContext): List<ServerPlayer> {
+        val one = ctx.player
+        if (one != null) return listOf(one)
+        return ctx.server.playerList.players.toList()
     }
 }
