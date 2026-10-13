@@ -15,6 +15,8 @@ class ScriptRunner(
 
     val name: String get() = scriptName
 
+    private var skipDepth = 0
+
     init {
         ScriptFXLog.info("Скрипт '$scriptName' запущен")
     }
@@ -23,17 +25,22 @@ class ScriptRunner(
         if (finished) return
         finished = true
         waitUntilPred = null
-        ScriptFXLog.info("Скрипт '$scriptName' аварийно остановлен ($reason)")
         skipDepth = 0
+        ScriptFXLog.info("Скрипт '$scriptName' аварийно остановлен ($reason)")
     }
-
-    private var skipDepth = 0
 
     fun tick(currentTick: Long) {
         if (finished || currentTick < waitUntilTick) return
 
         waitUntilPred?.let { pred ->
-            if (pred()) waitUntilPred = null else return
+            // Предикат не должен уронить весь тик сервера
+            val done = try {
+                pred()
+            } catch (e: Exception) {
+                ScriptFXLog.error("WaitUntil в '$scriptName' бросил исключение — считаем условие выполненным", e)
+                true
+            }
+            if (done) waitUntilPred = null else return
         }
 
         while (index < commands.size) {
@@ -51,7 +58,7 @@ class ScriptRunner(
             val result = try {
                 executor(command)
             } catch (e: Exception) {
-                ScriptFXLog.error("...", e)
+                ScriptFXLog.error("Ошибка в '$scriptName' (строка ${command.lineNumber})", e)
                 CommandResult.Continue
             }
             if (finished) return
@@ -70,10 +77,28 @@ class ScriptRunner(
                     skipDepth = 1
                     continue
                 }
-                CommandResult.Stop -> { /* ... */ return }
-                is CommandResult.ContinueWith -> { /* ... */ return }
+                CommandResult.Stop -> {
+                    finished = true
+                    ScriptFXLog.info("Скрипт '$scriptName' завершён (stopscript)")
+                    return
+                }
+                is CommandResult.ContinueWith -> {
+                    val next = lookup(result.scriptName)
+                    if (next == null) {
+                        ScriptFXLog.warn("continue_startscript: '${result.scriptName}' не найден — '$scriptName' завершён")
+                        finished = true
+                        return
+                    }
+                    commands = next
+                    scriptName = result.scriptName
+                    index = 0
+                    skipDepth = 0
+                    ScriptFXLog.info("Скрипт продолжен как '$scriptName'")
+                    return
+                }
             }
         }
         finished = true
+        ScriptFXLog.info("Скрипт '$scriptName' завершён")
     }
 }

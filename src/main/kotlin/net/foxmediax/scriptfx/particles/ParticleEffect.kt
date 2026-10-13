@@ -119,6 +119,12 @@ data class ParticleEffect(
                     maxParticles = spawnRate.toInt().coerceAtLeast(1)
                     rateMode = RateMode.INSTANT
                 }
+                comps.getAsJsonObject("minecraft:emitter_rate_manual")?.let {
+                    // manual: спавним по максимуму сразу, дальше регулируется скриптом
+                    spawnRate = num(it, "max_particles", 50f)
+                    maxParticles = spawnRate.toInt().coerceAtLeast(1)
+                    rateMode = RateMode.INSTANT
+                }
 
                 var lifetimeMode = LifetimeMode.ONCE
                 var activeTime = 1f

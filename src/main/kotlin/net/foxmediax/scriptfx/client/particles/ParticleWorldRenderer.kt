@@ -4,11 +4,12 @@ import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents
 import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 
 /**
- * Хук мирового рендера частиц (Fabric 26.1).
+ * Хук мирового рендера частиц (Fabric / Minecraft 26.1).
  *
- * Кастомные билборды в 26.1 через getBuffer дают IllegalArgumentException,
- * поэтому здесь только регистрация события. Визуал частиц — в ParticleRuntime
- * (vanilla DustParticleOptions / END_ROD).
+ * Кастомный getBuffer(PARTICLE) / билборды в 26.1 падают с IllegalArgumentException,
+ * поэтому здесь только регистрация события.
+ * Симуляция частиц — в ParticleRuntime; визуал пока через vanilla-фолбэк
+ * (см. ParticleRuntime / Dust / END_ROD), либо отдельный RenderType позже.
  */
 object ParticleWorldRenderer {
 
@@ -19,7 +20,7 @@ object ParticleWorldRenderer {
         registered = true
         try {
             LevelRenderEvents.AFTER_TRANSLUCENT_TERRAIN.register { _ ->
-                // no-op: отрисовка через ParticleRuntime
+                // no-op: кастомный batch частиц в 26.1 нестабилен
             }
             ScriptFXLog.info("ParticleWorldRenderer: registered (vanilla fallback)")
         } catch (t: Throwable) {

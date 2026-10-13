@@ -1,7 +1,6 @@
 package net.foxmediax.scriptfx.npc
 
 import net.minecraft.server.level.ServerLevel
-import net.minecraft.server.level.ServerPlayer
 import net.minecraft.world.entity.EntitySpawnReason
 import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 
@@ -43,7 +42,7 @@ object NpcManager {
         entity.setInvulnerableFlag(def.invulnerable)
         entity.setLookAtPlayer(def.lookAtPlayer)
         entity.setNoGravity(!def.gravity)
-        entity.isNoAi = true // пока без AI-пути
+        entity.isNoAi = true
         if (def.nametag) {
             entity.customName = net.minecraft.network.chat.Component.literal(def.displayName)
             entity.isCustomNameVisible = true
@@ -82,7 +81,6 @@ object NpcManager {
         }
         val entity = level.getEntity(state.entityUuid)
         entity?.discard()
-        // на всякий случай поиск по id
         level.getAllEntities().filterIsInstance<ScriptNpcEntity>()
             .filter { it.npcId == id }
             .forEach { it.discard() }
@@ -144,7 +142,9 @@ object NpcManager {
                 a.startsWith("mode", true) -> {
                     val value = if (a.contains(":")) a.substringAfter(":").trim()
                     else args.getOrNull(++i) ?: ""
-                    state.mode = NpcMode.from(value)
+                    val m = NpcMode.from(value)
+                    state.mode = m
+                    entity.setMode(m)
                 }
                 a.startsWith("anim", true) -> {
                     val value = if (a.contains("=") || a.contains(":")) {
@@ -177,13 +177,8 @@ object NpcManager {
                             ?.baseValue = value
                     }
                 }
-
-                a.startsWith("mode", true) -> {
-                    val value = if (a.contains(":")) a.substringAfter(":").trim()
-                    else args.getOrNull(++i) ?: ""
-                    val m = NpcMode.from(value)
-                    state.mode = m
-                    entity.setMode(m)
+                else -> {
+                    ScriptFXLog.warn("npc_repack: неизвестный аргумент '$a'")
                 }
             }
             i++

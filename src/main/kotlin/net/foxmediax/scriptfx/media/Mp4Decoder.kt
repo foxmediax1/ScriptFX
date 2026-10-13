@@ -3,17 +3,34 @@ package net.foxmediax.scriptfx.media
 import net.fabricmc.loader.api.FabricLoader
 import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import java.io.File
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 object Mp4Decoder {
 
     var ffmpegPath: String? = null
 
+    /** Ключ videoId -> future декодирования (чтобы не запускать ffmpeg дважды). */
+    private val decoding = ConcurrentHashMap<String, CompletableFuture<VideoMeta?>>()
+
     private fun cacheRoot(): File =
         FabricLoader.getInstance().configDir.resolve("scriptfx/cache/video").toFile()
             .apply { mkdirs() }
 
     private fun ffmpegBin(): String = ffmpegPath?.takeIf { it.isNotBlank() } ?: "ffmpeg"
+
+    /**
+     * Неблокирующий вариант: декодирует в общем пуле, повторные вызовы того же
+     * видео возвращают тот же future. Вызывайте из скриптов через WaitUntil { future.isDone }.
+     */
+    fun ensureDecodedAsync(meta: VideoMeta): CompletableFuture<VideoMeta?> {
+        val key = "${meta.project}/${meta.id}"
+        return decoding.computeIfAbsent(key) {
+            CompletableFuture.supplyAsync { ensureDecoded(meta) }
+                .whenComplete { _, _ -> decoding.remove(key) }
+        }
+    }
 
     fun ensureDecoded(meta: VideoMeta): VideoMeta? {
         val mp4 = meta.sourceMp4 ?: return meta
@@ -86,14 +103,27 @@ object Mp4Decoder {
     private fun runFfmpeg(cmd: List<String>, timeoutSec: Long): Boolean {
         return try {
             val p = ProcessBuilder(cmd).redirectErrorStream(true).start()
+            val output = StringBuilder()
             Thread {
-                p.inputStream.bufferedReader().use { r -> while (r.readLine() != null) { } }
+                p.inputStream.bufferedReader().use { r ->
+                    var line: String? = r.readLine()
+                    while (line != null) {
+                        if (output.length < 4096) output.appendLine(line)
+                        line = r.readLine()
+                    }
+                }
             }.apply { isDaemon = true }.start()
+
             if (!p.waitFor(timeoutSec, TimeUnit.SECONDS)) {
                 p.destroyForcibly()
+                ScriptFXLog.warn("Mp4Decoder: ffmpeg timeout (${timeoutSec}s) для ${cmd[2]}")
                 return false
             }
-            p.exitValue() == 0
+            if (p.exitValue() != 0) {
+                ScriptFXLog.warn("Mp4Decoder: ffmpeg exit=${p.exitValue()} для ${cmd[2]}: ${output.take(500)}")
+                return false
+            }
+            true
         } catch (e: Exception) {
             ScriptFXLog.warn("Mp4Decoder: ${e.message}")
             false

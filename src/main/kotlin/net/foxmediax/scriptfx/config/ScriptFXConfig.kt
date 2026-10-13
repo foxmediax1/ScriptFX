@@ -3,6 +3,8 @@ package net.foxmediax.scriptfx.config
 import com.google.gson.GsonBuilder
 import net.fabricmc.loader.api.FabricLoader
 import net.foxmediax.scriptfx.media.Mp4Decoder
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -23,6 +25,9 @@ object ScriptFXConfig {
     var messageBorder: Int = DEFAULT_MESSAGE_BORDER
     var centerSystemMessages: Boolean = true
 
+    /** Максимум одновременно запущенных скриптов. 0 или меньше 0 — без лимита. */
+    var maxScripts: Int = 0
+
     /**
      * Полный путь к ffmpeg (например C:/ffmpeg/bin/ffmpeg.exe).
      * null или "" — искать `ffmpeg` в PATH.
@@ -42,6 +47,7 @@ object ScriptFXConfig {
         var messageBg: Int = DEFAULT_MESSAGE_BG,
         var messageBorder: Int = DEFAULT_MESSAGE_BORDER,
         var centerSystemMessages: Boolean = true,
+        var maxScripts: Int = 0,
         var ffmpegPath: String? = null
     )
 
@@ -50,7 +56,6 @@ object ScriptFXConfig {
             save()
             applyMedia()
             return
-
         }
         try {
             val data = gson.fromJson(configPath.readText(), Data::class.java)
@@ -68,13 +73,14 @@ object ScriptFXConfig {
             messageBg = data.messageBg
             messageBorder = data.messageBorder
             centerSystemMessages = data.centerSystemMessages
+            maxScripts = data.maxScripts
             ffmpegPath = data.ffmpegPath?.takeIf { it.isNotBlank() }
         } catch (e: Exception) {
             try {
-                java.nio.file.Files.copy(
+                Files.copy(
                     configPath,
                     configPath.resolveSibling("scriptfx.json.broken"),
-                    java.nio.file.StandardCopyOption.REPLACE_EXISTING
+                    StandardCopyOption.REPLACE_EXISTING
                 )
             } catch (_: Exception) {
             }
@@ -94,13 +100,13 @@ object ScriptFXConfig {
             messageBg = messageBg,
             messageBorder = messageBorder,
             centerSystemMessages = centerSystemMessages,
+            maxScripts = maxScripts,
             ffmpegPath = ffmpegPath
         )
         configPath.writeText(gson.toJson(data))
     }
 
     private fun applyMedia() {
-        // Mp4Decoder должен существовать в net.foxmediax.scriptfx.media
         Mp4Decoder.ffmpegPath = ffmpegPath
     }
 }

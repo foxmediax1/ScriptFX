@@ -9,6 +9,18 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents
 import net.fabricmc.fabric.api.event.player.UseItemCallback
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
+import net.foxmediax.scriptfx.network.CutsceneInterruptPayload
+import net.foxmediax.scriptfx.network.MediaEndPayload
+import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
+import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
+import net.foxmediax.scriptfx.npc.NpcDialogWait
+import net.foxmediax.scriptfx.npc.NpcInteractWait
+import net.foxmediax.scriptfx.quest.QuestManager
+import net.foxmediax.scriptfx.scriptengine.CameraCommands
+import net.foxmediax.scriptfx.scriptengine.CutsceneManager
+import net.foxmediax.scriptfx.scriptengine.MediaCommands
+import net.foxmediax.scriptfx.scriptengine.ScriptContext
 import net.foxmediax.scriptfx.scriptengine.ScriptManager
 import net.foxmediax.scriptfx.scriptengine.TriggerManager
 import net.minecraft.commands.CommandSourceStack
@@ -19,18 +31,6 @@ import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.permissions.Permissions
 import net.minecraft.world.InteractionResult
-import net.foxmediax.scriptfx.scriptengine.ScriptContext
-import net.foxmediax.scriptfx.scriptengine.CameraCommands
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
-import net.foxmediax.scriptfx.network.CutsceneInterruptPayload
-import net.foxmediax.scriptfx.network.MediaEndPayload
-import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
-import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
-import net.foxmediax.scriptfx.npc.NpcDialogWait
-import net.foxmediax.scriptfx.npc.NpcInteractWait
-import net.foxmediax.scriptfx.quest.QuestManager
-import net.foxmediax.scriptfx.scriptengine.CutsceneManager
-import net.foxmediax.scriptfx.scriptengine.MediaCommands
 
 object ScriptFXServer : ModInitializer {
 
@@ -53,8 +53,18 @@ object ScriptFXServer : ModInitializer {
             CutsceneManager.tick(server)
         }
 
+        // ЕДИНСТВЕННАЯ регистрация JOIN: чекпоинты/триггеры + квесты
         ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
             TriggerManager.onPlayerJoin(server, handler.player)
+            QuestManager.onJoin(handler.player)
+        }
+
+        // ЕДИНСТВЕННАЯ регистрация DISCONNECT: катсцены, триггеры, квесты, медиа-режим
+        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
+            CutsceneManager.endFor(handler.player)
+            TriggerManager.onPlayerLeave(handler.player.uuid)
+            QuestManager.onLeave(handler.player.uuid)
+            MediaCommands.onPlayerLeave(handler.player)
         }
 
         ServerLivingEntityEvents.AFTER_DEATH.register { entity, _ ->
@@ -82,22 +92,16 @@ object ScriptFXServer : ModInitializer {
         }
 
         ServerPlayNetworking.registerGlobalReceiver(CutsceneInterruptPayload.TYPE) { _, context ->
-            val player = context.player()
-
-            CutsceneManager.onInterrupt(player)
+            CutsceneManager.onInterrupt(context.player())
         }
 
         ServerLifecycleEvents.SERVER_STOPPING.register { server ->
             CutsceneManager.endAll(server)   // иначе игрок сохранится в точке камеры
+            MediaCommands.onServerStopping()
         }
 
         ServerLivingEntityEvents.ALLOW_DAMAGE.register { entity, _, _ ->
             !(entity is ServerPlayer && CutsceneManager.isInCutscene(entity))
-        }
-
-        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
-            CutsceneManager.endFor(handler.player)
-            TriggerManager.onPlayerLeave(handler.player.uuid)
         }
 
         ServerPlayNetworking.registerGlobalReceiver(NpcInteractKeyPayload.TYPE) { payload, ctx ->
@@ -107,20 +111,8 @@ object ScriptFXServer : ModInitializer {
             NpcDialogWait.notifyChoice(ctx.player().uuid, payload.button)
         }
 
-        ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
-            TriggerManager.onPlayerJoin(server, handler.player)
-            QuestManager.onJoin(handler.player)
-        }
-
-        ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
-            CutsceneManager.endFor(handler.player)
-            TriggerManager.onPlayerLeave(handler.player.uuid)
-            QuestManager.onLeave(handler.player.uuid)
-        }
         ServerPlayNetworking.registerGlobalReceiver(MediaEndPayload.TYPE) { payload, context ->
-            val player = context.player()
-            // стоп на этом клиенте уже произошёл; шлём stop всем / себе + spectator
-            MediaCommands.onVideoEnded(player, payload.videoId)
+            MediaCommands.onVideoEnded(context.player(), payload.videoId)
         }
     }
 

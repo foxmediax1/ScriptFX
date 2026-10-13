@@ -12,29 +12,27 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents
 import net.foxmediax.scriptfx.ScriptFX
 import net.foxmediax.scriptfx.ScriptFXKeybinds
 import net.foxmediax.scriptfx.client.mui.MuiScreens
+import net.foxmediax.scriptfx.client.particles.ParticleRuntime
+import net.foxmediax.scriptfx.client.particles.ParticleWorldRenderer
 import net.foxmediax.scriptfx.config.ScriptFXConfig
 import net.foxmediax.scriptfx.network.CameraPayload
+import net.foxmediax.scriptfx.network.MediaPayload
 import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
 import net.foxmediax.scriptfx.network.NpcInteractListenPayload
+import net.foxmediax.scriptfx.network.ParticlePayload
 import net.foxmediax.scriptfx.network.QuestSyncPayload
 import net.foxmediax.scriptfx.network.QuestToastPayload
 import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.foxmediax.scriptfx.npc.NpcEntities
 import net.foxmediax.scriptfx.npc.NpcInteractClient
-import net.minecraft.server.permissions.Permissions
-import net.foxmediax.scriptfx.client.particles.ParticleRuntime
-import net.foxmediax.scriptfx.client.particles.ParticleWorldRenderer
-import net.foxmediax.scriptfx.network.ParticlePayload
 import net.foxmediax.scriptfx.particles.ParticleRegistry
-import net.foxmediax.scriptfx.client.media.MediaClient
-import net.foxmediax.scriptfx.media.MediaRegistry
-import net.foxmediax.scriptfx.network.MediaPayload
 import net.minecraft.client.Minecraft
+import net.minecraft.client.renderer.RenderPipelines
+import net.minecraft.server.permissions.Permissions
 
 object ScriptFXClient : ClientModInitializer {
 
-    private val REQUIRED_PERMISSION =
-        Permissions.COMMANDS_GAMEMASTER
+    private val REQUIRED_PERMISSION = Permissions.COMMANDS_GAMEMASTER
 
     override fun onInitializeClient() {
 
@@ -43,53 +41,27 @@ object ScriptFXClient : ClientModInitializer {
         ScriptFXConfig.load()
         ParticleRegistry.reload()
         ParticleWorldRenderer.init()
-        MediaRegistry.reload()
+        MediaRegistry_reload()
 
-        ClientPlayNetworking.registerGlobalReceiver(
-            CameraPayload.TYPE
-        ) { payload, _ ->
-
-            CameraOverlay.receive(
-                payload
-            )
+        ClientPlayNetworking.registerGlobalReceiver(CameraPayload.TYPE) { payload, _ ->
+            CameraOverlay.receive(payload)
         }
 
         HudElementRegistry.addLast(
             ScriptFX.id("camera_effects"),
-            HudElement { graphics, _ ->
-
-                CameraOverlay.render(
-                    graphics
-                )
-            }
+            HudElement { graphics, _ -> CameraOverlay.render(graphics) }
         )
 
         HudElementRegistry.addLast(
             ScriptFX.id("npc_interact_prompt"),
-            HudElement { graphics, _ ->
-
-                NpcInteractClient.render(
-                    graphics
-                )
-            }
+            HudElement { graphics, _ -> NpcInteractClient.render(graphics) }
         )
 
-        ClientReceiveMessageEvents.CHAT.register {
-                message,
-                signed,
-                _,
-                params,
-                _ ->
-
+        ClientReceiveMessageEvents.CHAT.register { message, signed, _, params, _ ->
             if (signed == null) {
-
-                CenterMessageOverlay.receiveSystem(
-                    message.string
-                )
-
+                CenterMessageOverlay.receiveSystem(message.string)
                 return@register
             }
-
             CenterMessageOverlay.receivePlayerChat(
                 params.name().string,
                 signed.sender(),
@@ -97,92 +69,51 @@ object ScriptFXClient : ClientModInitializer {
             )
         }
 
-        ClientPlayNetworking.registerGlobalReceiver(
-            ScriptMessagePayload.TYPE
-        ) { payload, _ ->
-
-            CenterMessageOverlay.receive(
-                payload
-            )
+        ClientPlayNetworking.registerGlobalReceiver(ScriptMessagePayload.TYPE) { payload, _ ->
+            CenterMessageOverlay.receive(payload)
         }
 
         HudElementRegistry.addLast(
             ScriptFX.id("center_message"),
-            HudElement { graphics, _ ->
-
-                CenterMessageOverlay.render(
-                    graphics
-                )
-            }
+            HudElement { graphics, _ -> CenterMessageOverlay.render(graphics) }
         )
 
-        ClientPlayConnectionEvents.DISCONNECT.register {
-                _, _ ->
-
+        ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             CenterMessageOverlay.clear()
             CameraOverlay.clear()
             CutsceneClient.clear()
             NpcPreviewHelper.clear()
             QuestClient.clear()
             ParticleRuntime.clear()
-            MediaClient.clear()
+            MediaClient_clear()
         }
 
         /*
          * GeckoLib entity renderer.
          */
-        EntityRendererRegistry.register(
-            NpcEntities.SCRIPT_NPC,
-            ::ScriptNpcRenderer
-        )
+        EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC, ::ScriptNpcRenderer)
 
         /*
-         * NPC editor preview.
-         *
-         * ModernUI performs its own extraction.
-         * We render the GeckoLib entity afterwards,
-         * so the 3D model is visible above ModernUI.
+         * NPC editor preview: ModernUI рисует свой фон, мы рендерим модель поверх.
          */
-        ScreenEvents.AFTER_INIT.register {
-                _, screen, _, _ ->
-
-            ScreenEvents.afterExtract(
-                screen
-            ).register {
-                    _, graphics, _, _, _ ->
-
-                NpcPreviewHelper.renderInGui(
-                    graphics
-                )
+        ScreenEvents.AFTER_INIT.register { _, screen, _, _ ->
+            ScreenEvents.afterExtract(screen).register { _, graphics, _, _, _ ->
+                NpcPreviewHelper.renderInGui(graphics)
             }
         }
 
-        ClientTickEvents.END_CLIENT_TICK.register {
-                client ->
-
-            val dt = 1f / 20f  // или из timer, если доступен
-            ParticleRuntime.tick(dt)
+        // ОДИН тик частиц за клиентский тик
+        ClientTickEvents.END_CLIENT_TICK.register { client ->
+            ParticleRuntime.tick(1f / 20f)
 
             NpcInteractClient.tick()
             NpcPreviewHelper.clientTick()
             NpcDialogClient.tick()
 
-            while (
-                ScriptFXKeybinds
-                    .openControlPanel
-                    .consumeClick()
-            ) {
-
-                val player =
-                    client.player
-                        ?: continue
-
-                if (
-                    client.screen == null &&
-                    player.permissions()
-                        .hasPermission(
-                            REQUIRED_PERMISSION
-                        )
+            while (ScriptFXKeybinds.openControlPanel.consumeClick()) {
+                val player = client.player ?: continue
+                if (client.screen == null &&
+                    player.permissions().hasPermission(REQUIRED_PERMISSION)
                 ) {
                     MuiScreens.openControlPanel()
                 }
@@ -193,28 +124,16 @@ object ScriptFXClient : ClientModInitializer {
                     MuiScreens.openQuestJournal()
                 }
             }
-
-            ParticleRuntime.tick(1f / 20f)
         }
 
         CutsceneClient.init()
 
-        ClientPlayNetworking.registerGlobalReceiver(
-            NpcInteractListenPayload.TYPE
-        ) { payload, _ ->
-
-            NpcInteractClient.setListenKey(
-                payload.key
-            )
+        ClientPlayNetworking.registerGlobalReceiver(NpcInteractListenPayload.TYPE) { payload, _ ->
+            NpcInteractClient.setListenKey(payload.key)
         }
 
-        ClientPlayNetworking.registerGlobalReceiver(
-            NpcDialogOpenPayload.TYPE
-        ) { payload, _ ->
-
-            NpcDialogClient.open(
-                payload
-            )
+        ClientPlayNetworking.registerGlobalReceiver(NpcDialogOpenPayload.TYPE) { payload, _ ->
+            NpcDialogClient.open(payload)
         }
 
         ClientPlayNetworking.registerGlobalReceiver(QuestSyncPayload.TYPE) { payload, _ ->
@@ -229,15 +148,12 @@ object ScriptFXClient : ClientModInitializer {
             HudElement { graphics, _ -> QuestClient.renderToast(graphics) }
         )
 
-        ParticleRegistry.reload()
-        ParticleWorldRenderer.init()
-
         ClientPlayNetworking.registerGlobalReceiver(ParticlePayload.TYPE) { payload, _ ->
             ParticleRuntime.handlePayload(payload)
         }
 
         ClientPlayNetworking.registerGlobalReceiver(MediaPayload.TYPE) { payload, _ ->
-            MediaClient.handle(payload)
+            net.foxmediax.scriptfx.client.media.MediaClient.handle(payload)
         }
 
         HudElementRegistry.addLast(
@@ -248,7 +164,7 @@ object ScriptFXClient : ClientModInitializer {
                 val sh = mc.window.guiScaledHeight
                 net.foxmediax.scriptfx.client.media.VideoPlayer.render(sw, sh) { tex, x, y, w, h ->
                     graphics.blit(
-                        net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,
+                        RenderPipelines.GUI_TEXTURED,
                         tex,
                         x, y,
                         0f, 0f,
@@ -260,5 +176,14 @@ object ScriptFXClient : ClientModInitializer {
                 }
             }
         )
+    }
+
+    // Локальные хелперы, чтобы не тянуть лишние импорты в верх файла
+    private fun MediaRegistry_reload() {
+        net.foxmediax.scriptfx.media.MediaRegistry.reload()
+    }
+
+    private fun MediaClient_clear() {
+        net.foxmediax.scriptfx.client.media.MediaClient.clear()
     }
 }

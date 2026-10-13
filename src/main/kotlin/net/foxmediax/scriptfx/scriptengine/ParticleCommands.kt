@@ -9,11 +9,11 @@ object ParticleCommands {
 
     fun install(register: (String, CommandHandler) -> Unit) {
 
-        // particle_play <id> x y z
+        // particle_play <id> [x y z]  — координаты опциональны, по умолчанию ~ ~1 ~ (чуть над головой)
         register("particle_play") { ctx, args ->
             val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
-            if (id.isEmpty() || args.size < 4) {
-                ScriptFXLog.warn("particle_play: нужны id x y z")
+            if (id.isEmpty()) {
+                ScriptFXLog.warn("particle_play: нужен id (файл .particle.json в projects/*/particles/)")
                 return@register CommandResult.Continue
             }
             ParticleRegistry.reload()
@@ -22,9 +22,10 @@ object ParticleCommands {
                 return@register CommandResult.Continue
             }
             val ref = ctx.player
-            val x = parseCoord(args[1], ref?.x) ?: return@register CommandResult.Continue
-            val y = parseCoord(args[2], ref?.y) ?: return@register CommandResult.Continue
-            val z = parseCoord(args[3], ref?.z) ?: return@register CommandResult.Continue
+            // Если координаты не указаны — используем позицию игрока с небольшим смещением вверх
+            val x = args.getOrNull(1)?.let { parseCoord(it, ref?.x) } ?: (ref?.x ?: 0.0)
+            val y = args.getOrNull(2)?.let { parseCoord(it, ref?.y) } ?: ((ref?.y ?: 0.0) + 1.0)
+            val z = args.getOrNull(3)?.let { parseCoord(it, ref?.z) } ?: (ref?.z ?: 0.0)
 
             broadcast(ctx, ParticlePayload(ParticlePayload.PLAY, id, "", x, y, z))
             CommandResult.Continue
@@ -60,7 +61,7 @@ object ParticleCommands {
                 return@register CommandResult.Continue
             }
             val ox = args.getOrNull(2)?.toDoubleOrNull() ?: 0.0
-            val oy = args.getOrNull(3)?.toDoubleOrNull() ?: 1.0  // чуть над головой по умолчанию
+            val oy = args.getOrNull(3)?.toDoubleOrNull() ?: 1.0
             val oz = args.getOrNull(4)?.toDoubleOrNull() ?: 0.0
             broadcast(
                 ctx,
@@ -105,6 +106,4 @@ object ParticleCommands {
         }
         return t.toDoubleOrNull()
     }
-
-
 }

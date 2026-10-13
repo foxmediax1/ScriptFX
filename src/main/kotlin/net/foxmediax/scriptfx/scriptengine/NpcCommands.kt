@@ -1,31 +1,18 @@
 package net.foxmediax.scriptfx.scriptengine
 
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 import net.foxmediax.scriptfx.npc.NpcDialogWait
 import net.foxmediax.scriptfx.npc.NpcInteractWait
 import net.foxmediax.scriptfx.npc.NpcManager
+import net.foxmediax.scriptfx.npc.NpcRuntime
 import net.foxmediax.scriptfx.npc.ScriptNpcEntity
 import net.minecraft.server.level.ServerLevel
 import kotlin.math.atan2
 import kotlin.math.hypot
-import net.minecraft.world.level.ClipContext
-import net.minecraft.world.phys.HitResult
-import net.minecraft.world.phys.Vec3
-import kotlin.math.cos
-import kotlin.math.sin
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking
 
 object NpcCommands {
 
-    private const val DIALOG_CAM_DISTANCE = 1.8   // блоков от NPC до камеры
-    private const val DIALOG_CAM_FOV = 55f        // FOV во время диалога
-    private const val DIALOG_MOVE_TICKS = 16      // 0.8 сек на подъезд и на возврат
-
-    private val DIALOG_CAM_SIDE_OFFSETS = doubleArrayOf(25.0, -25.0, 0.0, 55.0, -55.0, 85.0, -85.0)
-    private const val DIALOG_CAM_WALL_MARGIN = 0.35   // отступ камеры от стены
-    private const val DIALOG_CAM_MIN_DISTANCE = 0.45  // ближе к NPC камеру не ставим
     private val WORLD_KEYS = setOf("overworld", "nether", "end")
-
-    private class CamPose(val x: Double, val y: Double, val z: Double, val yaw: Float, val pitch: Float)
 
     fun install(register: (String, CommandHandler) -> Unit) {
 
@@ -70,8 +57,8 @@ object NpcCommands {
 
             NpcManager.spawn(
                 level, id, x, y, z,
-                words.getOrNull(0).orEmpty(),      // анимация ("" = из шаблона)
-                words.getOrNull(1).orEmpty(),      // режим ("" = из шаблона)
+                words.getOrNull(0).orEmpty(),
+                words.getOrNull(1).orEmpty(),
                 angles.getOrElse(0) { 0f },
                 angles.getOrElse(1) { 0f }
             )
@@ -116,14 +103,12 @@ object NpcCommands {
                 return@register CommandResult.Continue
             }
 
-            // чтобы tick() с LookAt не перебил поворот
             entity.setLookAtPlayer(false)
             facePoint(entity, x, y, z)
             ScriptFXLog.info("see_npc_K '$id' → $x $y $z")
             CommandResult.Continue
         }
 
-        // see_npc_C "id" yaw [pitch]  — поворот по горизонтали (и опционально pitch)
         register("see_npc_C") { ctx, args ->
             val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
             val yawRaw = args.getOrNull(1)?.removeSurrounding("\"")?.trim()
@@ -152,7 +137,6 @@ object NpcCommands {
             CommandResult.Continue
         }
 
-        // npc_interact_key "X" — скрипт ждёт нажатия (клиент шлёт пакет)
         register("npc_interact_key") { ctx, args ->
             val keyName = args.getOrNull(0)?.removeSurrounding("\"")?.uppercase() ?: "X"
             val player = ctx.player ?: ctx.server.playerList.players.firstOrNull()
@@ -162,8 +146,7 @@ object NpcCommands {
             }
             val uuid = player.uuid
             NpcInteractWait.begin(uuid, keyName)
-            // сказать клиенту, какую клавишу слушать
-            net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(
+            ServerPlayNetworking.send(
                 player,
                 net.foxmediax.scriptfx.network.NpcInteractListenPayload(keyName)
             )
@@ -180,7 +163,6 @@ object NpcCommands {
                 ?: ctx.server.playerList.players.firstOrNull()
                 ?: return@register CommandResult.Continue
 
-            // --- разбор аргументов (без изменений) ---
             val joined = args.joinToString(" ")
             val parts = joined.split("::").map { it.trim() }.filter { it.isNotEmpty() }
             if (parts.isEmpty()) {
@@ -211,7 +193,6 @@ object NpcCommands {
             val npc = findNpc(level, npcId)
             if (npc == null) ScriptFXLog.warn("npc_dialog_hud: NPC '$npcId' не найден в мире (диалог без камеры и обводки)")
 
-            // NPC поворачивается к игроку; камеру ведёт клиент (NpcDialogClient)
             npc?.dialogFocus = uuid
 
             NpcDialogWait.begin(uuid)
@@ -232,7 +213,6 @@ object NpcCommands {
             }
 
             fun step(): Boolean {
-                // игрок вышел из игры: не вешаем скрипт
                 ctx.server.playerList.getPlayer(uuid) ?: return finish(0)
                 return if (NpcDialogWait.isDone(uuid)) finish(NpcDialogWait.chosen(uuid)) else false
             }
@@ -240,10 +220,7 @@ object NpcCommands {
             CommandResult.WaitUntil { step() }
         }
 
-
-
         register("if") { ctx, args ->
-            // ожидаем: dialog_button == 1 {
             val tokens = args
                 .flatMap { it.split(" ").map(String::trim) }
                 .map { it.removeSuffix("{").trim() }
@@ -264,34 +241,6 @@ object NpcCommands {
         register("}") { _, _ -> CommandResult.Continue }
     }
 
-    /** Выбирает точку камеры перед NPC так, чтобы она не оказалась внутри блока. */
-    private fun pickDialogCamera(level: ServerLevel, npc: ScriptNpcEntity, toPlayerYaw: Double): Pair<Double, Double> {
-        val from = Vec3(npc.x, npc.eyeY, npc.z)
-        var bestDist = -1.0
-        var bestX = npc.x
-        var bestZ = npc.z
-
-        for (off in DIALOG_CAM_SIDE_OFFSETS) {
-            val a = Math.toRadians(toPlayerYaw + off)
-            val dirX = -sin(a)
-            val dirZ = cos(a)
-            val to = Vec3(from.x + dirX * DIALOG_CAM_DISTANCE, from.y, from.z + dirZ * DIALOG_CAM_DISTANCE)
-
-            val hit = level.clip(ClipContext(from, to, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, npc))
-            val free = if (hit.type == HitResult.Type.MISS) DIALOG_CAM_DISTANCE else hit.location.distanceTo(from)
-            val dist = if (free >= DIALOG_CAM_DISTANCE) DIALOG_CAM_DISTANCE
-            else maxOf(free - DIALOG_CAM_WALL_MARGIN, DIALOG_CAM_MIN_DISTANCE)
-
-            if (dist > bestDist) {
-                bestDist = dist
-                bestX = from.x + dirX * dist
-                bestZ = from.z + dirZ * dist
-            }
-            if (free >= DIALOG_CAM_DISTANCE) break   // первый полностью свободный вариант
-        }
-        return bestX to bestZ
-    }
-
     /** "12.5", "~", "~3", "~-2" -> число. base нужен только для ~. */
     private fun parseCoord(raw: String, base: Double?): Double? {
         val t = raw.removeSurrounding("\"").trim()
@@ -304,7 +253,7 @@ object NpcCommands {
     }
 
     private fun findNpc(level: ServerLevel, id: String): ScriptNpcEntity? {
-        val state = net.foxmediax.scriptfx.npc.NpcRuntime.get(id)
+        val state = NpcRuntime.get(id)
         if (state != null) {
             val e = level.getEntity(state.entityUuid) as? ScriptNpcEntity
             if (e != null) return e
@@ -314,7 +263,6 @@ object NpcCommands {
             .find { it.npcId == id }
     }
 
-    /** Повернуть NPC лицом к точке (x,y,z в мире). */
     private fun facePoint(entity: ScriptNpcEntity, x: Double, y: Double, z: Double) {
         val dx = x - entity.x
         val dy = y - entity.eyeY
@@ -336,12 +284,10 @@ object NpcCommands {
         entity.yBodyRot = y
         entity.yHeadRotO = y
         entity.yBodyRotO = y
-        // синхронизация с клиентом
         entity.setYBodyRot(y)
         entity.setYHeadRot(y)
     }
 
-    /** "90", "~", "~180" -> угол в градусах. */
     private fun parseAngle(raw: String, base: Float?): Float? {
         if (raw.startsWith("~")) {
             if (base == null) return null

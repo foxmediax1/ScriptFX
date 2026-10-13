@@ -62,6 +62,8 @@ object ParticleRuntime {
         val offsetZ: Double = 0.0,
         var ageSec: Float = 0f,
         var spawnAcc: Float = 0f,
+        /** Для INSTANT: отслеживаем, когда нужно следующую порцию (при LOOPING) */
+        var lastBurstTime: Float = 0f,
         val particles: ArrayList<LiveParticle> = ArrayList(),
         val rng: Random = Random.Default
     ) {
@@ -120,11 +122,30 @@ object ParticleRuntime {
                 }
             }
 
-            if (stillActive && em.effect.rateMode == ParticleEffect.RateMode.STEADY) {
-                em.spawnAcc += em.effect.spawnRate * dtSec
-                while (em.spawnAcc >= 1f && em.particles.size < em.effect.maxParticles) {
-                    em.spawnAcc -= 1f
-                    spawnOne(em)
+            when (em.effect.rateMode) {
+                ParticleEffect.RateMode.STEADY -> {
+                    if (stillActive) {
+                        em.spawnAcc += em.effect.spawnRate * dtSec
+                        while (em.spawnAcc >= 1f && em.particles.size < em.effect.maxParticles) {
+                            em.spawnAcc -= 1f
+                            spawnOne(em)
+                        }
+                    }
+                }
+                ParticleEffect.RateMode.INSTANT -> {
+                    // Для INSTANT: спавним порцию сразу при старте и далее каждые activeTime секунд (если LOOPING)
+                    val timeSinceLastBurst = em.ageSec - em.lastBurstTime
+                    val shouldBurst = when (em.effect.lifetimeMode) {
+                        ParticleEffect.LifetimeMode.ONCE ->
+                            em.lastBurstTime == 0f && em.ageSec < em.effect.activeTime
+                        ParticleEffect.LifetimeMode.LOOPING ->
+                            timeSinceLastBurst >= em.effect.activeTime
+                    }
+                    if (shouldBurst && stillActive) {
+                        val count = em.effect.spawnRate.toInt().coerceIn(1, em.effect.maxParticles)
+                        repeat(count) { spawnOne(em) }
+                        em.lastBurstTime = em.ageSec
+                    }
                 }
             }
 
@@ -318,14 +339,24 @@ object ParticleRuntime {
                     )
                     return
                 }
+                // Удаляем старые эмиттеры с тем же эффектом в той же точке (перезапуск)
+                emitters.removeAll {
+                    it.effect.identifier == effect.identifier &&
+                            it.followNpcId == null &&
+                            kotlin.math.abs(it.originX - payload.x) < 0.1 &&
+                            kotlin.math.abs(it.originY - payload.y) < 0.1 &&
+                            kotlin.math.abs(it.originZ - payload.z) < 0.1
+                }
                 val em = ActiveEmitter(effect, payload.x, payload.y, payload.z)
                 when (effect.rateMode) {
                     ParticleEffect.RateMode.INSTANT -> {
+                        // Первую порцию спавним сразу
                         val count = effect.spawnRate.toInt().coerceIn(1, effect.maxParticles)
                         repeat(count) { spawnOne(em) }
+                        em.lastBurstTime = 0f
                     }
                     ParticleEffect.RateMode.STEADY -> {
-                        // сразу несколько, чтобы было видно без ожидания тика
+                        // Небольшой стартовый burst, чтобы было видно сразу
                         val burst = effect.spawnRate.toInt().coerceIn(1, 8)
                         repeat(burst) { spawnOne(em) }
                     }
@@ -343,18 +374,23 @@ object ParticleRuntime {
                     it.followNpcId == npcId && it.effect.identifier == effect.identifier
                 }
                 val npc = findNpc(npcId)
-                emitters.add(
-                    ActiveEmitter(
-                        effect = effect,
-                        originX = (npc?.x ?: 0.0) + payload.x,
-                        originY = (npc?.y ?: 0.0) + payload.y,
-                        originZ = (npc?.z ?: 0.0) + payload.z,
-                        followNpcId = npcId,
-                        offsetX = payload.x,
-                        offsetY = payload.y,
-                        offsetZ = payload.z
-                    )
+                val em = ActiveEmitter(
+                    effect = effect,
+                    originX = (npc?.x ?: 0.0) + payload.x,
+                    originY = (npc?.y ?: 0.0) + payload.y,
+                    originZ = (npc?.z ?: 0.0) + payload.z,
+                    followNpcId = npcId,
+                    offsetX = payload.x,
+                    offsetY = payload.y,
+                    offsetZ = payload.z
                 )
+                // Для INSTANT тоже спавним сразу
+                if (effect.rateMode == ParticleEffect.RateMode.INSTANT) {
+                    val count = effect.spawnRate.toInt().coerceIn(1, effect.maxParticles)
+                    repeat(count) { spawnOne(em) }
+                    em.lastBurstTime = 0f
+                }
+                emitters.add(em)
             }
             ParticlePayload.DETACH -> {
                 val npcId = payload.targetNpcId
@@ -375,35 +411,6 @@ object ParticleRuntime {
                 }
             }
             ParticlePayload.STOP_ALL -> emitters.clear()
-        }
-    }
-
-    private fun molangCtx(
-        r1: Float, r2: Float, r3: Float, r4: Float,
-        particleAge: Float,
-        particleLifetime: Float,
-        emitterAge: Float,
-        emitterLifetime: Float
-    ): SimpleMolang.Ctx {
-        // если Ctx — data class только с random/age/lifetime:
-        return try {
-            SimpleMolang.Ctx(
-                random1 = r1,
-                random2 = r2,
-                random3 = r3,
-                random4 = r4,
-                particleAge = particleAge,
-                particleLifetime = particleLifetime
-            )
-        } catch (_: Throwable) {
-            SimpleMolang.Ctx(
-                random1 = r1,
-                random2 = r2,
-                random3 = r3,
-                random4 = r4,
-                particleAge = particleAge,
-                particleLifetime = particleLifetime
-            )
         }
     }
 }

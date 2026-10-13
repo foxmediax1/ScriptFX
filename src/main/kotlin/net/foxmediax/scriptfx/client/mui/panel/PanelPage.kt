@@ -422,7 +422,7 @@ class CutscenesPage(host: PanelHost) : PanelPage(host) {
                 letterbox on 0.12
                 camera_set 0 80 0 0 20
                 camera_move 10 78 10 45 10 "2.sec"
-                wait "1.sec"
+                ticktime "1.sec"
                 cutscene_end
             """.trimIndent(),
             "Путь из нескольких точек" to """
@@ -441,7 +441,7 @@ class CutscenesPage(host: PanelHost) : PanelPage(host) {
                 camera_set 100 75 100 0 0
                 camera_fov 40 "0.8.sec"
                 camera_lookat 100 65 120 "1.sec"
-                wait "2.sec"
+                ticktime "2.sec"
                 camera_fov 70 "0.5.sec"
                 cutscene_end
             """.trimIndent()
@@ -460,6 +460,7 @@ class CutscenesPage(host: PanelHost) : PanelPage(host) {
             camera_lookat_entity "Ник"|@s [duration]
             camera_fov 10–170 [duration]
             Прерывание игроком: Ctrl+Alt+End
+            Аварийный сброс: /scriptfx camera_reset
         """.trimIndent()
     }
 }

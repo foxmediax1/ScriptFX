@@ -10,9 +10,8 @@ object CommandRegistry {
 
     private val handlers = mutableMapOf<String, CommandHandler>()
 
-    private val DURATION_RE = Regex("""^(\d+(?:\.\d+)?)(?:\.([a-z]+))?$""", RegexOption.IGNORE_CASE)
-
-    init { registerDefaults()
+    init {
+        registerDefaults()
         NpcCommands.install { name, handler -> register(name, handler) }
         ParticleCommands.install { name, handler -> register(name, handler) }
         QuestCommands.install { name, handler -> register(name, handler) }
@@ -42,8 +41,6 @@ object CommandRegistry {
             CommandResult.Continue
         }
 
-        // printNPC ["аватар.png"] "текст" "цвет имени" "имя" "цвет текста" "ремарка"
-        // Всё, кроме текста, необязательно. Аватар определяется по окончанию .png в первом аргументе.
         register("printNPC") { context, args ->
             val hasAvatar = args.getOrNull(0)?.endsWith(".png", ignoreCase = true) == true
             val avatar = if (hasAvatar) args[0] else ""
@@ -95,13 +92,10 @@ object CommandRegistry {
             CommandResult.Continue
         }
 
-        // Команды-триггеры (checkpoint / worldstartscript / trigger_globalplay) регистрируются
-        // при загрузке скриптов (TriggerParser). При обычном запуске скрипта они ничего не делают.
         TriggerParser.TRIGGER_NAMES.forEach { name ->
             register(name) { _, _ -> CommandResult.Continue }
         }
 
-        // weather rain | thunder | clear — меняет погоду (можно ставить на любой строке).
         register("weather") { context, args ->
             val kind = args.getOrNull(0)?.lowercase()
             if (kind != "rain" && kind != "thunder" && kind != "clear") {
@@ -112,7 +106,6 @@ object CommandRegistry {
             CommandResult.Continue
         }
 
-        // timecycles day | night | число тиков — меняет время суток (можно ставить на любой строке).
         register("timecycles") { context, args ->
             val raw = args.getOrNull(0)?.lowercase()
             val ticks = when (raw) {
@@ -128,11 +121,9 @@ object CommandRegistry {
             CommandResult.Continue
         }
 
-        // Команды камеры: cameraINEffect / cameraOUTEffect / cameraBIGText / cameraSMALLText
         CameraCommands.install { name, handler -> register(name, handler) }
-
         CutsceneCommands.install { name, handler -> register(name, handler) }
-        NpcCommands.install { name, handler -> register(name, handler) }
+        // NpcCommands.install больше НЕ вызывается здесь — он в init {}
     }
 
     fun resolveLevel(server: net.minecraft.server.MinecraftServer, worldKey: String) =
@@ -143,13 +134,11 @@ object CommandRegistry {
             else -> null
         }
 
-    /** Выполняет ванильную команду от имени сервера, не показывая сообщения операторам в чате. */
     private fun runSilently(context: ScriptContext, command: String) {
         val source = context.server.createCommandSourceStack().withSuppressedOutput()
         context.server.commands.performPrefixedCommand(source, command)
     }
 
-    /** "1.sec" / "20.tick" / "500.ms" -> число серверных тиков (20 тиков = 1 секунда). */
     fun parseDurationTicks(raw: String): Long =
         Durations.parseTicks(raw) ?: run {
             ScriptFXLog.warn("Некорректная длительность '$raw', использую 1.sec")
