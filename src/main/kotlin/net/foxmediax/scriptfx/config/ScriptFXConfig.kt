@@ -2,6 +2,7 @@ package net.foxmediax.scriptfx.config
 
 import com.google.gson.GsonBuilder
 import net.fabricmc.loader.api.FabricLoader
+import net.foxmediax.scriptfx.media.Mp4Decoder
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -11,7 +12,6 @@ object ScriptFXConfig {
     const val DEFAULT_MESSAGE_BORDER = 0xFFC8B4FF.toInt()
 
     var showHints: Boolean = true
-    var maxScripts: Int = 10
     var theme: String = "dark"
     var messageMode: MessageDisplayMode = MessageDisplayMode.CENTER
 
@@ -23,12 +23,17 @@ object ScriptFXConfig {
     var messageBorder: Int = DEFAULT_MESSAGE_BORDER
     var centerSystemMessages: Boolean = true
 
+    /**
+     * Полный путь к ffmpeg (например C:/ffmpeg/bin/ffmpeg.exe).
+     * null или "" — искать `ffmpeg` в PATH.
+     */
+    var ffmpegPath: String? = null
+
     private val gson = GsonBuilder().setPrettyPrinting().create()
     private val configPath = FabricLoader.getInstance().configDir.resolve("scriptfx.json")
 
     private data class Data(
         var showHints: Boolean = true,
-        var maxScripts: Int = 10,
         var theme: String = "dark",
         var messageMode: String = MessageDisplayMode.CENTER.id,
         var dialogFadeMs: Int = 400,
@@ -36,22 +41,25 @@ object ScriptFXConfig {
         var npcOutline: Boolean = true,
         var messageBg: Int = DEFAULT_MESSAGE_BG,
         var messageBorder: Int = DEFAULT_MESSAGE_BORDER,
-        var centerSystemMessages: Boolean = true
+        var centerSystemMessages: Boolean = true,
+        var ffmpegPath: String? = null
     )
 
     fun load() {
         if (!configPath.exists()) {
             save()
+            applyMedia()
             return
+
         }
         try {
             val data = gson.fromJson(configPath.readText(), Data::class.java)
             if (data == null) {
                 save()
+                applyMedia()
                 return
             }
             showHints = data.showHints
-            maxScripts = data.maxScripts.coerceIn(1, 50)
             theme = data.theme
             messageMode = MessageDisplayMode.fromId(data.messageMode)
             dialogFadeMs = data.dialogFadeMs.coerceIn(1, 5000)
@@ -60,6 +68,7 @@ object ScriptFXConfig {
             messageBg = data.messageBg
             messageBorder = data.messageBorder
             centerSystemMessages = data.centerSystemMessages
+            ffmpegPath = data.ffmpegPath?.takeIf { it.isNotBlank() }
         } catch (e: Exception) {
             try {
                 java.nio.file.Files.copy(
@@ -67,17 +76,31 @@ object ScriptFXConfig {
                     configPath.resolveSibling("scriptfx.json.broken"),
                     java.nio.file.StandardCopyOption.REPLACE_EXISTING
                 )
-            } catch (_: Exception) { }
+            } catch (_: Exception) {
+            }
             save()
         }
+        applyMedia()
     }
 
     fun save() {
         val data = Data(
-            showHints, maxScripts, theme, messageMode.id,
-            dialogFadeMs, dialogTypewriterMs, npcOutline,
-            messageBg, messageBorder, centerSystemMessages
+            showHints = showHints,
+            theme = theme,
+            messageMode = messageMode.id,
+            dialogFadeMs = dialogFadeMs,
+            dialogTypewriterMs = dialogTypewriterMs,
+            npcOutline = npcOutline,
+            messageBg = messageBg,
+            messageBorder = messageBorder,
+            centerSystemMessages = centerSystemMessages,
+            ffmpegPath = ffmpegPath
         )
         configPath.writeText(gson.toJson(data))
+    }
+
+    private fun applyMedia() {
+        // Mp4Decoder должен существовать в net.foxmediax.scriptfx.media
+        Mp4Decoder.ffmpegPath = ffmpegPath
     }
 }
