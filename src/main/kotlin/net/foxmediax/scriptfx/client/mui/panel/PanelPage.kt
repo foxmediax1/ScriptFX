@@ -2,7 +2,6 @@ package net.foxmediax.scriptfx.client.mui.panel
 
 import icyllis.modernui.core.Context
 import icyllis.modernui.graphics.drawable.ColorDrawable
-import icyllis.modernui.util.Log.d
 import icyllis.modernui.view.Gravity
 import icyllis.modernui.view.View
 import icyllis.modernui.widget.FrameLayout
@@ -19,6 +18,9 @@ import net.minecraft.client.Minecraft
 import net.foxmediax.scriptfx.client.NpcPreviewHelper
 import net.foxmediax.scriptfx.client.mui.UiStyle
 import net.foxmediax.scriptfx.particles.ParticleRegistry
+import net.foxmediax.scriptfx.client.particles.ParticleRuntime
+import net.foxmediax.scriptfx.network.ParticlePayload
+import net.foxmediax.scriptfx.particles.ParticleEffect
 
 interface PanelHost {
     fun navigate(section: PanelSection?)
@@ -1117,6 +1119,7 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
 
     private lateinit var ctx: Context
     private lateinit var listBox: LinearLayout
+    private lateinit var statusView: TextView
     private lateinit var overlays: OverlayHost
 
     override fun createView(ctx: Context): View {
@@ -1134,6 +1137,7 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
             setPadding(PanelUi.dp(ctx, 12), PanelUi.dp(ctx, 10), PanelUi.dp(ctx, 12), PanelUi.dp(ctx, 10))
         }
 
+        // --- шапка ---
         val top = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -1155,13 +1159,10 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         )
         top.addView(
             PanelUi.flatButton(ctx, "Стоп все") {
-                // локально на клиенте
-                net.foxmediax.scriptfx.client.particles.ParticleRuntime.handlePayload(
-                    net.foxmediax.scriptfx.network.ParticlePayload(
-                        net.foxmediax.scriptfx.network.ParticlePayload.STOP_ALL,
-                        "", "", 0.0, 0.0, 0.0
-                    )
+                ParticleRuntime.handlePayload(
+                    ParticlePayload(ParticlePayload.STOP_ALL, "", "", 0.0, 0.0, 0.0)
                 )
+                statusView.text = "Все эмиттеры остановлены"
             },
             PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP).apply {
                 leftMargin = PanelUi.dp(ctx, 6)
@@ -1171,16 +1172,26 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
 
         page.addView(
             TextView(ctx).apply {
-                text = "Файлы: config/scriptfx/projects/*/particles/*.particle.json"
+                text = "config/scriptfx/projects/*/particles/*.particle.json  ·  Play = у игрока (~ ~1 ~)"
                 textSize = 11f
                 setTextColor(PanelUi.COL_MUTED)
-                setPadding(0, PanelUi.dp(ctx, 6), 0, PanelUi.dp(ctx, 8))
+                setPadding(0, PanelUi.dp(ctx, 6), 0, PanelUi.dp(ctx, 4))
             },
             PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
         )
 
+        statusView = TextView(ctx).apply {
+            text = ""
+            textSize = 12f
+            setTextColor(PanelUi.COL_MUTED)
+            setPadding(0, 0, 0, PanelUi.dp(ctx, 8))
+        }
+        page.addView(statusView, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+
         val scroll = ScrollView(ctx)
-        listBox = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        listBox = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+        }
         scroll.addView(listBox, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
         page.addView(scroll, LinearLayout.LayoutParams(PanelUi.MATCH, 0, 1f))
 
@@ -1194,10 +1205,12 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
     private fun refreshList() {
         listBox.removeAllViews()
         val effects = ParticleRegistry.list()
+        statusView.text = "Загружено: ${effects.size}"
+
         if (effects.isEmpty()) {
             listBox.addView(
                 TextView(ctx).apply {
-                    text = "Нет эффектов. Положи .particle.json в projects/*/particles/"
+                    text = "Нет эффектов.\nПоложи файл из Snowstorm: projects/<имя>/particles/*.particle.json"
                     textSize = 13f
                     setTextColor(PanelUi.COL_MUTED)
                 },
@@ -1205,48 +1218,80 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
             )
             return
         }
+
         for (fx in effects) {
-            val row = LinearLayout(ctx).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, PanelUi.dp(ctx, 4), 0, PanelUi.dp(ctx, 4))
+            val card = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(PanelUi.dp(ctx, 10), PanelUi.dp(ctx, 8), PanelUi.dp(ctx, 10), PanelUi.dp(ctx, 8))
+                background = UiStyle.rounded(ctx, 0xFF141418.toInt(), 8f, 0xFF2A2A34.toInt(), 1)
             }
-            row.addView(
+
+            card.addView(
                 TextView(ctx).apply {
                     text = fx.identifier
-                    textSize = 13f
+                    textSize = 14f
                     setTextColor(PanelUi.COL_TEXT)
                 },
-                LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f)
+                PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
             )
-            row.addView(
+
+            val meta = buildString {
+                append(fx.material)
+                append(" · rate ")
+                append(if (fx.rateMode == ParticleEffect.RateMode.INSTANT) "instant ${fx.spawnRate.toInt()}" else "${fx.spawnRate}/s")
+                append(" · life ")
+                append(fx.particleLifetime)
+                append("s")
+                if (fx.flipbook != null) append(" · flipbook ${fx.flipbook.maxFrame}f")
+            }
+            card.addView(
+                TextView(ctx).apply {
+                    text = meta
+                    textSize = 11f
+                    setTextColor(PanelUi.COL_MUTED)
+                    setPadding(0, PanelUi.dp(ctx, 3), 0, PanelUi.dp(ctx, 6))
+                },
+                PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+            )
+
+            val actions = LinearLayout(ctx).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            actions.addView(
                 PanelUi.flatButton(ctx, "Play") {
                     playAtPlayer(fx.identifier)
+                    statusView.text = "Play: ${fx.identifier}"
                 },
                 PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP)
             )
-            row.addView(
+            actions.addView(
                 PanelUi.flatButton(ctx, "Stop") {
-                    net.foxmediax.scriptfx.client.particles.ParticleRuntime.handlePayload(
-                        net.foxmediax.scriptfx.network.ParticlePayload(
-                            net.foxmediax.scriptfx.network.ParticlePayload.STOP,
-                            fx.identifier, "", 0.0, 0.0, 0.0
-                        )
+                    ParticleRuntime.handlePayload(
+                        ParticlePayload(ParticlePayload.STOP, fx.identifier, "", 0.0, 0.0, 0.0)
                     )
+                    statusView.text = "Stop: ${fx.identifier}"
                 },
                 PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP).apply {
-                    leftMargin = PanelUi.dp(ctx, 4)
+                    leftMargin = PanelUi.dp(ctx, 6)
                 }
             )
-            listBox.addView(row, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+            card.addView(actions, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+
+            listBox.addView(
+                card,
+                LinearLayout.LayoutParams(PanelUi.MATCH, PanelUi.WRAP).apply {
+                    bottomMargin = PanelUi.dp(ctx, 8)
+                }
+            )
         }
     }
 
     private fun playAtPlayer(effectId: String) {
-        val p = net.minecraft.client.Minecraft.getInstance().player ?: return
-        net.foxmediax.scriptfx.client.particles.ParticleRuntime.handlePayload(
-            net.foxmediax.scriptfx.network.ParticlePayload(
-                net.foxmediax.scriptfx.network.ParticlePayload.PLAY,
+        val p = Minecraft.getInstance().player ?: return
+        ParticleRuntime.handlePayload(
+            ParticlePayload(
+                ParticlePayload.PLAY,
                 effectId,
                 "",
                 p.x,
