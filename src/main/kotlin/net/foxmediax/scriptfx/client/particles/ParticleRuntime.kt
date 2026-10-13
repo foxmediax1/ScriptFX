@@ -1,14 +1,14 @@
 package net.foxmediax.scriptfx.client.particles
 
 import net.foxmediax.scriptfx.network.ParticlePayload
-import net.foxmediax.scriptfx.particles.ParticleEffect
-import kotlin.random.Random
-import net.minecraft.client.Minecraft
-import net.foxmediax.scriptfx.particles.molang.SimpleMolang
-import net.foxmediax.scriptfx.particles.ParticleRegistry
+import net.foxmediax.scriptfx.npc.ScriptNpcEntity
 import net.foxmediax.scriptfx.particles.Flipbook
-
-private val rng = kotlin.random.Random.Default
+import net.foxmediax.scriptfx.particles.ParticleEffect
+import net.foxmediax.scriptfx.particles.ParticleRegistry
+import net.foxmediax.scriptfx.particles.molang.SimpleMolang
+import net.minecraft.client.Minecraft
+import kotlin.math.sqrt
+import kotlin.random.Random
 
 data class LiveParticle(
     var x: Float,
@@ -19,12 +19,12 @@ data class LiveParticle(
     var vz: Float,
     var age: Float,
     val maxAge: Float,
-    val sizeX: Float,
-    val sizeY: Float,
-    val r: Float,
-    val g: Float,
-    val b: Float,
-    val a: Float,
+    var sizeX: Float,
+    var sizeY: Float,
+    var r: Float,
+    var g: Float,
+    var b: Float,
+    var a: Float,
     var uvU0: Float,
     var uvV0: Float,
     var uvU1: Float,
@@ -36,54 +36,16 @@ data class LiveParticle(
     val baseUvX: Float = 0f,
     val baseUvY: Float = 0f,
     val texW: Float = 128f,
-    val texH: Float = 128f
+    val texH: Float = 128f,
+    val baseR: Float = 1f,
+    val baseG: Float = 1f,
+    val baseB: Float = 1f,
+    val baseA: Float = 1f,
+    val rand1: Float = 0f,
+    val rand2: Float = 0f,
+    val rand3: Float = 0f,
+    val rand4: Float = 0f
 )
-
-class ActiveEmitter(
-    val effect: ParticleEffect,
-    var originX: Double,
-    var originY: Double,
-    var originZ: Double,
-    /** Если не null — каждый тик тянем origin с этого NPC */
-    var followNpcId: String? = null,
-    val offsetX: Double = 0.0,
-    val offsetY: Double = 0.0,
-    val offsetZ: Double = 0.0,
-    var ageSec: Float = 0f,
-    var spawnAcc: Float = 0f,
-    val particles: ArrayList<LiveParticle> = ArrayList(),
-    val rng: Random = Random.Default
-) {
-    val finished: Boolean
-        get() {
-            // при attach не гасим эмиттер по activeTime, пока NPC жив
-            if (followNpcId != null) {
-                return particles.isEmpty() && ageSec > 0.5f && !isNpcPresent()
-            }
-            val emitterDone = when (effect.lifetimeMode) {
-                ParticleEffect.LifetimeMode.ONCE -> ageSec >= effect.activeTime
-                ParticleEffect.LifetimeMode.LOOPING -> false
-            }
-            return emitterDone && particles.isEmpty()
-        }
-
-    private fun isNpcPresent(): Boolean {
-        val id = followNpcId ?: return false
-        return findNpc(id) != null
-    }
-
-    // --- helpers ---
-
-    private fun findNpc(npcId: String): net.foxmediax.scriptfx.npc.ScriptNpcEntity? {
-        val level = Minecraft.getInstance().level ?: return null
-        for (e in level.entitiesForRendering()) {
-            if (e is net.foxmediax.scriptfx.npc.ScriptNpcEntity && e.npcId == npcId) {
-                return e
-            }
-        }
-        return null
-    }
-}
 
 object ParticleRuntime {
 
@@ -94,7 +56,6 @@ object ParticleRuntime {
         var originX: Double,
         var originY: Double,
         var originZ: Double,
-        /** Если не null — каждый тик тянем origin с этого NPC */
         var followNpcId: String? = null,
         val offsetX: Double = 0.0,
         val offsetY: Double = 0.0,
@@ -106,9 +67,8 @@ object ParticleRuntime {
     ) {
         val finished: Boolean
             get() {
-                // при attach не гасим эмиттер по activeTime, пока NPC жив
                 if (followNpcId != null) {
-                    return particles.isEmpty() && ageSec > 0.5f && !isNpcPresent()
+                    return particles.isEmpty() && ageSec > 0.5f && findNpc(followNpcId!!) == null
                 }
                 val emitterDone = when (effect.lifetimeMode) {
                     ParticleEffect.LifetimeMode.ONCE -> ageSec >= effect.activeTime
@@ -116,21 +76,12 @@ object ParticleRuntime {
                 }
                 return emitterDone && particles.isEmpty()
             }
-
-        private fun isNpcPresent(): Boolean {
-            val id = followNpcId ?: return false
-            return findNpc(id) != null
-        }
     }
 
-// --- helpers ---
-
-    private fun findNpc(npcId: String): net.foxmediax.scriptfx.npc.ScriptNpcEntity? {
+    private fun findNpc(npcId: String): ScriptNpcEntity? {
         val level = Minecraft.getInstance().level ?: return null
         for (e in level.entitiesForRendering()) {
-            if (e is net.foxmediax.scriptfx.npc.ScriptNpcEntity && e.npcId == npcId) {
-                return e
-            }
+            if (e is ScriptNpcEntity && e.npcId == npcId) return e
         }
         return null
     }
@@ -139,13 +90,19 @@ object ParticleRuntime {
         emitters.clear()
     }
 
+    fun forEachParticle(block: (ActiveEmitter, LiveParticle) -> Unit) {
+        for (em in emitters) {
+            for (p in em.particles) block(em, p)
+        }
+    }
+
     fun tick(dtSec: Float) {
+        if (dtSec <= 0f) return
         val it = emitters.iterator()
         while (it.hasNext()) {
             val em = it.next()
             em.ageSec += dtSec
 
-            // следовать за NPC
             em.followNpcId?.let { id ->
                 val npc = findNpc(id)
                 if (npc != null) {
@@ -155,36 +112,28 @@ object ParticleRuntime {
                 }
             }
 
-            // для attach всегда считаем эмиттер «активным» (looping-поведение)
-            val stillActive = if (em.followNpcId != null) {
-                findNpc(em.followNpcId!!) != null
-            } else {
-                when (em.effect.lifetimeMode) {
+            val stillActive = when {
+                em.followNpcId != null -> true
+                else -> when (em.effect.lifetimeMode) {
                     ParticleEffect.LifetimeMode.ONCE -> em.ageSec < em.effect.activeTime
                     ParticleEffect.LifetimeMode.LOOPING -> true
                 }
             }
 
-            // spawn steady
-            if (em.effect.rateMode == ParticleEffect.RateMode.STEADY) {
-                val stillActive = when (em.effect.lifetimeMode) {
-                    ParticleEffect.LifetimeMode.ONCE -> em.ageSec < em.effect.activeTime
-                    ParticleEffect.LifetimeMode.LOOPING -> true
-                }
-                if (stillActive) {
-                    em.spawnAcc += em.effect.spawnRate * dtSec
-                    while (em.spawnAcc >= 1f && em.particles.size < em.effect.maxParticles) {
-                        em.spawnAcc -= 1f
-                        spawnOne(em)
-                    }
+            if (stillActive && em.effect.rateMode == ParticleEffect.RateMode.STEADY) {
+                em.spawnAcc += em.effect.spawnRate * dtSec
+                while (em.spawnAcc >= 1f && em.particles.size < em.effect.maxParticles) {
+                    em.spawnAcc -= 1f
+                    spawnOne(em)
                 }
             }
 
-            // integrate particles
             val pit = em.particles.iterator()
             while (pit.hasNext()) {
                 val p = pit.next()
                 p.age += dtSec
+
+                // flipbook UV
                 p.flipbook?.let { fb ->
                     val t = if (fb.stretchToLifetime && p.maxAge > 0f) {
                         (p.age / p.maxAge).coerceIn(0f, 0.999f)
@@ -198,124 +147,193 @@ object ParticleRuntime {
                     }
                     val u = p.baseUvX + fb.stepU * frame
                     val v = p.baseUvY + fb.stepV * frame
-                    p.uvU0 = u / p.texW
-                    p.uvV0 = v / p.texH
-                    p.uvU1 = (u + fb.sizeU) / p.texW
-                    p.uvV1 = (v + fb.sizeV) / p.texH
+                    p.uvU0 = (u / p.texW).coerceIn(0f, 1f)
+                    p.uvV0 = (v / p.texH).coerceIn(0f, 1f)
+                    p.uvU1 = ((u + fb.sizeU) / p.texW).coerceIn(0f, 1f)
+                    p.uvV1 = ((v + fb.sizeV) / p.texH).coerceIn(0f, 1f)
                 }
+
                 if (p.age >= p.maxAge) {
                     pit.remove()
                     continue
                 }
-                p.vx += em.effect.accelX * dtSec
-                p.vy += em.effect.accelY * dtSec
-                p.vz += em.effect.accelZ * dtSec
+
+                // fade alpha
+                val life = if (p.maxAge > 1e-6f) (p.age / p.maxAge).coerceIn(0f, 1f) else 1f
+                p.a = p.baseA * (1f - life)
+                p.r = p.baseR
+                p.g = p.baseG
+                p.b = p.baseB
+
+                // size by age (Molang)
+                if (em.effect.sizeExprX != null || em.effect.sizeExprY != null) {
+                    val c = SimpleMolang.Ctx(
+                        random1 = p.rand1,
+                        random2 = p.rand2,
+                        random3 = p.rand3,
+                        random4 = p.rand4,
+                        particleAge = p.age,
+                        particleLifetime = p.maxAge,
+                        emitterAge = em.ageSec,
+                        emitterLifetime = em.effect.activeTime
+                    )
+                    if (em.effect.sizeExprX != null) {
+                        p.sizeX = SimpleMolang.eval(em.effect.sizeExprX, p.sizeX, c)
+                            .coerceIn(0.02f, 2f)
+                    }
+                    if (em.effect.sizeExprY != null) {
+                        p.sizeY = SimpleMolang.eval(em.effect.sizeExprY, p.sizeY, c)
+                            .coerceIn(0.02f, 2f)
+                    }
+                }
+
+                // motion
+                p.vx += (em.effect.accelX + p.ax) * dtSec
+                p.vy += (em.effect.accelY + p.ay) * dtSec
+                p.vz += (em.effect.accelZ + p.az) * dtSec
                 p.x += p.vx * dtSec
                 p.y += p.vy * dtSec
                 p.z += p.vz * dtSec
-                p.vx += p.ax * dtSec
-                p.vy += p.ay * dtSec
-                p.vz += p.az * dtSec
             }
 
             if (em.finished) it.remove()
         }
-
-        val level = Minecraft.getInstance().level ?: return
-        forEachParticle { _, p ->
-            if (rng.nextFloat() < 0.4f) {
-                val ri = (p.r.coerceIn(0f, 1f) * 255).toInt()
-                val gi = (p.g.coerceIn(0f, 1f) * 255).toInt()
-                val bi = (p.b.coerceIn(0f, 1f) * 255).toInt()
-                // packed RGB (без alpha) — формат 26.1
-                val color = (ri shl 16) or (gi shl 8) or bi
-                val scale = (p.sizeX * 2f).coerceIn(0.3f, 1.5f)
-
-                level.addParticle(
-                    net.minecraft.core.particles.DustParticleOptions(color, scale),
-                    p.x.toDouble(),
-                    p.y.toDouble(),
-                    p.z.toDouble(),
-                    0.0, 0.0, 0.0
-                )
-            }
-        }
-    }
-
-    fun forEachParticle(block: (ActiveEmitter, LiveParticle) -> Unit) {
-        for (em in emitters) {
-            for (p in em.particles) block(em, p)
-        }
     }
 
     private fun spawnOne(em: ActiveEmitter) {
-        if (em.particles.size >= em.effect.maxParticles) return
-        val e = em.effect
-        val ctx = SimpleMolang.Ctx()
+        try {
+            if (em.particles.size >= em.effect.maxParticles) return
+            val e = em.effect
+            val r1 = em.rng.nextFloat()
+            val r2 = em.rng.nextFloat()
+            val r3 = em.rng.nextFloat()
+            val r4 = em.rng.nextFloat()
 
-        val lifetime = SimpleMolang.eval(e.lifetimeExpr, e.particleLifetime, ctx)
-            .coerceAtLeast(0.05f)
-        val speed = SimpleMolang.eval(e.speedExpr, e.initialSpeed, ctx)
-        val ax = SimpleMolang.eval(e.accelExprX, e.accelX, ctx)
-        val ay = SimpleMolang.eval(e.accelExprY, e.accelY, ctx)
-        val az = SimpleMolang.eval(e.accelExprZ, e.accelZ, ctx)
-        val sx = SimpleMolang.eval(e.sizeExprX, e.sizeX, ctx)
-        val sy = SimpleMolang.eval(e.sizeExprY, e.sizeY, ctx)
-
-        val (ox, oy, oz) = e.sampleSpawnOffset(em.rng)
-        val dx = (em.rng.nextFloat() * 2f - 1f)
-        val dy = (em.rng.nextFloat() * 2f - 1f) * 0.5f + 0.5f
-        val dz = (em.rng.nextFloat() * 2f - 1f)
-        val len = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(1e-4f)
-
-        val u0 = e.uvX / e.texW
-        val v0 = e.uvY / e.texH
-        val u1 = (e.uvX + e.uvW) / e.texW
-        val v1 = (e.uvY + e.uvH) / e.texH
-
-        em.particles.add(
-            LiveParticle(
-                x = (em.originX + ox).toFloat(),
-                y = (em.originY + oy).toFloat(),
-                z = (em.originZ + oz).toFloat(),
-                vx = dx / len * speed,
-                vy = dy / len * speed,
-                vz = dz / len * speed,
-                age = 0f,
-                maxAge = lifetime,
-                sizeX = sx,
-                sizeY = sy,
-                r = e.colorR,
-                g = e.colorG,
-                b = e.colorB,
-                a = e.colorA,
-                uvU0 = u0,
-                uvV0 = v0,
-                uvU1 = u1,
-                uvV1 = v1,
-                ax = ax,
-                ay = ay,
-                az = az,
-                flipbook = e.flipbook,
-                baseUvX = e.uvX,
-                baseUvY = e.uvY,
-                texW = e.texW,
-                texH = e.texH
+            val ctx = SimpleMolang.Ctx(
+                random1 = r1,
+                random2 = r2,
+                random3 = r3,
+                random4 = r4,
+                particleAge = 0f,
+                particleLifetime = e.particleLifetime
             )
-        )
+
+            val lifetime = SimpleMolang.eval(e.lifetimeExpr, e.particleLifetime, ctx)
+                .coerceAtLeast(0.05f)
+            val speed = SimpleMolang.eval(e.speedExpr, e.initialSpeed, ctx)
+            val ax = SimpleMolang.eval(e.accelExprX, e.accelX, ctx)
+            val ay = SimpleMolang.eval(e.accelExprY, e.accelY, ctx)
+            val az = SimpleMolang.eval(e.accelExprZ, e.accelZ, ctx)
+            val sx = SimpleMolang.eval(e.sizeExprX, e.sizeX, ctx).coerceIn(0.02f, 2f)
+            val sy = SimpleMolang.eval(e.sizeExprY, e.sizeY, ctx).coerceIn(0.02f, 2f)
+
+            val (ox, oy, oz) = e.sampleSpawnOffset(em.rng)
+            val (dx, dy, dz) = directionFor(e, ox, oy, oz, em.rng)
+            val len = sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(1e-4f)
+
+            val u0 = (e.uvX / e.texW).coerceIn(0f, 1f)
+            val v0 = (e.uvY / e.texH).coerceIn(0f, 1f)
+            val u1 = ((e.uvX + e.uvW) / e.texW).coerceIn(0f, 1f)
+            val v1 = ((e.uvY + e.uvH) / e.texH).coerceIn(0f, 1f)
+
+            em.particles.add(
+                LiveParticle(
+                    x = (em.originX + ox).toFloat(),
+                    y = (em.originY + oy).toFloat(),
+                    z = (em.originZ + oz).toFloat(),
+                    vx = dx / len * speed,
+                    vy = dy / len * speed,
+                    vz = dz / len * speed,
+                    age = 0f,
+                    maxAge = lifetime,
+                    sizeX = sx,
+                    sizeY = sy,
+                    r = e.colorR,
+                    g = e.colorG,
+                    b = e.colorB,
+                    a = e.colorA,
+                    uvU0 = u0,
+                    uvV0 = v0,
+                    uvU1 = u1,
+                    uvV1 = v1,
+                    ax = ax,
+                    ay = ay,
+                    az = az,
+                    flipbook = e.flipbook,
+                    baseUvX = e.uvX,
+                    baseUvY = e.uvY,
+                    texW = e.texW,
+                    texH = e.texH,
+                    baseR = e.colorR,
+                    baseG = e.colorG,
+                    baseB = e.colorB,
+                    baseA = e.colorA,
+                    rand1 = r1,
+                    rand2 = r2,
+                    rand3 = r3,
+                    rand4 = r4
+                )
+            )
+        } catch (t: Throwable) {
+            t.printStackTrace()
+            net.foxmediax.scriptfx.scriptengine.ScriptFXLog.warn(
+                "spawnOne failed: ${t.message}"
+            )
+        }
+    }
+
+    private fun directionFor(
+        e: ParticleEffect,
+        ox: Float,
+        oy: Float,
+        oz: Float,
+        rng: Random
+    ): Triple<Float, Float, Float> {
+        return when (e.shape) {
+            is ParticleEffect.EmitterShape.Sphere,
+            is ParticleEffect.EmitterShape.Disc -> {
+                val len = sqrt(ox * ox + oy * oy + oz * oz)
+                if (len > 1e-4f) Triple(ox / len, oy / len, oz / len)
+                else randomDir(rng)
+            }
+            else -> randomDir(rng)
+        }
+    }
+
+    private fun randomDir(rng: Random): Triple<Float, Float, Float> {
+        val dx = rng.nextFloat() * 2f - 1f
+        val dy = (rng.nextFloat() * 2f - 1f) * 0.5f + 0.5f
+        val dz = rng.nextFloat() * 2f - 1f
+        return Triple(dx, dy, dz)
     }
 
     fun handlePayload(payload: ParticlePayload) {
         when (payload.action) {
             ParticlePayload.PLAY -> {
                 ParticleRegistry.reload()
-                val effect = ParticleRegistry.get(payload.effectId) ?: return
+                val effect = ParticleRegistry.get(payload.effectId)
+                if (effect == null) {
+                    net.foxmediax.scriptfx.scriptengine.ScriptFXLog.warn(
+                        "particle_play: эффект не найден: ${payload.effectId}"
+                    )
+                    return
+                }
                 val em = ActiveEmitter(effect, payload.x, payload.y, payload.z)
-                if (effect.rateMode == ParticleEffect.RateMode.INSTANT) {
-                    val count = effect.spawnRate.toInt().coerceIn(1, effect.maxParticles)
-                    repeat(count) { spawnOne(em) }
+                when (effect.rateMode) {
+                    ParticleEffect.RateMode.INSTANT -> {
+                        val count = effect.spawnRate.toInt().coerceIn(1, effect.maxParticles)
+                        repeat(count) { spawnOne(em) }
+                    }
+                    ParticleEffect.RateMode.STEADY -> {
+                        // сразу несколько, чтобы было видно без ожидания тика
+                        val burst = effect.spawnRate.toInt().coerceIn(1, 8)
+                        repeat(burst) { spawnOne(em) }
+                    }
                 }
                 emitters.add(em)
+                net.foxmediax.scriptfx.scriptengine.ScriptFXLog.info(
+                    "particle_play: ${effect.identifier} particles=${em.particles.size}"
+                )
             }
             ParticlePayload.ATTACH -> {
                 ParticleRegistry.reload()
@@ -357,6 +375,35 @@ object ParticleRuntime {
                 }
             }
             ParticlePayload.STOP_ALL -> emitters.clear()
+        }
+    }
+
+    private fun molangCtx(
+        r1: Float, r2: Float, r3: Float, r4: Float,
+        particleAge: Float,
+        particleLifetime: Float,
+        emitterAge: Float,
+        emitterLifetime: Float
+    ): SimpleMolang.Ctx {
+        // если Ctx — data class только с random/age/lifetime:
+        return try {
+            SimpleMolang.Ctx(
+                random1 = r1,
+                random2 = r2,
+                random3 = r3,
+                random4 = r4,
+                particleAge = particleAge,
+                particleLifetime = particleLifetime
+            )
+        } catch (_: Throwable) {
+            SimpleMolang.Ctx(
+                random1 = r1,
+                random2 = r2,
+                random3 = r3,
+                random4 = r4,
+                particleAge = particleAge,
+                particleLifetime = particleLifetime
+            )
         }
     }
 }
