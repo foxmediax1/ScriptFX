@@ -49,6 +49,42 @@ data class LiveParticle(
 
 object ParticleRuntime {
 
+    /** Визуал через ванильный ParticleEngine (стабильно на 26.1). */
+    private fun emitVanilla() {
+        val level = Minecraft.getInstance().level ?: return
+        forEachParticle { _, p ->
+            // не спамим каждый тик каждой частицей
+            if (Random.Default.nextFloat() > 0.45f) return@forEachParticle
+            if (p.a < 0.05f) return@forEachParticle
+
+            val x = p.x.toDouble()
+            val y = p.y.toDouble()
+            val z = p.z.toDouble()
+            val scale = (p.sizeX * 2f).coerceIn(0.25f, 1.5f)
+
+            // 1) Пытаемся Dust с цветом из эффекта
+            val dustOk = runCatching {
+                val ri = (p.r.coerceIn(0f, 1f) * 255).toInt()
+                val gi = (p.g.coerceIn(0f, 1f) * 255).toInt()
+                val bi = (p.b.coerceIn(0f, 1f) * 255).toInt()
+                val color = (ri shl 16) or (gi shl 8) or bi
+                val opts = net.minecraft.core.particles.DustParticleOptions(color, scale)
+                level.addParticle(opts, x, y, z, 0.0, 0.0, 0.0)
+                true
+            }.getOrDefault(false)
+
+            if (!dustOk) {
+                // 2) Fallback — ванильные типы
+                val type = when {
+                    p.r > 0.8f && p.g > 0.6f -> net.minecraft.core.particles.ParticleTypes.FLAME
+                    p.a < 0.5f -> net.minecraft.core.particles.ParticleTypes.CLOUD
+                    else -> net.minecraft.core.particles.ParticleTypes.END_ROD
+                }
+                level.addParticle(type, x, y, z, 0.0, 0.02, 0.0)
+            }
+        }
+    }
+
     private val emitters = ArrayList<ActiveEmitter>()
 
     class ActiveEmitter(
@@ -129,6 +165,7 @@ object ParticleRuntime {
                         while (em.spawnAcc >= 1f && em.particles.size < em.effect.maxParticles) {
                             em.spawnAcc -= 1f
                             spawnOne(em)
+                            emitVanilla()
                         }
                     }
                 }
