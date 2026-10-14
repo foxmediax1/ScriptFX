@@ -25,6 +25,7 @@ import net.foxmediax.scriptfx.network.QuestToastPayload
 import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.foxmediax.scriptfx.npc.NpcEntities
 import net.foxmediax.scriptfx.npc.NpcInteractClient
+import net.foxmediax.scriptfx.npc.NpcRegistry
 import net.foxmediax.scriptfx.particles.ParticleRegistry
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.RenderPipelines
@@ -42,6 +43,9 @@ object ScriptFXClient : ClientModInitializer {
         ParticleRegistry.reload()
         ParticleWorldRenderer.init()
         MediaRegistry_reload()
+        ProjectGeckoPack.initClient()
+        NpcRegistry.reload()
+        NpcCustomsLoader.syncAll()
 
         ClientPlayNetworking.registerGlobalReceiver(CameraPayload.TYPE) { payload, _ ->
             CameraOverlay.receive(payload)
