@@ -51,7 +51,6 @@ object MediaCommands {
         }
 
         // video_play <id> [x y w h|fullscreen]
-        // Декодирует mp4 в фоне (ffmpeg), затем отправляет клиентам и переводит в spectator
         register("video_play") { ctx, args ->
             val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
             if (id.isEmpty()) {
@@ -66,7 +65,6 @@ object MediaCommands {
                 return@register CommandResult.Continue
             }
 
-            // Координаты области: либо "fullscreen", либо x y w h (доли экрана 0..1)
             var x = 0f
             var y = 0f
             var w = 0f
@@ -79,13 +77,12 @@ object MediaCommands {
                 h = args[4].toFloatOrNull() ?: 1f
             }
 
-            // Запуск фонового декодирования (не блокирует серверный тик)
+            // Декодируем в фоне, чтобы не фризить серверный тик
             val future = Mp4Decoder.ensureDecodedAsync(meta)
             if (!future.isDone) {
                 ScriptFXLog.info("video_play '$id': декодируется в фоне (ffmpeg)...")
             }
 
-            // Ждём готовности кэша, затем отправляем один раз
             var sent = false
 
             CommandResult.WaitUntil {
@@ -96,10 +93,10 @@ object MediaCommands {
                 if (!sent) {
                     sent = true
 
-                    val decoded = future.get()  // не блокирует: isDone == true
+                    val decoded = future.get()
                     if (decoded == null) {
                         ScriptFXLog.warn("video_play '$id': декодирование не удалось (проверьте ffmpeg)")
-                        return@WaitUntil true  // пропускаем команду, но не вешаем скрипт
+                        return@WaitUntil true
                     }
 
                     val players = targets(ctx)
@@ -107,10 +104,8 @@ object MediaCommands {
                     // Запоминаем зрителей для отслеживания окончания просмотра
                     pendingVideoEnds[id] = players.map { it.uuid }.toMutableSet()
 
-                    // Отправляем пакет с областью экрана
                     broadcast(ctx, MediaPayload.videoPlay(id, x, y, w, h, preview = false))
 
-                    // Переводим в spectator (с сохранением прежнего режима)
                     for (p in players) enterSpectator(p)
 
                     ScriptFXLog.info("video_play '$id' запущено для ${players.size} игрок(ов)")
