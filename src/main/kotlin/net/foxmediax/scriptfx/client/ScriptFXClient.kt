@@ -25,7 +25,6 @@ import net.foxmediax.scriptfx.network.QuestToastPayload
 import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.foxmediax.scriptfx.npc.NpcEntities
 import net.foxmediax.scriptfx.npc.NpcInteractClient
-import net.foxmediax.scriptfx.npc.NpcRegistry
 import net.foxmediax.scriptfx.particles.ParticleRegistry
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.RenderPipelines
@@ -42,10 +41,7 @@ object ScriptFXClient : ClientModInitializer {
         ScriptFXConfig.load()
         ParticleRegistry.reload()
         ParticleWorldRenderer.init()
-        MediaRegistry_reload()
-        ProjectGeckoPack.initClient()
-        NpcRegistry.reload()
-        NpcCustomsLoader.syncAll()
+        net.foxmediax.scriptfx.media.MediaRegistry.reload()
 
         ClientPlayNetworking.registerGlobalReceiver(CameraPayload.TYPE) { payload, _ ->
             CameraOverlay.receive(payload)
@@ -89,7 +85,7 @@ object ScriptFXClient : ClientModInitializer {
             NpcPreviewHelper.clear()
             QuestClient.clear()
             ParticleRuntime.clear()
-            MediaClient_clear()
+            net.foxmediax.scriptfx.client.media.MediaClient.clear()
         }
 
         /*
@@ -108,11 +104,11 @@ object ScriptFXClient : ClientModInitializer {
 
         // ОДИН тик частиц за клиентский тик
         ClientTickEvents.END_CLIENT_TICK.register { client ->
-            val dt = 1f / 20f
-            safeTick("ParticleRuntime") { ParticleRuntime.tick(dt) }
-            safeTick("NpcInteractClient") { NpcInteractClient.tick() }
-            safeTick("NpcPreviewHelper") { NpcPreviewHelper.clientTick() }
-            safeTick("NpcDialogClient") { NpcDialogClient.tick() }
+            ParticleRuntime.tick(1f / 20f)
+
+            NpcInteractClient.tick()
+            NpcPreviewHelper.clientTick()
+            NpcDialogClient.tick()
 
             while (ScriptFXKeybinds.openControlPanel.consumeClick()) {
                 val player = client.player ?: continue
@@ -180,22 +176,5 @@ object ScriptFXClient : ClientModInitializer {
                 }
             }
         )
-    }
-
-    // Локальные хелперы, чтобы не тянуть лишние импорты в верх файла
-    private fun MediaRegistry_reload() {
-        net.foxmediax.scriptfx.media.MediaRegistry.reload()
-    }
-
-    private fun MediaClient_clear() {
-        net.foxmediax.scriptfx.client.media.MediaClient.clear()
-    }
-
-    private fun safeTick(name: String, block: () -> Unit) {
-        try {
-            block()
-        } catch (t: Throwable) {
-            net.foxmediax.scriptfx.scriptengine.ScriptFXLog.error("Client tick [$name] failed", t)
-        }
     }
 }
