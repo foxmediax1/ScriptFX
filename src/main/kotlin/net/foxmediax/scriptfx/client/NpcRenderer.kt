@@ -3,7 +3,6 @@ package net.foxmediax.scriptfx.client
 import com.geckolib.model.GeoModel
 import com.geckolib.renderer.GeoEntityRenderer
 import com.geckolib.renderer.base.GeoRenderState
-import icyllis.modernui.R.ns
 import net.foxmediax.scriptfx.npc.NpcCustoms
 import net.foxmediax.scriptfx.npc.NpcRegistry
 import net.foxmediax.scriptfx.npc.ScriptNpcEntity
@@ -21,6 +20,9 @@ object CurrentNpcResources {
     @JvmField var model: String = DEFAULT_MODEL
     @JvmField var texture: String = DEFAULT_TEXTURE
     @JvmField var animation: String = DEFAULT_ANIMATION
+
+    /** Флаг: успешно ли загружена кастомная модель */
+    @JvmField var customModelLoaded: Boolean = false
 
     fun normalizeModelOrAnim(raw: String, fallback: String): String {
         if (raw.isBlank()) return fallback
@@ -60,13 +62,15 @@ object CurrentNpcResources {
         }
     }
 
-    fun apply(entity: ScriptNpcEntity) {
+    fun apply(entity: ScriptNpcEntity): Boolean {
         val found = NpcRegistry.findById(entity.npcId)
         val project = found?.first
 
         val modelRaw = entity.modelPath
         val animRaw = entity.animationPath
         val texRaw = entity.texturePath
+
+        customModelLoaded = false
 
         if (project != null && NpcCustoms.isCustoms(modelRaw)) {
             val h = LocalNpcAssets.ensure(
@@ -80,13 +84,11 @@ object CurrentNpcResources {
                 model = h.modelId.toString()
                 animation = h.animId.toString()
                 texture = h.textureId.toString()
-                return
+                customModelLoaded = true
+                return true
             }
-            ScriptFXLog.warn("customs load failed for ${entity.npcId}, fallback default")
-            model = DEFAULT_MODEL
-            animation = DEFAULT_ANIMATION
-            texture = DEFAULT_TEXTURE
-            return
+            ScriptFXLog.warn("customs load failed for ${entity.npcId}, hiding NPC")
+            return false  // Не удалось загрузить — скрываем
         }
 
         model = normalizeModelOrAnim(modelRaw, DEFAULT_MODEL)
@@ -100,6 +102,8 @@ object CurrentNpcResources {
             }
             else -> DEFAULT_TEXTURE
         }
+        customModelLoaded = true  // Стандартная модель всегда доступна
+        return true
     }
 }
 
@@ -132,6 +136,22 @@ class ScriptNpcRenderer(
     ctx,
     ScriptNpcModel()
 ) {
+
+    override fun shouldRender(
+        entity: ScriptNpcEntity,
+        frustum: net.minecraft.client.renderer.culling.Frustum,
+        x: Double,
+        y: Double,
+        z: Double
+    ): Boolean {
+        // Проверяем, загрузилась ли кастомная модель
+        val loaded = CurrentNpcResources.apply(entity)
+        if (!loaded) {
+            return false  // Не рендерим, если кастомная модель не загрузилась
+        }
+        return super.shouldRender(entity, frustum, x, y, z)
+    }
+
     override fun extractRenderState(
         entity: ScriptNpcEntity,
         state: LivingEntityRenderState,
