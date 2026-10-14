@@ -14,18 +14,17 @@ object ScriptFXConfig {
     const val DEFAULT_MESSAGE_BORDER = 0xFFC8B4FF.toInt()
 
     var showHints: Boolean = true
-    var theme: String = "dark"
     var messageMode: MessageDisplayMode = MessageDisplayMode.CENTER
 
     var dialogFadeMs: Int = 400
     var dialogTypewriterMs: Int = 25
-    var npcOutline: Boolean = true
+    var npcOutline: Boolean = false
 
     var messageBg: Int = DEFAULT_MESSAGE_BG
     var messageBorder: Int = DEFAULT_MESSAGE_BORDER
     var centerSystemMessages: Boolean = true
 
-    /** Максимум одновременно запущенных скриптов. 0 или меньше 0 — без лимита. */
+    /** Максимум одновременно запущенных скриптов. 0 или меньше — без лимита. */
     var maxScripts: Int = 0
 
     /**
@@ -34,21 +33,27 @@ object ScriptFXConfig {
      */
     var ffmpegPath: String? = null
 
+    /**
+     * Уровень логов ScriptFX: debug | info | warn | error.
+     * В production обычно "info" или "warn".
+     */
+    var logLevel: String = "info"
+
     private val gson = GsonBuilder().setPrettyPrinting().create()
     private val configPath = FabricLoader.getInstance().configDir.resolve("scriptfx.json")
 
     private data class Data(
         var showHints: Boolean = true,
-        var theme: String = "dark",
         var messageMode: String = MessageDisplayMode.CENTER.id,
         var dialogFadeMs: Int = 400,
         var dialogTypewriterMs: Int = 25,
-        var npcOutline: Boolean = true,
+        var npcOutline: Boolean = false,
         var messageBg: Int = DEFAULT_MESSAGE_BG,
         var messageBorder: Int = DEFAULT_MESSAGE_BORDER,
         var centerSystemMessages: Boolean = true,
         var maxScripts: Int = 0,
-        var ffmpegPath: String? = null
+        var ffmpegPath: String? = null,
+        var logLevel: String = "info"
     )
 
     fun load() {
@@ -65,7 +70,6 @@ object ScriptFXConfig {
                 return
             }
             showHints = data.showHints
-            theme = data.theme
             messageMode = MessageDisplayMode.fromId(data.messageMode)
             dialogFadeMs = data.dialogFadeMs.coerceIn(1, 5000)
             dialogTypewriterMs = data.dialogTypewriterMs.coerceIn(1, 500)
@@ -75,6 +79,7 @@ object ScriptFXConfig {
             centerSystemMessages = data.centerSystemMessages
             maxScripts = data.maxScripts
             ffmpegPath = data.ffmpegPath?.takeIf { it.isNotBlank() }
+            logLevel = data.logLevel.takeIf { it.isNotBlank() } ?: "info"
         } catch (e: Exception) {
             try {
                 Files.copy(
@@ -92,7 +97,6 @@ object ScriptFXConfig {
     fun save() {
         val data = Data(
             showHints = showHints,
-            theme = theme,
             messageMode = messageMode.id,
             dialogFadeMs = dialogFadeMs,
             dialogTypewriterMs = dialogTypewriterMs,
@@ -101,7 +105,8 @@ object ScriptFXConfig {
             messageBorder = messageBorder,
             centerSystemMessages = centerSystemMessages,
             maxScripts = maxScripts,
-            ffmpegPath = ffmpegPath
+            ffmpegPath = ffmpegPath,
+            logLevel = logLevel
         )
         configPath.writeText(gson.toJson(data))
     }
