@@ -1,8 +1,10 @@
 package net.foxmediax.scriptfx.client
 
+import net.foxmediax.scriptfx.npc.NpcCustoms
 import net.foxmediax.scriptfx.npc.NpcDefinition
 import net.foxmediax.scriptfx.npc.NpcEntities
 import net.foxmediax.scriptfx.npc.ScriptNpcEntity
+import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.inventory.InventoryScreen
@@ -130,7 +132,7 @@ object NpcPreviewHelper {
         entity.xo = 0.0
         entity.yo = 0.0
         entity.zo = 0.0
-        entity.tickCount = 20 // чтобы анимация не стартовала с 0-го кадра «пустой»
+        entity.tickCount = 20
 
         entity.npcId =
             def.id
@@ -158,13 +160,9 @@ object NpcPreviewHelper {
         )
 
         entity.setLookAtPlayer(false)
-
         entity.setInvulnerableFlag(true)
-
         entity.setNoGravity(true)
-
         entity.isNoAi = true
-
         entity.noPhysics = true
 
         entity.yRot = 0f
@@ -176,20 +174,15 @@ object NpcPreviewHelper {
         entity.yHeadRotO = 0f
 
         if (def.nametag) {
-
-            entity.customName =
-                Component.literal(
-                    def.displayName
-                )
-
+            entity.customName = Component.literal(def.displayName)
             entity.isCustomNameVisible = true
-
         } else {
-
             entity.customName = null
-
             entity.isCustomNameVisible = false
         }
+
+        // Логируем для отладки
+        ScriptFXLog.info("NpcPreview: created entity for ${def.id}, model=${entity.modelPath}, anim=${entity.animationPath}")
 
         return entity
     }
@@ -226,14 +219,6 @@ object NpcPreviewHelper {
         return created
     }
 
-    /**
-     * Вызывается из ScreenEvents.afterExtract.
-     *
-     * ВАЖНО:
-     * этот метод должен выполняться после extract ModernUI,
-     * иначе ModernUI может перекрыть 3D-модель.
-     */
-
     @Volatile
     var suppressRender: Boolean = false
 
@@ -247,7 +232,6 @@ object NpcPreviewHelper {
         val height = b.y1 - b.y0
         if (width <= 16 || height <= 16) return
 
-        // защита: если bounds почти на весь экран — координаты сломаны, не рисуем
         val mc = Minecraft.getInstance()
         val sw = mc.window.guiScaledWidth
         val sh = mc.window.guiScaledHeight
@@ -266,7 +250,9 @@ object NpcPreviewHelper {
         try {
             CurrentNpcResources.apply(entity)
 
-            // обрезать всё, что вылезает за рамку превью
+            // Логируем применённые ресурсы для отладки
+            ScriptFXLog.debug("NpcPreview render: model=${CurrentNpcResources.model}, texture=${CurrentNpcResources.texture}, anim=${CurrentNpcResources.animation}")
+
             graphics.enableScissor(b.x0, b.y0, b.x1, b.y1)
             try {
                 InventoryScreen.extractEntityInInventoryFollowsMouse(
@@ -276,7 +262,7 @@ object NpcPreviewHelper {
                     b.x1,
                     b.y1,
                     size,
-                    0.0625f, // чуть выше «пола», меньше клиппинга ног
+                    0.0625f,
                     mouseX,
                     mouseY,
                     entity
@@ -285,7 +271,7 @@ object NpcPreviewHelper {
                 graphics.disableScissor()
             }
         } catch (t: Throwable) {
-            t.printStackTrace()
+            ScriptFXLog.error("NpcPreview render failed", t)
         }
     }
 
