@@ -381,26 +381,73 @@ object Documentation {
     private val PARTICLES: List<String> = """
     Раздел: "Скрипты → Частицы"
     ---
-    Частицы - это эффекты в формате Snowstorm (Bedrock Edition). Файлы: config/scriptfx/projects/название_проекта/particles/*.particle.json. Создавать эффекты удобно в редакторе Snowstorm (https://snowstorm.app), затем сохранять JSON в папку проекта.
+    Формат: Snowstorm / Bedrock particle JSON (редактор https://snowstorm.app).
 
-    Поддерживается подмножество MoLang: тернарный оператор (? :), переменные variable.*, функции math.random, math.clamp, math.lerp и др.
+    Путь к файлам:
+    config/scriptfx/projects/<проект>/particles/<имя>.particle.json
+
+    Идентификатор эффекта берётся из JSON:
+    "description": { "identifier": "scriptfx:smoke_test" }
+    В командах можно писать полный id (scriptfx:smoke_test) или короткое имя после двоеточия / имя файла.
+    ---
+    Что поддерживается сейчас:
+
+    - emitter rate: steady / instant
+    - lifetime: once / looping, active_time
+    - shape: point, box, sphere, disc (sample offset)
+    - direction outwards для sphere/disc
+    - particle lifetime, speed, acceleration
+    - size (число или MoLang-выражение)
+    - tint (базовый цвет), fade alpha к концу жизни
+    - billboard + flipbook (данные читаются; кадры учитываются в симуляции)
+    - MoLang subset: variable.particle_age, particle_lifetime, particle_random_1..4,
+      emitter_age, math.random / clamp / lerp, тернарный оператор ?:
+    ---
+    Важно про отображение (26.1):
+
+    Полный кастомный billboard-рендер текстур Snowstorm на этой версии Minecraft нестабилен.
+    Сейчас превью идёт через ванильный ParticleEngine (Dust / Cloud / похожие типы) по цвету и позиции симуляции.
+    Позиция, скорость, lifetime, attach к NPC работают; пиксельный атлас 1:1 как в Bedrock — в планах.
     ---
     Команды:
 
-    particle_play "id" [x y z] - запускает эффект. Если координаты не указаны, эффект появляется у игрока (~ ~1 ~). id - имя файла без расширения, например "campfire_smoke".
+    particle_play "id" [x y z]
+    Запускает эффект в точке. Координаты: число или ~ / ~N. Если не указаны — у игрока (~ ~1 ~).
+    Пример: particle_play "scriptfx:smoke_test" ~ ~1 ~
 
-    particle_stop "id" - останавливает эффект с указанным id.
+    particle_stop "id"
+    Останавливает эмиттеры с этим id.
 
-    particle_stop_all - останавливает все эффекты.
+    particle_stop_all
+    Останавливает все клиентские эмиттеры ScriptFX.
 
-    particle_attach "id" "npc_id" [x y z] - привязывает эффект к NPC. Эффект следует за NPC, пока не будет остановлен или NPC не исчезнет.
+    particle_attach "effectId" "npcId" [ox oy oz]
+    Привязывает эффект к NPC. Смещение относительно NPC (по умолчанию 0 1 0).
+    Эффект следует за NPC, пока не detach / stop или NPC не исчезнет.
 
-    Пример:
-        particle_play "campfire_smoke" 100 64 200
-        ticktime "5.sec"
-        particle_stop "campfire_smoke"
+    particle_detach "npcId"
+    Снимает все эффекты с NPC.
+
+    particle_detach "npcId" "effectId"
+    Снимает только указанный эффект с NPC.
     ---
-    В панели управления (раздел "Частицы") можно посмотреть список загруженных эффектов и запустить превью.
+    Пример:
+
+    particle_play "scriptfx:smoke_test" ~ ~1 ~
+    ticktime "3.sec"
+    particle_stop "scriptfx:smoke_test"
+
+    particle_attach "scriptfx:smoke_test" "npc_1" 0 1.5 0
+    ticktime "5.sec"
+    particle_detach "npc_1"
+    ---
+    Панель управления → «Частицы»:
+    список загруженных эффектов, Reload, Play / Stop, Stop all.
+    После добавления JSON нажми Reload (или перезайди в мир).
+    ---
+    Логи:
+    При logLevel "info" пишется particle_play с числом частиц.
+    Подробная загрузка каждого файла — при logLevel "debug" в config/scriptfx.json.
     ---
 """.trimIndent().lines()
 
