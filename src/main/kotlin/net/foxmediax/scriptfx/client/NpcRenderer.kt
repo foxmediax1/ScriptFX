@@ -3,6 +3,8 @@ package net.foxmediax.scriptfx.client
 import com.geckolib.model.GeoModel
 import com.geckolib.renderer.GeoEntityRenderer
 import com.geckolib.renderer.base.GeoRenderState
+import net.foxmediax.scriptfx.npc.NpcCustoms
+import net.foxmediax.scriptfx.npc.NpcRegistry
 import net.foxmediax.scriptfx.npc.ScriptNpcEntity
 import net.minecraft.client.renderer.entity.EntityRendererProvider
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState
@@ -12,23 +14,15 @@ object CurrentNpcResources {
 
     const val DEFAULT_MODEL = "scriptfx:female_models"
     const val DEFAULT_ANIMATION = "scriptfx:female_models"
-    const val DEFAULT_TEXTURE = "scriptfx:textures/npc/temple_skins.png"
+    const val DEFAULT_TEXTURE = "scriptfx:textures/npc/temple_female_skins.png"
 
-    @JvmField
-    var model: String = DEFAULT_MODEL
+    @JvmField var model: String = DEFAULT_MODEL
+    @JvmField var texture: String = DEFAULT_TEXTURE
+    @JvmField var animation: String = DEFAULT_ANIMATION
 
-    @JvmField
-    var texture: String = DEFAULT_TEXTURE
-
-    @JvmField
-    var animation: String = DEFAULT_ANIMATION
-
-    /**
-     * GeckoLib 5: id вида namespace:name
-     * (файл: assets/<ns>/geckolib/models/<name>.geo.json)
-     */
     fun normalizeModelOrAnim(raw: String, fallback: String): String {
         if (raw.isBlank()) return fallback
+        if (NpcCustoms.isCustoms(raw)) return raw
 
         val ns: String
         val body: String
@@ -48,18 +42,42 @@ object CurrentNpcResources {
             .removeSuffix(".json")
             .removeSuffix(".geo")
             .removeSuffix(".animation")
-
-        // ещё раз на случай "...models.animation" / "...geo.json" уже частично срезанных
-        p = p.removeSuffix(".animation")
-        p = p.removeSuffix(".geo")
-
+        p = p.removeSuffix(".animation").removeSuffix(".geo")
         if (p.isBlank()) return fallback
         return "$ns:$p"
     }
+
     fun apply(entity: ScriptNpcEntity) {
-        model = normalizeModelOrAnim(entity.modelPath, DEFAULT_MODEL)
-        texture = entity.texturePath.ifBlank { DEFAULT_TEXTURE }
-        animation = normalizeModelOrAnim(entity.animationPath, DEFAULT_ANIMATION)
+        val found = NpcRegistry.findById(entity.npcId)
+        val project = found?.first
+
+        var modelRaw = entity.modelPath
+        var animRaw = entity.animationPath
+        var texRaw = entity.texturePath
+
+        if (project != null && NpcCustoms.isCustoms(modelRaw)) {
+            val body = NpcCustoms.internalBody(project, entity.npcId, modelRaw)
+            modelRaw = "scriptfx:$body"
+        }
+        if (project != null && NpcCustoms.isCustoms(animRaw)) {
+            val body = NpcCustoms.internalBody(project, entity.npcId, animRaw)
+            animRaw = "scriptfx:$body"
+        }
+
+        model = normalizeModelOrAnim(modelRaw, DEFAULT_MODEL)
+        animation = normalizeModelOrAnim(animRaw, DEFAULT_ANIMATION)
+
+        texture = when {
+            project != null && NpcCustoms.isCustoms(texRaw) -> {
+                NpcCustomsLoader.dynamicTextureId(project, entity.npcId, texRaw)?.toString()
+                    ?: run {
+                        val body = NpcCustoms.internalBody(project, entity.npcId, texRaw)
+                        "scriptfx:textures/$body.png"
+                    }
+            }
+            texRaw.isNotBlank() -> texRaw
+            else -> DEFAULT_TEXTURE
+        }
     }
 }
 
@@ -74,8 +92,6 @@ class ScriptNpcModel : GeoModel<ScriptNpcEntity>() {
     }
 
     override fun getAnimationResource(animatable: ScriptNpcEntity): Identifier {
-        // Берём уже нормализованный путь из CurrentNpcResources
-        // (apply() вызывается перед GUI-рендером и при мировом рендере нужно вызывать apply тоже)
         return Identifier.parse(CurrentNpcResources.animation)
     }
 }
