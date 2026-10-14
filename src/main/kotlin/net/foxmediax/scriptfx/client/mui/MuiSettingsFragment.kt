@@ -160,29 +160,6 @@ class MuiSettingsFragment(
             },
             lp(MATCH, WRAP)
         )
-        list.addView(
-            switchRow(ctx, "Обводка NPC в диалоге", ScriptFXConfig.npcOutline) {
-                ScriptFXConfig.npcOutline = it
-            },
-            lp(MATCH, WRAP)
-        )
-
-        val themeEdit = EditText(ctx).apply {
-            setSingleLine(true)
-            textSize = 13f
-            setText(ScriptFXConfig.theme)
-            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
-            minimumHeight = dp(ctx, 32)
-        }
-        themeEdit.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable) {
-                ScriptFXConfig.theme = s.toString().ifBlank { "dark" }
-            }
-        })
-        escHandler(themeEdit)
-        list.addView(row(ctx, "Тема оформления", themeEdit, dp(ctx, 140)), lp(MATCH, WRAP))
 
         // --- Цвета ---
         list.addView(sectionTitle(ctx, "Цвета сообщений"), lp(MATCH, WRAP))
