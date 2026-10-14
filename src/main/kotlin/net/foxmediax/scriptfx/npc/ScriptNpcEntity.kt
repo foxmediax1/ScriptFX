@@ -84,6 +84,7 @@ class ScriptNpcEntity(
                     16.0
                 )
 
+        // Базовые анимации для встроенной модели — fallback, если кастомная не найдена
         private val KNOWN_ANIMS =
             setOf(
                 "idle",
@@ -102,21 +103,16 @@ class ScriptNpcEntity(
             )
 
         fun sanitizeAnim(
-            name: String
+            name: String,
+            isCustomModel: Boolean = false
         ): String {
+            val normalized = name.ifBlank { "idle" }
 
-            val normalized =
-                name.ifBlank {
-                    "idle"
-                }
+            // Для кастомных моделей не ограничиваем — пусть GeckoLib сам найдёт в файле
+            if (isCustomModel) return normalized
 
-            return if (
-                normalized in KNOWN_ANIMS
-            ) {
-                normalized
-            } else {
-                "idle"
-            }
+            // Для встроенной модели проверяем список
+            return if (normalized in KNOWN_ANIMS) normalized else "idle"
         }
     }
 
@@ -149,9 +145,11 @@ class ScriptNpcEntity(
     fun setAnim(
         name: String
     ) {
+        // Определяем, кастомная ли модель
+        val isCustom = NpcCustoms.isCustoms(modelPath)
         entityData.set(
             DATA_ANIM,
-            sanitizeAnim(name)
+            sanitizeAnim(name, isCustom)
         )
     }
 
@@ -196,12 +194,7 @@ class ScriptNpcEntity(
             return
         }
 
-        /*
-         * Диалог:
-         * NPC всегда разворачивается к собеседнику.
-         */
-        val focusId =
-            dialogFocus
+        val focusId = dialogFocus
 
         if (focusId != null) {
 
@@ -224,9 +217,6 @@ class ScriptNpcEntity(
             }
         }
 
-        /*
-         * Обычный режим LookAt.
-         */
         if (
             entityData.get(DATA_LOOK)
         ) {
@@ -253,8 +243,9 @@ class ScriptNpcEntity(
                 "main"
             ) { state: AnimationTest<ScriptNpcEntity> ->
 
+                val animName = currentAnim()
                 val animation = RawAnimation.begin()
-                    .thenLoop(sanitizeAnim(currentAnim()))
+                    .thenLoop(animName)
 
                 state.setAndContinue(animation)
             }
