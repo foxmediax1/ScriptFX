@@ -33,7 +33,6 @@ class ScriptRunner(
         if (finished || currentTick < waitUntilTick) return
 
         waitUntilPred?.let { pred ->
-            // Предикат не должен уронить весь тик сервера
             val done = try {
                 pred()
             } catch (e: Exception) {
