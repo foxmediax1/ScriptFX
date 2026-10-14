@@ -1,76 +1,56 @@
 package net.foxmediax.scriptfx.scriptengine
 
-import net.foxmediax.scriptfx.config.ScriptFXConfig
 import org.slf4j.LoggerFactory
+import java.util.concurrent.CopyOnWriteArrayList
 
 object ScriptFXLog {
-
-    enum class Level(val rank: Int) {
-        DEBUG(0),
-        INFO(1),
-        WARN(2),
-        ERROR(3)
-    }
-
-    data class Entry(
-        val time: Long,
-        val level: Level,
-        val message: String
-    )
-
     private val logger = LoggerFactory.getLogger("ScriptFX")
-    private val lock = Any()
-    private val buffer = ArrayDeque<Entry>()
-    private const val MAX_ENTRIES = 500
 
-    private fun minLevel(): Level = when (ScriptFXConfig.logLevel.lowercase().trim()) {
-        "debug" -> Level.DEBUG
-        "warn" -> Level.WARN
-        "error" -> Level.ERROR
-        else -> Level.INFO
-    }
+    var debugEnabled: Boolean = false
 
-    private fun enabled(level: Level): Boolean = level.rank >= minLevel().rank
-
-    fun debug(msg: String) {
-        if (!enabled(Level.DEBUG)) return
-        logger.debug(msg)
-        push(Level.DEBUG, msg)
-    }
+    // Буфер последних логов для отображения в панели
+    private val logBuffer = CopyOnWriteArrayList<String>()
+    private const val MAX_LOGS = 500
 
     fun info(msg: String) {
-        if (!enabled(Level.INFO)) return
         logger.info(msg)
-        push(Level.INFO, msg)
+        addToBuffer("[INFO] $msg")
     }
 
     fun warn(msg: String) {
-        if (!enabled(Level.WARN)) return
         logger.warn(msg)
-        push(Level.WARN, msg)
+        addToBuffer("[WARN] $msg")
     }
 
-    fun error(msg: String) {
-        if (!enabled(Level.ERROR)) return
-        logger.error(msg)
-        push(Level.ERROR, msg)
+    fun error(msg: String, throwable: Throwable? = null) {
+        if (throwable != null) {
+            logger.error(msg, throwable)
+            addToBuffer("[ERROR] $msg: ${throwable.message}")
+        } else {
+            logger.error(msg)
+            addToBuffer("[ERROR] $msg")
+        }
     }
 
-    fun error(message: String, e: Throwable? = null) {
-        if (!enabled(Level.ERROR)) return
-        if (e != null) logger.error(message, e) else logger.error(message)
-        val extra = e?.message?.let { ": $it" } ?: ""
-        push(Level.ERROR, message + extra)
+    fun debug(msg: String) {
+        if (debugEnabled) {
+            logger.info("[DEBUG] $msg")
+            addToBuffer("[DEBUG] $msg")
+        }
     }
 
-    fun snapshot(): List<Entry> = synchronized(lock) { buffer.toList() }
+    fun getRecentLogs(): List<String> {
+        return logBuffer.toList()
+    }
 
-    fun clear() = synchronized(lock) { buffer.clear() }
+    fun clearLogs() {
+        logBuffer.clear()
+    }
 
-    private fun push(level: Level, message: String) {
-        synchronized(lock) {
-            buffer.addLast(Entry(System.currentTimeMillis(), level, message))
-            while (buffer.size > MAX_ENTRIES) buffer.removeFirst()
+    private fun addToBuffer(line: String) {
+        logBuffer.add(line)
+        if (logBuffer.size > MAX_LOGS) {
+            logBuffer.removeAt(0)
         }
     }
 }
