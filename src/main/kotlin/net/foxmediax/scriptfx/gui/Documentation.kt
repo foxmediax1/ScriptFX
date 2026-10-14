@@ -16,6 +16,7 @@ object Documentation {
         section == "Скрипты" && subsection == "Для камеры" -> CAMERA
         section == "Скрипты" && subsection == "Катсцены" -> CUTSCENES
         section == "Скрипты" && subsection == "NPC" -> NPC
+        section == "Скрипты" && subsection == "Кастомные модели NPC" -> CUSTOM_MODELS  // ← добавить
         section == "Скрипты" && subsection == "Частицы" -> PARTICLES
         section == "Скрипты" && subsection == "Звук и видео" -> MEDIA
         section == "Скрипты" && subsection == "Квесты" -> QUESTS
@@ -403,6 +404,86 @@ object Documentation {
         if dialog_button == 2 {
         printNPC "Иди с миром." "gold" "Страж" "white"
         }
+    ---
+""".trimIndent().lines()
+
+    private val CUSTOM_MODELS: List<String> = """
+    Раздел: "Скрипты → Кастомные модели NPC"
+    ---
+    Кастомная модель — это файлы GeckoLib, которые вы кладёте в папку проекта. Мод автоматически копирует их во встроенный ресурспак и подключает при первом использовании.
+    ---
+    Структура папок:
+
+    config/scriptfx/projects/ваш_проект/
+    └── npc/
+        └── ваш_npc.fxnpc          ← файл NPC (JSON)
+        └── customs/                ← папка для кастомных ресурсов
+            ├── hotel_models.geo.json      ← модель (обязательно)
+            ├── hotel_models.animation.json ← анимации (обязательно)
+            └── hotel_models.png            ← текстура (обязательно)
+    ---
+    Формат пути в .fxnpc:
+
+    "model": "customs:hotel_models"
+    "texture": "customs:hotel_models"
+    "animation": "customs:hotel_models"
+
+    Правила:
+    - Префикс customs: обязателен — без него мод не найдёт файлы.
+    - После двоеточия — имя файла БЕЗ расширения (.geo.json, .animation.json, .png добавляются автоматически).
+    - Все три файла должны называться одинаково (hotel_models.geo.json, hotel_models.animation.json, hotel_models.png).
+    ---
+    Порядок подключения:
+
+    1. Положите файлы в папку customs/ рядом с .fxnpc.
+    2. Запустите игру или перезайдите в мир.
+    3. Откройте NPC-редактор — мод скопирует файлы в resourcepacks/scriptfx_customs/.
+    4. Нажмите F3+T (перезагрузка ресурсов) — GeckoLib подхватит модель.
+    5. Если всё правильно, в редакторе появится ваша модель с текстурой и анимацией.
+    ---
+    Требования к файлам:
+
+    Модель (.geo.json):
+    - Формат GeckoLib 5 (Bedrock Entity Model).
+    - Создаётся в Blockbench (плагин GeckoLib) или вручную.
+    - Должна содержать "minecraft:geometry" с массивом костей.
+
+    Анимация (.animation.json):
+    - Формат GeckoLib Animation.
+    - Ключи анимаций: "animation.имя.действие" (например, "animation.hotel_models.idle").
+    - Имена костей должны совпадать с моделью.
+
+    Текстура (.png):
+    - Обычный PNG файл.
+    - Размер кратен 16 (16x16, 32x32, 64x64, 128x128 и т.д.).
+    ---
+    Пример .fxnpc с кастомной моделью:
+
+    {
+      "id": "hotel_receptionist",
+      "displayName": "Администратор",
+      "model": "customs:hotel_models",
+      "texture": "customs:hotel_models",
+      "animation": "customs:hotel_models",
+      "defaultAnim": "idle",
+      "defaultMode": "dialog",
+      "maxHealth": 20,
+      "invulnerable": true,
+      "lookAtPlayer": true,
+      "gravity": false,
+      "collide": false,
+      "nametag": true,
+      "silent": false
+    }
+    ---
+    Если модель не загружается:
+
+    1. Проверьте логи (logs/latest.log) — ищите строки "LocalNpcAssets".
+    2. Убедитесь, что файлы лежат в папке customs/ рядом с .fxnpc.
+    3. Проверьте, что имена файлов совпадают (hotel_models.geo.json, не Hotel_Models.geo.json).
+    4. Нажмите F3+T после первого запуска.
+    5. Если видите фиолетово-чёрную модель — текстура не найдена, проверьте путь "texture".
+    6. Если NPC невидим — модель не загрузилась, проверьте путь "model" и формат .geo.json.
     ---
 """.trimIndent().lines()
 
