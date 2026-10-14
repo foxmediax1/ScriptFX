@@ -53,13 +53,13 @@ object ScriptFXServer : ModInitializer {
             CutsceneManager.tick(server)
         }
 
-        // ЕДИНСТВЕННАЯ регистрация JOIN: чекпоинты/триггеры + квесты
+        // ЕДИНСТВЕННАЯ регистрация JOIN
         ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
             TriggerManager.onPlayerJoin(server, handler.player)
             QuestManager.onJoin(handler.player)
         }
 
-        // ЕДИНСТВЕННАЯ регистрация DISCONNECT: катсцены, триггеры, квесты, медиа-режим
+        // ЕДИНСТВЕННАЯ регистрация DISCONNECT
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
             CutsceneManager.endFor(handler.player)
             TriggerManager.onPlayerLeave(handler.player.uuid)
@@ -80,7 +80,7 @@ object ScriptFXServer : ModInitializer {
             TriggerManager.onPlayerRespawn(server, newPlayer)
         }
 
-        // trigger_globalplay player_click "id_предмета" — срабатывает при использовании предмета (ПКМ).
+        // trigger_globalplay player_click
         UseItemCallback.EVENT.register { player, world, hand ->
             if (!world.isClientSide && player is ServerPlayer) {
                 val server = player.level().server
@@ -96,7 +96,7 @@ object ScriptFXServer : ModInitializer {
         }
 
         ServerLifecycleEvents.SERVER_STOPPING.register { server ->
-            CutsceneManager.endAll(server)   // иначе игрок сохранится в точке камеры
+            CutsceneManager.endAll(server)
             MediaCommands.onServerStopping()
         }
 
