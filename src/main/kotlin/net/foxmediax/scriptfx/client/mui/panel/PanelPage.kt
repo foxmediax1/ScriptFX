@@ -9,6 +9,7 @@ import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
 import icyllis.modernui.widget.TextView
 import net.foxmediax.scriptfx.client.CutsceneClient
+import net.foxmediax.scriptfx.client.NpcCustomsLoader
 import net.foxmediax.scriptfx.gui.Documentation
 import net.foxmediax.scriptfx.gui.PanelSection
 import net.foxmediax.scriptfx.npc.NpcDefinition
@@ -21,7 +22,8 @@ import net.foxmediax.scriptfx.particles.ParticleRegistry
 import net.foxmediax.scriptfx.client.particles.ParticleRuntime
 import net.foxmediax.scriptfx.network.ParticlePayload
 import net.foxmediax.scriptfx.particles.ParticleEffect
-import icyllis.modernui.graphics.drawable.GradientDrawable
+import net.foxmediax.scriptfx.npc.NpcModelPreset
+
 interface PanelHost {
     fun navigate(section: PanelSection?)
     fun requestLeave(proceed: () -> Unit)
@@ -918,6 +920,29 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         }
         endSection()
 
+        beginSection("Стандартная модель")
+        val row = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        for (p in NpcModelPreset.entries) {
+            val selected = def.model == p.model
+            row.addView(
+                modeChip(p.label, selected) {
+                    save(
+                        project,
+                        def.copy(
+                            model = p.model,
+                            texture = p.texture,
+                            animation = p.animation
+                        )
+                    )
+                },
+                PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP).apply {
+                    rightMargin = PanelUi.dp(ctx, 6)
+                }
+            )
+        }
+        detailBox.addView(row, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+        endSection()
+
         // --- Поведение ---
         beginSection("Поведение")
         propEdit("Стандартный режим", def.defaultMode) { v ->
@@ -931,7 +956,7 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         val modeMap = listOf(
             "dialog" to "Диалог",
             "interact" to "Интеракт",
-            "trade" to "Торговля"
+            "traiding" to "Торговля"
         )
         for ((id, label) in modeMap) {
             val selected = def.defaultMode.equals(id, ignoreCase = true) ||
@@ -1202,21 +1227,57 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
     }
 
     private fun openCreate() {
-        // твой существующий openCreate() — оставь как был
         val project = selectedProject
         if (project == null) {
             overlays.actions("Выберите проект", listOf("ОК" to {}))
             return
         }
-        overlays.input("ID нового NPC", "npc_") { id ->
-            val clean = id.trim()
-            if (clean.isEmpty()) return@input
-            val def = NpcDefinition(id = clean, displayName = clean)
-            save(project, def)
-            selectedDef = def
-            // fillFormFrom(def) — убрать
-            refresh()
+
+        overlays.input("ID нового NPC", "npc_") { rawId ->
+            val clean = rawId.trim().ifBlank { return@input }
+            if (NpcRegistry.get(project, clean) != null) {
+                overlays.actions("NPC «$clean» уже есть", listOf("ОК" to {}))
+                return@input
+            }
+
+            overlays.actions(
+                "Модель для «$clean»",
+                listOf(
+                    NpcModelPreset.FEMALE.label to {
+                        finishCreate(project, NpcDefinition.create(clean, NpcModelPreset.FEMALE))
+                    },
+                    NpcModelPreset.MALE.label to {
+                        finishCreate(project, NpcDefinition.create(clean, NpcModelPreset.MALE))
+                    },
+                    NpcModelPreset.MALE_SLIM.label to {
+                        finishCreate(project, NpcDefinition.create(clean, NpcModelPreset.MALE_SLIM))
+                    },
+                    "Своя (customs)" to {
+                        overlays.input("Имя файлов в customs (без расширения)", clean) { asset ->
+                            val name = asset.trim().ifBlank { clean }
+                            finishCreate(project, NpcDefinition.createCustom(clean, name))
+                        }
+                    }
+                )
+            )
         }
+    }
+
+    private fun finishCreate(project: String, def: NpcDefinition) {
+        NpcRegistry.save(project, def)
+        NpcCustomsLoader.syncNpc(project, def.id)
+        NpcRegistry.reload()
+        selectedDef = NpcRegistry.get(project, def.id) ?: def
+        refresh()
+    }
+
+    private fun finishCreate(project: String, id: String, preset: NpcModelPreset) {
+        val def = NpcDefinition.create(id, preset) // или NpcDefinition(id=..., model=preset.model, ...)
+        NpcRegistry.save(project, def)
+        NpcCustomsLoader.syncNpc(project, def.id)
+        NpcRegistry.reload()
+        selectedDef = NpcRegistry.get(project, id) ?: def
+        refresh()
     }
 
     private fun save(project: String, def: NpcDefinition) {
