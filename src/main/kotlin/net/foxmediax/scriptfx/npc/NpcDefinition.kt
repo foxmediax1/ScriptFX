@@ -25,19 +25,19 @@ enum class NpcModelPreset(
     FEMALE(
         "Female",
         "scriptfx:female_models",
-        "scriptfx:textures/npc/temple_female_skins.png",
+        "scriptfx:textures/npc/temple_female_skin.png",
         "scriptfx:female_models"
     ),
     MALE(
         "Male",
         "scriptfx:male_models",
-        "scriptfx:textures/npc/temple_male_skins.png",
+        "scriptfx:textures/npc/temple_male_skin.png",
         "scriptfx:male_models"
     ),
     MALE_SLIM(
         "Male slim",
         "scriptfx:male_slim_models",
-        "scriptfx:textures/npc/temple_male_slim_skins.png",
+        "scriptfx:textures/npc/temple_male_slim_skin.png",
         "scriptfx:male_slim_models"
     );
 

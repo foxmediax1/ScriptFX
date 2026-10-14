@@ -3,9 +3,11 @@ package net.foxmediax.scriptfx.client
 import com.geckolib.model.GeoModel
 import com.geckolib.renderer.GeoEntityRenderer
 import com.geckolib.renderer.base.GeoRenderState
+import icyllis.modernui.R.ns
 import net.foxmediax.scriptfx.npc.NpcCustoms
 import net.foxmediax.scriptfx.npc.NpcRegistry
 import net.foxmediax.scriptfx.npc.ScriptNpcEntity
+import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.client.renderer.entity.EntityRendererProvider
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState
 import net.minecraft.resources.Identifier
@@ -35,47 +37,67 @@ object CurrentNpcResources {
             body = raw
         }
 
-        var p = body
+        var path = body
             .removePrefix("geckolib/")
             .removePrefix("models/")
             .removePrefix("animations/")
             .removeSuffix(".json")
             .removeSuffix(".geo")
             .removeSuffix(".animation")
-        p = p.removeSuffix(".animation").removeSuffix(".geo")
-        if (p.isBlank()) return fallback
-        return "$ns:$p"
+        path = path.removeSuffix(".animation").removeSuffix(".geo")
+        path = NpcCustoms.sanitizePath(path)
+        if (path.isBlank()) return fallback
+
+        val nsSafe = ns.lowercase().replace(Regex("[^a-z0-9_]"), "_")
+        return "$nsSafe:$path"
+    }
+
+    fun safeParse(id: String, fallback: String): Identifier {
+        return try {
+            Identifier.parse(id)
+        } catch (_: Exception) {
+            Identifier.parse(fallback)
+        }
     }
 
     fun apply(entity: ScriptNpcEntity) {
         val found = NpcRegistry.findById(entity.npcId)
         val project = found?.first
 
-        var modelRaw = entity.modelPath
-        var animRaw = entity.animationPath
-        var texRaw = entity.texturePath
+        val modelRaw = entity.modelPath
+        val animRaw = entity.animationPath
+        val texRaw = entity.texturePath
 
         if (project != null && NpcCustoms.isCustoms(modelRaw)) {
-            val body = NpcCustoms.internalBody(project, entity.npcId, modelRaw)
-            modelRaw = "scriptfx:$body"
-        }
-        if (project != null && NpcCustoms.isCustoms(animRaw)) {
-            val body = NpcCustoms.internalBody(project, entity.npcId, animRaw)
-            animRaw = "scriptfx:$body"
+            val h = LocalNpcAssets.ensure(
+                project,
+                entity.npcId,
+                modelRaw,
+                animRaw.ifBlank { modelRaw },
+                texRaw.ifBlank { modelRaw }
+            )
+            if (h != null) {
+                model = h.modelId.toString()
+                animation = h.animId.toString()
+                texture = h.textureId.toString()
+                return
+            }
+            ScriptFXLog.warn("customs load failed for ${entity.npcId}, fallback default")
+            model = DEFAULT_MODEL
+            animation = DEFAULT_ANIMATION
+            texture = DEFAULT_TEXTURE
+            return
         }
 
         model = normalizeModelOrAnim(modelRaw, DEFAULT_MODEL)
         animation = normalizeModelOrAnim(animRaw, DEFAULT_ANIMATION)
-
         texture = when {
-            project != null && NpcCustoms.isCustoms(texRaw) -> {
-                NpcCustomsLoader.dynamicTextureId(project, entity.npcId, texRaw)?.toString()
-                    ?: run {
-                        val body = NpcCustoms.internalBody(project, entity.npcId, texRaw)
-                        "scriptfx:textures/$body.png"
-                    }
+            NpcCustoms.isCustoms(texRaw) -> DEFAULT_TEXTURE
+            texRaw.isNotBlank() -> try {
+                Identifier.parse(texRaw).toString()
+            } catch (_: Exception) {
+                DEFAULT_TEXTURE
             }
-            texRaw.isNotBlank() -> texRaw
             else -> DEFAULT_TEXTURE
         }
     }
@@ -84,15 +106,23 @@ object CurrentNpcResources {
 class ScriptNpcModel : GeoModel<ScriptNpcEntity>() {
 
     override fun getModelResource(renderState: GeoRenderState): Identifier {
-        return Identifier.parse(CurrentNpcResources.model)
+        return safeId(CurrentNpcResources.model, CurrentNpcResources.DEFAULT_MODEL)
     }
 
     override fun getTextureResource(renderState: GeoRenderState): Identifier {
-        return Identifier.parse(CurrentNpcResources.texture)
+        return safeId(CurrentNpcResources.texture, CurrentNpcResources.DEFAULT_TEXTURE)
     }
 
     override fun getAnimationResource(animatable: ScriptNpcEntity): Identifier {
-        return Identifier.parse(CurrentNpcResources.animation)
+        return safeId(CurrentNpcResources.animation, CurrentNpcResources.DEFAULT_ANIMATION)
+    }
+
+    private fun safeId(raw: String, fallback: String): Identifier {
+        return try {
+            Identifier.parse(raw)
+        } catch (_: Exception) {
+            Identifier.parse(fallback)
+        }
     }
 }
 

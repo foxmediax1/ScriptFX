@@ -60,40 +60,44 @@ object NpcCustomsLoader {
         val anims = NpcRegistry.customsAnimations(project, npcId)
         val textures = NpcRegistry.customsTextures(project, npcId)
         val base = "assets/scriptfx"
+        val proj = NpcCustoms.sanitizePath(project)
+        val nid = NpcCustoms.sanitizePath(npcId)
 
-        models.listFiles()?.filter { it.isFile && it.name.endsWith(".json", true) }?.forEach { f ->
-            val name = f.name
+        models.listFiles()?.filter { it.isFile && it.name.endsWith(".json", true) }?.forEach { file ->
+            val rawName = file.name
                 .removeSuffix(".geo.json")
                 .removeSuffix(".json")
+            val name = NpcCustoms.sanitizePath(rawName)
             val dest = File(
                 internalRoot,
-                "$base/geckolib/models/npc_customs/$project/$npcId/$name.geo.json"
+                "$base/geckolib/models/npc_customs/$proj/$nid/$name.geo.json"
             )
             dest.parentFile.mkdirs()
-            Files.copy(f.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            Files.copy(file.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
 
-        anims.listFiles()?.filter { it.isFile && it.name.endsWith(".json", true) }?.forEach { f ->
-            val name = f.name
+        anims.listFiles()?.filter { it.isFile && it.name.endsWith(".json", true) }?.forEach { file ->
+            val rawName = file.name
                 .removeSuffix(".animation.json")
                 .removeSuffix(".json")
+            val name = NpcCustoms.sanitizePath(rawName)
             val dest = File(
                 internalRoot,
-                "$base/geckolib/animations/npc_customs/$project/$npcId/$name.animation.json"
+                "$base/geckolib/animations/npc_customs/$proj/$nid/$name.animation.json"
             )
             dest.parentFile.mkdirs()
-            Files.copy(f.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            Files.copy(file.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
         }
 
-        textures.listFiles()?.filter { it.isFile && it.extension.equals("png", true) }?.forEach { f ->
-            val name = f.nameWithoutExtension
+        textures.listFiles()?.filter { it.isFile && it.extension.equals("png", true) }?.forEach { file ->
+            val name = NpcCustoms.sanitizePath(file.nameWithoutExtension)
             val dest = File(
                 internalRoot,
-                "$base/textures/npc_customs/$project/$npcId/$name.png"
+                "$base/textures/npc_customs/$proj/$nid/$name.png"
             )
             dest.parentFile.mkdirs()
-            Files.copy(f.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
-            registerTexture(project, npcId, name, f)
+            Files.copy(file.toPath(), dest.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            registerTexture(project, npcId, name, file)
         }
     }
 
