@@ -21,7 +21,7 @@ import net.foxmediax.scriptfx.particles.ParticleRegistry
 import net.foxmediax.scriptfx.client.particles.ParticleRuntime
 import net.foxmediax.scriptfx.network.ParticlePayload
 import net.foxmediax.scriptfx.particles.ParticleEffect
-
+import icyllis.modernui.graphics.drawable.GradientDrawable
 interface PanelHost {
     fun navigate(section: PanelSection?)
     fun requestLeave(proceed: () -> Unit)
@@ -48,7 +48,7 @@ class HomePage(host: PanelHost) : PanelPage(host) {
         root.background = ColorDrawable(0xFF000000.toInt())
         val tv = TextView(ctx).apply {
             text = "Это главное меню мода, для\nработы с проектом откройте\nсоответствующий раздел,\nкоторый находится слева.\n\n←"
-            textSize = 13f
+            textSize = 16f
             gravity = Gravity.CENTER
             setTextColor(PanelUi.COL_MUTED)
         }
@@ -139,11 +139,13 @@ class LogsPage(host: PanelHost) : PanelPage(host) {
                 ScriptFXLog.Level.ERROR -> PanelUi.COL_ERROR
                 ScriptFXLog.Level.WARN -> PanelUi.COL_WARNING
                 ScriptFXLog.Level.INFO -> PanelUi.COL_TEXT
+                ScriptFXLog.Level.DEBUG -> PanelUi.COL_MUTED
             }
             val tag = when (entry.level) {
                 ScriptFXLog.Level.ERROR -> "ERROR"
                 ScriptFXLog.Level.WARN -> "WARN"
                 ScriptFXLog.Level.INFO -> "INFO"
+                ScriptFXLog.Level.DEBUG -> "DEBUG"
             }
             // Entry → String
             val line = "[$tag] ${entry.message}"
@@ -488,12 +490,15 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
             "Для сюжета",
             "Для камеры",
             "Катсцены",
-            "NPC"
+            "NPC",
+            "Частицы",
+            "Звук и видео",
+            "Квесты"
         ),
-        "Триггеры" to listOf(""),           // section-only
-        "Примеры скриптов" to listOf(""),   // section-only
-        "Чат и сообщения" to listOf(""),    // section-only
-        "Панель управления" to listOf("")   // section-only
+        "Триггеры" to listOf(""),
+        "Примеры скриптов" to listOf(""),
+        "Чат и сообщения" to listOf(""),
+        "Панель управления" to listOf("")
     )
 
     override fun createView(ctx: Context): View {
@@ -867,25 +872,38 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
     }
 
     private fun buildDetailPanel(project: String, def: NpcDefinition) {
+        detailBox.removeAllViews()
+
+        // Заголовок карточки
         detailBox.addView(
             TextView(ctx).apply {
-                text = "Редактирование: ${def.id}"
-                textSize = 15f
+                text = "Редактирование"
+                textSize = 11f
+                setTextColor(PanelUi.COL_MUTED)
+                setPadding(0, 0, 0, PanelUi.dp(ctx, 2))
+            },
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+        )
+        detailBox.addView(
+            TextView(ctx).apply {
+                text = def.id
+                textSize = 16f
                 setTextColor(PanelUi.COL_TEXT)
-                setPadding(0, 0, 0, PanelUi.dp(ctx, 10))
+                setPadding(0, 0, 0, PanelUi.dp(ctx, 12))
             },
             PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
         )
 
-        // --- идентичность ---
-        sectionTitle("Основное")
+        // --- Основное ---
+        beginSection("Основное")
         propReadonly("ID NPC", def.id)
         propEdit("Отображаемое имя", def.displayName) { v ->
             save(project, def.copy(displayName = v.ifBlank { def.id }))
         }
+        endSection()
 
-        // --- GeckoLib ---
-        sectionTitle("Модель / анимация")
+        // --- Модель ---
+        beginSection("Модель / анимация")
         propEdit("Модель", def.model) { v ->
             save(project, def.copy(model = v.trim()))
         }
@@ -898,51 +916,58 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         propEdit("Стандартная анимация", def.defaultAnim) { v ->
             save(project, def.copy(defaultAnim = v.ifBlank { "idle" }))
         }
+        endSection()
 
-        // --- поведение ---
-        sectionTitle("Поведение")
+        // --- Поведение ---
+        beginSection("Поведение")
         propEdit("Стандартный режим", def.defaultMode) { v ->
             save(project, def.copy(defaultMode = v.ifBlank { "interact" }))
         }
-        // быстрый выбор режима
-        val modes = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        for (m in listOf("Диалог", "Интеракт", "Торговля")) {
+
+        val modes = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, PanelUi.dp(ctx, 2), 0, PanelUi.dp(ctx, 8))
+        }
+        val modeMap = listOf(
+            "dialog" to "Диалог",
+            "interact" to "Интеракт",
+            "trade" to "Торговля"
+        )
+        for ((id, label) in modeMap) {
+            val selected = def.defaultMode.equals(id, ignoreCase = true) ||
+                    def.defaultMode.equals(label, ignoreCase = true)
             modes.addView(
-                PanelUi.flatButton(ctx, m) {
-                    save(project, def.copy(defaultMode = m))
+                modeChip(label, selected) {
+                    save(project, def.copy(defaultMode = id))
                 },
                 PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP).apply {
                     rightMargin = PanelUi.dp(ctx, 6)
                 }
             )
         }
-        detailBox.addView(
-            modes,
-            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP).apply {
-                bottomMargin = PanelUi.dp(ctx, 6)
-            }
-        )
+        detailBox.addView(modes, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
 
-        propEdit("Скрипт после интеракции с NPC", def.onInteractScript) { v ->
+        propEdit("Скрипт после интеракции", def.onInteractScript) { v ->
             save(project, def.copy(onInteractScript = v.trim()))
         }
-        propEdit("Кнопка-интеракции с NPC", def.interactKey) { v ->
+        propEdit("Клавиша интеракции", def.interactKey) { v ->
             save(project, def.copy(interactKey = v.ifBlank { "X" }))
         }
+        endSection()
 
-        // --- характеристики ---
-        sectionTitle("Характеристики")
+        // --- Характеристики ---
+        beginSection("Характеристики")
         propEdit("Здоровье", def.maxHealth.toString()) { v ->
-            val h = v.toFloatOrNull() ?: def.maxHealth
-            save(project, def.copy(maxHealth = h.coerceIn(1f, 1000f)))
+            val n = v.toFloatOrNull() ?: def.maxHealth
+            save(project, def.copy(maxHealth = n))
         }
         propEdit("Скорость", def.speed.toString()) { v ->
             val s = v.toFloatOrNull() ?: def.speed
             save(project, def.copy(speed = s.coerceIn(0.01f, 2f)))
         }
+        endSection()
 
-        // --- флаги ---
-        sectionTitle("Флаги")
+        beginSection("Флаги")
         propToggle("Смотреть на игрока", def.lookAtPlayer) { on ->
             save(project, def.copy(lookAtPlayer = on))
         }
@@ -958,15 +983,16 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         propToggle("Имя над головой", def.nametag) { on ->
             save(project, def.copy(nametag = on))
         }
-        propToggle("Издавание звука", def.silent) { on ->
+        propToggle("Без звука", def.silent) { on ->
             save(project, def.copy(silent = on))
         }
+        endSection()
 
-        // --- удаление ---
+        // Удалить — внизу, отдельно
         detailBox.addView(
             PanelUi.flatButton(ctx, "Удалить NPC") {
                 overlays.confirm(
-                    message = "Удалить «${def.id}» безвозвратно?",
+                    message = "Удалить ${def.id}?",
                     yes = "Удалить",
                     no = "Отмена",
                     onYes = {
@@ -977,12 +1003,35 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
                     }
                 )
             },
-            PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP).apply {
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP).apply {
                 topMargin = PanelUi.dp(ctx, 16)
             }
         )
     }
 
+    private fun beginSection(title: String) {
+        detailBox.addView(
+            TextView(ctx).apply {
+                text = title
+                textSize = 12f
+                setTextColor(PanelUi.COL_ACCENT)
+                setPadding(0, PanelUi.dp(ctx, 10), 0, PanelUi.dp(ctx, 6))
+            },
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+        )
+    }
+
+    private fun endSection() {
+        detailBox.addView(
+            View(ctx).apply {
+                background = ColorDrawable(PanelUi.COL_DIVIDER)
+            },
+            PanelUi.lp(PanelUi.MATCH, PanelUi.px1(ctx)).apply {
+                topMargin = PanelUi.dp(ctx, 6)
+                bottomMargin = PanelUi.dp(ctx, 2)
+            }
+        )
+    }
     private fun sectionTitle(title: String) {
         detailBox.addView(
             TextView(ctx).apply {
@@ -999,79 +1048,145 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, PanelUi.dp(ctx, 5), 0, PanelUi.dp(ctx, 5))
+            setPadding(
+                PanelUi.dp(ctx, 10),
+                PanelUi.dp(ctx, 6),
+                PanelUi.dp(ctx, 8),
+                PanelUi.dp(ctx, 6)
+            )
+            background = PanelUi.btnBg(ctx, 0xFF1A1A22.toInt(), 8f)
         }
+
         row.addView(
             TextView(ctx).apply {
                 text = key
                 textSize = 12f
-                setTextColor(PanelUi.COL_MUTED)
+                setTextColor(PanelUi.COL_TEXT)
             },
             LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f)
         )
-        row.addView(
-            PanelUi.flatButton(ctx, if (value) "ON" else "OFF") {
-                onChange(!value)
-            },
-            PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP)
-        )
-        detailBox.addView(row, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-    }
 
-    /** Строка свойства: ключ | значение | ✏️ */
-    private fun propEdit(key: String, value: String, onSave: (String) -> Unit) {
-        val row = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, PanelUi.dp(ctx, 5), 0, PanelUi.dp(ctx, 5))
-        }
+        val label = if (value) "Вкл" else "Выкл"
         row.addView(
-            TextView(ctx).apply {
-                text = key
-                textSize = 12f
-                setTextColor(PanelUi.COL_MUTED)
-            },
-            LinearLayout.LayoutParams(0, PanelUi.WRAP, 0.9f)
-        )
-        val valView = TextView(ctx).apply {
-            text = value
-            textSize = 12f
-            setTextColor(PanelUi.COL_TEXT)
-        }
-        row.addView(valView, LinearLayout.LayoutParams(0, PanelUi.WRAP, 1.1f))
-        row.addView(
-            PanelUi.flatButton(ctx, "✎") {
-                overlays.input(key, value) { newVal ->
-                    onSave(newVal)
+            PanelUi.flatButton(ctx, label) {
+                onChange(!value)
+            }.apply {
+                if (value) {
+                    background = PanelUi.btnBg(ctx, PanelUi.COL_BTN_SELECTED, 6f)
                 }
             },
             PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP)
         )
-        detailBox.addView(row, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+
+        detailBox.addView(
+            row,
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP).apply {
+                bottomMargin = PanelUi.dp(ctx, 6)
+            }
+        )
+    }
+
+    /** Строка свойства️ */
+    private fun propEdit(key: String, value: String, onSave: (String) -> Unit) {
+        val row = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(
+                PanelUi.dp(ctx, 10),
+                PanelUi.dp(ctx, 8),
+                PanelUi.dp(ctx, 8),
+                PanelUi.dp(ctx, 8)
+            )
+            background = PanelUi.btnBg(ctx, 0xFF1A1A22.toInt(), 8f)
+        }
+
+        val texts = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        texts.addView(
+            TextView(ctx).apply {
+                text = key
+                textSize = 11f
+                setTextColor(PanelUi.COL_MUTED)
+            },
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+        )
+        texts.addView(
+            TextView(ctx).apply {
+                text = value.ifBlank { "—" }
+                textSize = 13f
+                setTextColor(PanelUi.COL_TEXT)
+                setPadding(0, PanelUi.dp(ctx, 2), 0, 0)
+            },
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+        )
+
+        row.addView(texts, LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f))
+        row.addView(
+            PanelUi.flatButton(ctx, "✎") {
+                overlays.input(key, value) { onSave(it) }
+            },
+            PanelUi.lp(PanelUi.WRAP, PanelUi.WRAP)
+        )
+
+        detailBox.addView(
+            row,
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP).apply {
+                bottomMargin = PanelUi.dp(ctx, 6)
+            }
+        )
     }
 
     private fun propReadonly(key: String, value: String) {
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(0, PanelUi.dp(ctx, 5), 0, PanelUi.dp(ctx, 5))
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(
+                PanelUi.dp(ctx, 10),
+                PanelUi.dp(ctx, 8),
+                PanelUi.dp(ctx, 10),
+                PanelUi.dp(ctx, 8)
+            )
+            background = PanelUi.btnBg(ctx, 0xFF16161C.toInt(), 8f)
         }
-        row.addView(
+
+        val texts = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        texts.addView(
             TextView(ctx).apply {
                 text = key
-                textSize = 12f
+                textSize = 11f
                 setTextColor(PanelUi.COL_MUTED)
             },
-            LinearLayout.LayoutParams(0, PanelUi.WRAP, 0.9f)
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
         )
-        row.addView(
+        texts.addView(
             TextView(ctx).apply {
                 text = value
-                textSize = 12f
+                textSize = 13f
                 setTextColor(PanelUi.COL_TEXT)
+                setPadding(0, PanelUi.dp(ctx, 2), 0, 0)
             },
-            LinearLayout.LayoutParams(0, PanelUi.WRAP, 1.1f)
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
         )
-        detailBox.addView(row, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+
+        row.addView(texts, LinearLayout.LayoutParams(0, PanelUi.WRAP, 1f))
+        detailBox.addView(
+            row,
+            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP).apply {
+                bottomMargin = PanelUi.dp(ctx, 6)
+            }
+        )
+    }
+
+    private fun modeChip(label: String, selected: Boolean, onClick: () -> Unit): View {
+        return PanelUi.flatButton(ctx, label, onClick).apply {
+            alpha = if (selected) 1f else 0.75f
+            if (selected) {
+                background = PanelUi.btnBg(ctx, PanelUi.COL_BTN_SELECTED, 8f)
+            }
+        }
     }
 
     private fun listChip(label: String, onClick: () -> Unit): View =
