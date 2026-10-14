@@ -23,6 +23,7 @@ import net.foxmediax.scriptfx.client.particles.ParticleRuntime
 import net.foxmediax.scriptfx.network.ParticlePayload
 import net.foxmediax.scriptfx.particles.ParticleEffect
 import net.foxmediax.scriptfx.npc.NpcModelPreset
+import java.awt.Canvas
 
 interface PanelHost {
     fun navigate(section: PanelSection?)
@@ -84,87 +85,82 @@ class PlaceholderPage(host: PanelHost, private val name: String) : PanelPage(hos
 
 class LogsPage(host: PanelHost) : PanelPage(host) {
 
-    override val breadcrumb: String? get() = "Логи"
+        override val breadcrumb: String? get() = "Логи"
 
-    private lateinit var box: LinearLayout
-    private lateinit var scroll: ScrollView
-    private var lastCount = -1
+        private lateinit var box: LinearLayout
+        private lateinit var scroll: ScrollView
+        private var lastCount = -1
 
-    override fun createView(ctx: Context): View {
-        val root = PanelUi.pageRoot(ctx)
+        override fun createView(ctx: Context): View {
+            val root = PanelUi.pageRoot(ctx)
 
-        root.addView(
-            PanelUi.toolbar(
-                ctx,
-                "Логи ScriptFX",
-                "Обновить" to { refresh() }
-            ),
-            PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
-        )
-
-        scroll = ScrollView(ctx)
-        box = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, PanelUi.dp(ctx, 8), 0, 0)
-        }
-        scroll.addView(box, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
-        root.addView(scroll, LinearLayout.LayoutParams(PanelUi.MATCH, 0, 1f))
-
-        refresh()
-        // лёгкий polling, пока страница жива
-        box.post(object : Runnable {
-            override fun run() {
-                if (!box.isAttachedToWindow) return
-                refresh()
-                box.postDelayed(this, 1500L)
-            }
-        })
-        return root
-    }
-
-    private fun refresh() {
-        if (!this::box.isInitialized) return
-        box.removeAllViews()
-        val ctx = box.context
-        val entries = ScriptFXLog.snapshot()
-
-        if (entries.isEmpty()) {
-            box.addView(
-                PanelUi.mutedText(ctx, "Лог пуст"),
+            root.addView(
+                PanelUi.toolbar(
+                    ctx,
+                    "Логи ScriptFX",
+                    "Обновить" to { refresh() }
+                ),
                 PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
             )
-            return
+
+            scroll = ScrollView(ctx)
+            box = LinearLayout(ctx).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, PanelUi.dp(ctx, 8), 0, 0)
+            }
+            scroll.addView(box, PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP))
+            root.addView(scroll, LinearLayout.LayoutParams(PanelUi.MATCH, 0, 1f))
+
+            refresh()
+            // лёгкий polling, пока страница жива
+            box.post(object : Runnable {
+                override fun run() {
+                    if (!box.isAttachedToWindow) return
+                    refresh()
+                    box.postDelayed(this, 1500L)
+                }
+            })
+            return root
         }
 
-        for (entry in entries.takeLast(200)) {
-            val color = when (entry.level) {
-                ScriptFXLog.Level.ERROR -> PanelUi.COL_ERROR
-                ScriptFXLog.Level.WARN -> PanelUi.COL_WARNING
-                ScriptFXLog.Level.INFO -> PanelUi.COL_TEXT
-                ScriptFXLog.Level.DEBUG -> PanelUi.COL_MUTED
-            }
-            val tag = when (entry.level) {
-                ScriptFXLog.Level.ERROR -> "ERROR"
-                ScriptFXLog.Level.WARN -> "WARN"
-                ScriptFXLog.Level.INFO -> "INFO"
-                ScriptFXLog.Level.DEBUG -> "DEBUG"
-            }
-            // Entry → String
-            val line = "[$tag] ${entry.message}"
+        private fun refresh() {
+            if (!this::box.isInitialized) return
+            box.removeAllViews()
+            val ctx = box.context
+            val entries = ScriptFXLog.getRecentLogs()
 
-            box.addView(
-                TextView(ctx).apply {
-                    text = line
-                    textSize = 12f
-                    setTextColor(color)
-                    setPadding(0, PanelUi.dp(ctx, 1), 0, PanelUi.dp(ctx, 1))
-                },
-                PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
-            )
+            if (entries.isEmpty()) {
+                box.addView(
+                    PanelUi.mutedText(ctx, "Лог пуст"),
+                    PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+                )
+                return
+            }
+
+            for (line in entries.takeLast(200)) {
+                val color = when {
+                    line.startsWith("[ERROR]") -> PanelUi.COL_ERROR
+                    line.startsWith("[WARN]") -> PanelUi.COL_WARNING
+                    line.startsWith("[DEBUG]") -> PanelUi.COL_MUTED
+                    else -> PanelUi.COL_TEXT
+                }
+
+                box.addView(
+                    TextView(ctx).apply {
+                        text = line
+                        textSize = 12f
+                        setTextColor(color)
+                        setPadding(0, PanelUi.dp(ctx, 1), 0, PanelUi.dp(ctx, 1))
+                    },
+                    PanelUi.lp(PanelUi.MATCH, PanelUi.WRAP)
+                )
+            }
+            scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
         }
-        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
     }
-}
+
+
+
 
 class CutscenesPage(host: PanelHost) : PanelPage(host) {
 
@@ -493,6 +489,7 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
             "Для камеры",
             "Катсцены",
             "NPC",
+            "Кастомные модели NPC",
             "Частицы",
             "Звук и видео",
             "Квесты"
