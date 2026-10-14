@@ -104,11 +104,11 @@ object ScriptFXClient : ClientModInitializer {
 
         // ОДИН тик частиц за клиентский тик
         ClientTickEvents.END_CLIENT_TICK.register { client ->
-            ParticleRuntime.tick(1f / 20f)
-
-            NpcInteractClient.tick()
-            NpcPreviewHelper.clientTick()
-            NpcDialogClient.tick()
+            val dt = 1f / 20f
+            safeTick("ParticleRuntime") { ParticleRuntime.tick(dt) }
+            safeTick("NpcInteractClient") { NpcInteractClient.tick() }
+            safeTick("NpcPreviewHelper") { NpcPreviewHelper.clientTick() }
+            safeTick("NpcDialogClient") { NpcDialogClient.tick() }
 
             while (ScriptFXKeybinds.openControlPanel.consumeClick()) {
                 val player = client.player ?: continue
@@ -185,5 +185,13 @@ object ScriptFXClient : ClientModInitializer {
 
     private fun MediaClient_clear() {
         net.foxmediax.scriptfx.client.media.MediaClient.clear()
+    }
+
+    private fun safeTick(name: String, block: () -> Unit) {
+        try {
+            block()
+        } catch (t: Throwable) {
+            net.foxmediax.scriptfx.scriptengine.ScriptFXLog.error("Client tick [$name] failed", t)
+        }
     }
 }
