@@ -33,7 +33,7 @@ class ScriptNpcEntity(
     var npcId: String = ""
 
     var modelPath: String = "scriptfx:female_models"
-    var texturePath: String = "scriptfx:textures/npc/temple_skins.png"
+    var texturePath: String = "scriptfx:textures/npc/temple_female_skins.png"
     var animationPath: String = "scriptfx:female_models"
 
     /**
