@@ -222,7 +222,7 @@ class ControlPanelFragment : Fragment() {
         title.addView(
             TextView(ctx).apply {
                 text = "Script"
-                textSize = 16f
+                textSize = 19f
                 setTextColor(0xFFFFFFFF.toInt())
             },
             lp(WRAP, WRAP)
@@ -230,7 +230,7 @@ class ControlPanelFragment : Fragment() {
         title.addView(
             TextView(ctx).apply {
                 text = "FX"
-                textSize = 16f
+                textSize = 19f
                 setTextColor(COL_ACCENT)
             },
             lp(WRAP, WRAP)
