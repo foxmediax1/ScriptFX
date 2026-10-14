@@ -1,9 +1,28 @@
 {
   "key.category.scriptfx.main": "ScriptFX",
   "key.scriptfx.open_control_panel": "Открыть панель управления",
-
-  "key.scriptfx.open_control_panel": "Открыть панель управления",
+  "key.scriptfx.open_quest_journal": "Открыть журнал квестов",
   "key.scriptfx.open_mui_test": "Тест Modern UI",
 
-  "key.scriptfx.open_quest_journal": "Открыть журнал квестов"
+  "scriptfx.panel.title": "Панель управления",
+  "scriptfx.panel.projects": "Проекты",
+  "scriptfx.panel.npc_editor": "NPC-редактор",
+  "scriptfx.panel.particles": "Частицы",
+  "scriptfx.panel.logs": "Логи",
+  "scriptfx.panel.settings": "Настройки мода",
+  "scriptfx.panel.docs": "Документация",
+
+  "scriptfx.particles.title": "Эффекты Snowstorm",
+  "scriptfx.particles.reload": "Обновить",
+  "scriptfx.particles.stop_all": "Стоп все",
+  "scriptfx.particles.empty": "Нет эффектов. Положи .particle.json в projects/*/particles/",
+  "scriptfx.particles.play": "Запустить",
+  "scriptfx.particles.stop": "Остановить",
+  "scriptfx.particles.hint": "Превью через ванильные частицы. Полный Snowstorm-рендер — в планах.",
+
+  "scriptfx.logs.title": "Логи",
+  "scriptfx.logs.clear": "Очистить",
+
+  "scriptfx.quest.journal": "Журнал квестов",
+  "scriptfx.media.need_ffmpeg": "Для видео нужен ffmpeg (PATH или ffmpegPath в scriptfx.json)"
 }
