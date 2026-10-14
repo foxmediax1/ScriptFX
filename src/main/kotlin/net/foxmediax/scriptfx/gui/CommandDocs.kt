@@ -7,7 +7,9 @@ enum class DocCategory(val title: String) {
     SCREEN("Эффекты экрана"),
     CUTSCENE("Катсцена и камера"),
     NPC("NPC и диалоги"),
-    PARTICLES("Частицы")
+    PARTICLES("Частицы"),
+    MEDIA("Звук и видео"),
+    QUESTS("Квесты")
 }
 
 data class CommandDoc(
@@ -86,7 +88,7 @@ object CommandDocs {
 
         // ---------- Частицы ----------
         doc(DocCategory.PARTICLES, "particle_play \"id\" ~ ~1 ~",
-            "Запускает эффект частиц в точке. id из description.identifier. Координаты: число или ~ / ~N"),
+            "Запускает эффект частиц в точке. id из description.identifier. Координаты: число или ~ / ~N. Визуал — preview через ванильные частицы"),
         doc(DocCategory.PARTICLES, "particle_stop \"id\"",
             "Останавливает эмиттеры с этим id"),
         doc(DocCategory.PARTICLES, "particle_stop_all",
@@ -96,6 +98,34 @@ object CommandDocs {
         doc(DocCategory.PARTICLES, "particle_detach \"npcId\"",
             "Снимает все эффекты с NPC"),
         doc(DocCategory.PARTICLES, "particle_detach \"npcId\" \"effectId\"",
-            "Снимает только указанный эффект с NPC")
+            "Снимает только указанный эффект с NPC"),
+
+        // ---------- Звук и видео ----------
+        doc(DocCategory.MEDIA, "sound_play \"id\" [volume] [pitch] [loop]",
+            "OGG из projects/*/audio/<id>.ogg. volume/pitch по умолчанию 1. loop = true|loop|1"),
+        doc(DocCategory.MEDIA, "sound_stop \"id\"",
+            "Останавливает звук по id"),
+        doc(DocCategory.MEDIA, "sound_stop all",
+            "Останавливает все кастомные звуки ScriptFX"),
+        doc(DocCategory.MEDIA, "video_play \"id\"",
+            "Видео fullscreen: projects/*/video/<id>.mp4 (нужен ffmpeg в PATH или config ffmpegPath)"),
+        doc(DocCategory.MEDIA, "video_play \"id\" 0 0 1 1",
+            "Видео в области экрана: x y w h в долях 0..1"),
+        doc(DocCategory.MEDIA, "video_stop \"id\"",
+            "Останавливает видео"),
+        doc(DocCategory.MEDIA, "video_stop all",
+            "Останавливает все видео"),
+
+        // ---------- Квесты ----------
+        doc(DocCategory.QUESTS, "quest_start \"questId\"",
+            "Выдаёт квест игроку"),
+        doc(DocCategory.QUESTS, "quest_progress \"questId\" \"objectiveId\" [value]",
+            "Обновляет прогресс цели квеста"),
+        doc(DocCategory.QUESTS, "quest_complete \"questId\"",
+            "Отмечает квест выполненным + тост"),
+        doc(DocCategory.QUESTS, "quest_fail \"questId\"",
+            "Провал квеста + тост"),
+        doc(DocCategory.QUESTS, "quest_status \"questId\"",
+            "Печатает статус квеста в лог/чат")
     )
 }
