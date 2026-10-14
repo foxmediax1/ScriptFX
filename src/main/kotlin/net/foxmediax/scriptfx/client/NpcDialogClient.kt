@@ -147,8 +147,14 @@ object NpcDialogClient {
     }
 
     private fun applyOutline() {
+        // Обводка через glowing на GeckoLib ненадёжна — отключена.
+        // Включить позже через ScriptFXConfig.npcOutline + кастомный outline-pass.
+        if (!ScriptFXConfig.npcOutline) {
+            clearOutline()
+            return
+        }
         val e = findFocus()
-        if (e == null || !ScriptFXConfig.npcOutline) {
+        if (e == null) {
             clearOutline()
             return
         }
@@ -156,11 +162,19 @@ object NpcDialogClient {
             clearOutline()
             outlined = e
         }
-        e.setGlowingTag(true)
+        try {
+            e.setGlowingTag(true)
+        } catch (_: Throwable) {
+            // ignore
+        }
     }
 
     private fun clearOutline() {
-        outlined?.setGlowingTag(false)
+        try {
+            outlined?.setGlowingTag(false)
+        } catch (_: Throwable) {
+            // ignore
+        }
         outlined = null
     }
 
