@@ -6,7 +6,10 @@ import net.foxmediax.scriptfx.npc.NpcInteractWait
 import net.foxmediax.scriptfx.npc.NpcManager
 import net.foxmediax.scriptfx.npc.NpcRuntime
 import net.foxmediax.scriptfx.npc.ScriptNpcEntity
+import net.minecraft.core.registries.BuiltInRegistries
+import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.world.item.ItemStack
 import kotlin.math.atan2
 import kotlin.math.hypot
 
@@ -238,6 +241,101 @@ object NpcCommands {
             if (ok) CommandResult.Continue else CommandResult.SkipBlock
         }
 
+        // npc_walk "id" x y z [speed]
+        register("npc_walk") { ctx, args ->
+            val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
+            if (id.isEmpty() || args.size < 4) {
+                ScriptFXLog.warn("npc_walk: нужно npc_walk \"id\" x y z [speed]")
+                return@register CommandResult.Continue
+            }
+            val ref = ctx.player
+            val x = parseCoord(args[1].removeSurrounding("\""), ref?.x)
+            val y = parseCoord(args[2].removeSurrounding("\""), ref?.y)
+            val z = parseCoord(args[3].removeSurrounding("\""), ref?.z)
+            val speed = args.getOrNull(4)?.removeSurrounding("\"")?.toFloatOrNull() ?: 0.25f
+            if (x == null || y == null || z == null) {
+                ScriptFXLog.warn("npc_walk: неверные координаты")
+                return@register CommandResult.Continue
+            }
+            val level = (ref?.level() as? ServerLevel) ?: ctx.server.overworld()
+            val npc = findNpc(level, id)
+            if (npc == null) {
+                ScriptFXLog.warn("npc_walk: NPC '$id' не найден")
+                return@register CommandResult.Continue
+            }
+            npc.startWalk(x, y, z, speed, "running")
+            ScriptFXLog.info("npc_walk '$id' → $x $y $z speed=$speed")
+            CommandResult.Continue
+        }
+
+        register("npc_stop") { ctx, args ->
+            val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
+            if (id.isEmpty()) {
+                ScriptFXLog.warn("npc_stop: нужно npc_stop \"id\"")
+                return@register CommandResult.Continue
+            }
+            val level = (ctx.player?.level() as? ServerLevel) ?: ctx.server.overworld()
+            val npc = findNpc(level, id) ?: run {
+                ScriptFXLog.warn("npc_stop: NPC '$id' не найден")
+                return@register CommandResult.Continue
+            }
+            npc.stopWalk(true)
+            CommandResult.Continue
+        }
+
+        // npc_hand "id" "minecraft:item"   |  npc_hand "id" ""  — очистить
+        register("npc_hand") { ctx, args ->
+            val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
+            val itemId = args.getOrNull(1)?.removeSurrounding("\"")?.trim().orEmpty()
+            if (id.isEmpty()) {
+                ScriptFXLog.warn("npc_hand: нужно npc_hand \"id\" \"item_id\"")
+                return@register CommandResult.Continue
+            }
+            val level = (ctx.player?.level() as? ServerLevel) ?: ctx.server.overworld()
+            val npc = findNpc(level, id) ?: run {
+                ScriptFXLog.warn("npc_hand: NPC '$id' не найден")
+                return@register CommandResult.Continue
+            }
+            if (itemId.isEmpty()) {
+                npc.clearHeldItem()
+                ScriptFXLog.info("npc_hand '$id' cleared")
+            } else {
+                val stack = parseItemStack(itemId, 1)
+                if (stack.isEmpty) {
+                    ScriptFXLog.warn("npc_hand: неизвестный предмет '$itemId'")
+                    return@register CommandResult.Continue
+                }
+                npc.setHeldItem(stack)
+                ScriptFXLog.info("npc_hand '$id' = $itemId")
+            }
+            CommandResult.Continue
+        }
+
+        // npc_drop "id" "minecraft:item" count(0..100)
+        register("npc_drop") { ctx, args ->
+            val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
+            val itemId = args.getOrNull(1)?.removeSurrounding("\"")?.trim().orEmpty()
+            val count = args.getOrNull(2)?.removeSurrounding("\"")?.toIntOrNull()?.coerceIn(0, 100) ?: 1
+            if (id.isEmpty() || itemId.isEmpty()) {
+                ScriptFXLog.warn("npc_drop: нужно npc_drop \"id\" \"item_id\" count")
+                return@register CommandResult.Continue
+            }
+            val level = (ctx.player?.level() as? ServerLevel) ?: ctx.server.overworld()
+            val npc = findNpc(level, id) ?: run {
+                ScriptFXLog.warn("npc_drop: NPC '$id' не найден")
+                return@register CommandResult.Continue
+            }
+            if (count == 0) return@register CommandResult.Continue
+            val stack = parseItemStack(itemId, 1)
+            if (stack.isEmpty) {
+                ScriptFXLog.warn("npc_drop: неизвестный предмет '$itemId'")
+                return@register CommandResult.Continue
+            }
+            npc.dropItems(stack, count)
+            ScriptFXLog.info("npc_drop '$id' $itemId x$count")
+            CommandResult.Continue
+        }
+
         register("}") { _, _ -> CommandResult.Continue }
     }
 
@@ -295,5 +393,21 @@ object NpcCommands {
             return base + (if (off.isEmpty()) 0f else off.toFloatOrNull() ?: return null)
         }
         return raw.toFloatOrNull()
+    }
+
+    private fun parseItemStack(id: String, count: Int): ItemStack {
+        val key = try {
+            if (id.contains(":")) Identifier.parse(id)
+            else Identifier.fromNamespaceAndPath("minecraft", id.trim())
+        } catch (_: Exception) {
+            return ItemStack.EMPTY
+        }
+
+        val holder = BuiltInRegistries.ITEM.get(key).orElse(null) ?: return ItemStack.EMPTY
+        val item = holder.value()
+        if (item === net.minecraft.world.item.Items.AIR) return ItemStack.EMPTY
+
+        val max = item.defaultMaxStackSize
+        return ItemStack(item, count.coerceIn(1, max))
     }
 }
