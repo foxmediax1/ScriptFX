@@ -95,7 +95,7 @@ object LocalNpcAssets {
             // ВАЖНО: GeckoLib ожидает путь БЕЗ расширения и БЕЗ "models/"
             // "customs:hotel_models" -> assets/customs/geckolib/models/hotel_models.geo.json
             val modelId = Identifier.fromNamespaceAndPath("customs", name)
-            val animId = Identifier.fromNamespaceAndPath("customs", "$name.animation")
+            val animId = Identifier.fromNamespaceAndPath("customs", name)
             val textureId = Identifier.fromNamespaceAndPath("customs", "textures/$name.png")
 
             val h = Handle(modelId, animId, textureId)
