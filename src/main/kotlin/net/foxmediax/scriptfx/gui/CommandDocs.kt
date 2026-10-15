@@ -85,6 +85,14 @@ object CommandDocs {
             "Диалог с NPC (до 5 кнопок). Номер выбора попадает в dialog_button"),
         doc(DocCategory.NPC, "if dialog_button == 1 {", "Выполняет блок, если выбрана кнопка 1"),
         doc(DocCategory.NPC, "}", "Закрывает блок if (обязательна для каждого if)"),
+        doc(DocCategory.NPC, "npc_walk \"id\" ~5 ~ ~10 0.35",
+            "NPC идёт к точке (x y z, можно ~). Опционально скорость 0.05–1.5. Анимация running, по прибытии — idle"),
+        doc(DocCategory.NPC, "npc_stop \"id\"",
+            "Останавливает ходьбу NPC и ставит анимацию idle"),
+        doc(DocCategory.NPC, "npc_hand \"id\" \"minecraft:iron_sword\"",
+            "Предмет в главной руке NPC. Пустая строка \"\" — убрать предмет"),
+        doc(DocCategory.NPC, "npc_drop \"id\" \"minecraft:bread\" 5",
+            "NPC выбрасывает предмет рядом с собой. Количество 0…100 (0 — ничего не делает)"),
 
         // ---------- Частицы ----------
         doc(DocCategory.PARTICLES, "particle_play \"id\" ~ ~1 ~",
