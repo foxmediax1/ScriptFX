@@ -1,8 +1,24 @@
 package net.foxmediax.scriptfx
 
 import net.fabricmc.api.ModInitializer
+import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry
+import net.foxmediax.scriptfx.network.CameraPayload
+import net.foxmediax.scriptfx.network.ScriptMessagePayload
 import net.minecraft.resources.Identifier
 import org.slf4j.LoggerFactory
+import net.foxmediax.scriptfx.network.CutscenePayload
+import net.foxmediax.scriptfx.network.CutsceneInterruptPayload
+import net.foxmediax.scriptfx.config.ScriptFXConfig
+import net.foxmediax.scriptfx.network.MediaEndPayload
+import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
+import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
+import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
+import net.foxmediax.scriptfx.network.NpcInteractListenPayload
+import net.foxmediax.scriptfx.network.ParticlePayload
+import net.foxmediax.scriptfx.network.QuestSyncPayload
+import net.foxmediax.scriptfx.network.QuestToastPayload
+import net.foxmediax.scriptfx.npc.NpcEntities
+import net.foxmediax.scriptfx.network.MediaPayload
 
 object ScriptFX : ModInitializer {
 	const val MOD_ID: String = "scriptfx"
@@ -10,13 +26,35 @@ object ScriptFX : ModInitializer {
 	private val LOGGER = LoggerFactory.getLogger(MOD_ID)
 
 	override fun onInitialize() {
-		// This code runs as soon as Minecraft is in a mod-load-ready state.
-		// However, some things (like resources) may still be uninitialized.
-		// Proceed with mild caution.
+		ScriptFXConfig.load()
+		// Пакеты сервер -> клиент. Регистрируются на обеих сторонах.
+		PayloadTypeRegistry.clientboundPlay().register(ScriptMessagePayload.TYPE, ScriptMessagePayload.CODEC)
+		PayloadTypeRegistry.clientboundPlay().register(CameraPayload.TYPE, CameraPayload.CODEC)
+		PayloadTypeRegistry.clientboundPlay().register(CutscenePayload.TYPE, CutscenePayload.CODEC)
+		PayloadTypeRegistry.serverboundPlay().register(CutsceneInterruptPayload.TYPE, CutsceneInterruptPayload.CODEC)
+		PayloadTypeRegistry.serverboundPlay().register(
+			NpcInteractKeyPayload.TYPE,
+			NpcInteractKeyPayload.CODEC
+		)
+		PayloadTypeRegistry.clientboundPlay().register(
+			NpcInteractListenPayload.TYPE,
+			NpcInteractListenPayload.CODEC
+		)
+		PayloadTypeRegistry.clientboundPlay().register(NpcDialogOpenPayload.TYPE, NpcDialogOpenPayload.CODEC)
+		PayloadTypeRegistry.serverboundPlay().register(NpcDialogChoicePayload.TYPE, NpcDialogChoicePayload.CODEC)
+		PayloadTypeRegistry.clientboundPlay().register(QuestSyncPayload.TYPE, QuestSyncPayload.CODEC)
+		PayloadTypeRegistry.clientboundPlay().register(QuestToastPayload.TYPE, QuestToastPayload.CODEC)
+
+		PayloadTypeRegistry.clientboundPlay().register(ParticlePayload.TYPE, ParticlePayload.CODEC)
+		PayloadTypeRegistry.clientboundPlay().register(MediaPayload.TYPE, MediaPayload.CODEC)
+		PayloadTypeRegistry.serverboundPlay().register(MediaEndPayload.TYPE, MediaEndPayload.CODEC)
+
+		// Регистрируем реальный (GeckoLib) тип NPC-сущности, используемый npc_spawn.
+		NpcEntities.register()
 
 		LOGGER.info("ScriptFX mod initialized!")
 	}
 
 	fun id(path: String): Identifier
-		= Identifier.fromNamespaceAndPath(MOD_ID, path)
+			= Identifier.fromNamespaceAndPath(MOD_ID, path)
 }

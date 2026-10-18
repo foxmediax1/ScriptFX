@@ -38,7 +38,11 @@
 		]
 	},
 	"mixins": [
-		"scriptfx.mixins.json"
+		"scriptfx.mixins.json",
+		{
+			"config": "scriptfx.client.mixins.json",
+			"environment": "client"
+		}
 	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
@@ -46,6 +50,8 @@
 		"java": ">=25",
 		"fabric-api": "*",
 		"fabric-language-kotlin": "*",
-		"cloth-config": "*"
+		"geckolib": ">=5.5",
+		"modernui": "*",
+		"forgeconfigapiport": ">=26.1.0"
 	}
 }

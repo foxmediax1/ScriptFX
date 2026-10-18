@@ -1,16 +1,22 @@
 package net.foxmediax.scriptfx.scriptengine
 
 import net.fabricmc.loader.api.FabricLoader
+import net.foxmediax.scriptfx.config.ScriptFXConfig
 import java.io.File
+import net.foxmediax.scriptfx.npc.NpcRegistry
+import net.foxmediax.scriptfx.quest.QuestRegistry
 
 object ScriptManager {
 
     private val loadedScripts = mutableMapOf<String, List<ScriptCommand>>()
-    private val activeRunners = mutableListOf<ScriptRunner>()
+    private val scheduler = ScriptScheduler(maxScripts = { ScriptFXConfig.maxScripts })
 
     fun reload() {
         loadedScripts.clear()
         TriggerManager.clear()
+        AvatarLoader.clearCache()
+        NpcRegistry.reload()
+        QuestRegistry.reload()
 
         val projectsDir = FabricLoader.getInstance().configDir.resolve("scriptfx/projects").toFile()
         if (!projectsDir.exists()) {
@@ -23,13 +29,19 @@ object ScriptManager {
             File(projectDir, "scripts").walkTopDown()
                 .filter { it.isFile && it.extension == "sfxs" }
                 .forEach { file ->
-                    val commands = ScriptParser.parse(file.readText())
                     val name = file.nameWithoutExtension
+                    val commands = try {
+                        ScriptParser.parse(file.readText())
+                    } catch (e: Exception) {
+                        ScriptFXLog.error("Не удалось загрузить скрипт '${file.name}'", e)
+                        return@forEach
+                    }
+
                     if (loadedScripts.containsKey(name)) {
                         ScriptFXLog.warn("Скрипт с именем '$name' уже загружен из другого проекта — старый будет перезаписан")
                     }
                     loadedScripts[name] = commands
-                    if (TriggerParser.tryRegister(name, commands) != null) triggerCount++
+                    triggerCount += TriggerParser.registerAll(name, commands)
                 }
         }
 
@@ -38,20 +50,31 @@ object ScriptManager {
 
     fun loadedScript(name: String): List<ScriptCommand>? = loadedScripts[name]
 
-    fun startScript(name: String, context: ScriptContext) {
+    /** Возвращает false, если скрипт не найден или достигнут лимит. */
+    fun startScript(name: String, context: ScriptContext): Boolean {
         val commands = loadedScripts[name] ?: run {
             ScriptFXLog.warn("startscript: '$name' не найден")
-            return
+            return false
         }
-        activeRunners.add(ScriptRunner(commands, context, name))
+        return scheduler.add(name) { newRunner(commands, name, context) }
     }
 
-    fun runAdHoc(commands: List<ScriptCommand>, context: ScriptContext, name: String = "ad-hoc") {
-        activeRunners.add(ScriptRunner(commands, context, name))
-    }
+    fun runAdHoc(commands: List<ScriptCommand>, context: ScriptContext, name: String = "ad-hoc"): Boolean =
+        scheduler.add(name) { newRunner(commands, name, context) }
 
-    fun tickAll(currentTick: Long) {
-        activeRunners.toList().forEach { it.tick(currentTick) }
-        activeRunners.removeAll { it.finished }
-    }
+    fun stopScript(name: String, reason: String = "командой stop_script"): Int =
+        scheduler.stop(name, reason)
+
+    fun stopAllScripts(reason: String = "stop_all_scripts"): Int =
+        scheduler.stopAll(reason)
+
+    fun tickAll(currentTick: Long) = scheduler.tick(currentTick)
+
+    private fun newRunner(commands: List<ScriptCommand>, name: String, context: ScriptContext) =
+        ScriptRunner(
+            commands = commands,
+            scriptName = name,
+            executor = { CommandRegistry.execute(it, context) },
+            lookup = { loadedScript(it) }
+        )
 }

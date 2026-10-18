@@ -1,41 +1,56 @@
 package net.foxmediax.scriptfx.scriptengine
 
 import org.slf4j.LoggerFactory
+import java.util.concurrent.CopyOnWriteArrayList
 
 object ScriptFXLog {
-
-    enum class Level { INFO, WARN, ERROR }
-    data class Entry(val time: Long, val level: Level, val message: String)
-
     private val logger = LoggerFactory.getLogger("ScriptFX")
-    private val lock = Any()
-    private val buffer = ArrayDeque<Entry>()
-    private const val MAX_ENTRIES = 500
 
-    fun info(message: String) {
-        logger.info(message)
-        push(Level.INFO, message)
+    var debugEnabled: Boolean = false
+
+    // Буфер последних логов для отображения в панели
+    private val logBuffer = CopyOnWriteArrayList<String>()
+    private const val MAX_LOGS = 500
+
+    fun info(msg: String) {
+        logger.info(msg)
+        addToBuffer("[INFO] $msg")
     }
 
-    fun warn(message: String) {
-        logger.warn(message)
-        push(Level.WARN, message)
+    fun warn(msg: String) {
+        logger.warn(msg)
+        addToBuffer("[WARN] $msg")
     }
 
-    fun error(message: String, e: Throwable? = null) {
-        logger.error(message, e)
-        push(Level.ERROR, message + (e?.message?.let { ": $it" } ?: ""))
+    fun error(msg: String, throwable: Throwable? = null) {
+        if (throwable != null) {
+            logger.error(msg, throwable)
+            addToBuffer("[ERROR] $msg: ${throwable.message}")
+        } else {
+            logger.error(msg)
+            addToBuffer("[ERROR] $msg")
+        }
     }
 
-    /** Снимок текущих записей — безопасен для чтения с любого потока (в т.ч. с потока рендера). */
-    fun snapshot(): List<Entry> = synchronized(lock) { buffer.toList() }
+    fun debug(msg: String) {
+        if (debugEnabled) {
+            logger.info("[DEBUG] $msg")
+            addToBuffer("[DEBUG] $msg")
+        }
+    }
 
-    fun clear() = synchronized(lock) { buffer.clear() }
+    fun getRecentLogs(): List<String> {
+        return logBuffer.toList()
+    }
 
-    private fun push(level: Level, message: String) {
-        synchronized(lock) {
-            buffer.addLast(Entry(System.currentTimeMillis(), level, message))
-            while (buffer.size > MAX_ENTRIES) buffer.removeFirst()
+    fun clearLogs() {
+        logBuffer.clear()
+    }
+
+    private fun addToBuffer(line: String) {
+        logBuffer.add(line)
+        if (logBuffer.size > MAX_LOGS) {
+            logBuffer.removeAt(0)
         }
     }
 }
