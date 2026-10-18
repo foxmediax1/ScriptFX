@@ -3,13 +3,25 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
 	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 	id 'maven-publish'
-	id "org.jetbrains.kotlin.jvm" version "2.4.20"
-
+	id "org.jetbrains.kotlin.jvm" version "${kotlin_version}"
 }
 
 repositories {
-	maven { url "https://maven.architectury.dev/" }
-	maven { url "https://maven.shedaniel.me/" }
+	maven {
+		name = 'GeckoLib'
+		url = 'https://dl.cloudsmith.io/public/geckolib3/geckolib/maven/'
+		content {
+			includeGroup("com.geckolib")
+			includeGroupByRegex("software\\.bernie.*")
+			includeGroup("com.eliotlash.mclib")
+		}
+	}
+	mavenCentral()
+	maven {
+		name = "Fuzs Mod Resources"
+		url = "https://raw.githubusercontent.com/Fuzss/modresources/main/maven/"
+	}
+	maven { url = "https://cursemaven.com" }
 }
 
 fabricApi {
@@ -25,10 +37,27 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-    implementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
+	implementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
 
-	// Cloth Config
-	implementation "me.shedaniel.cloth:cloth-config-fabric:26.1.154"
+	implementation "com.geckolib:geckolib-fabric-${minecraft_version}:${geckolib_version}"
+
+	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
+	testImplementation "org.junit.jupiter:junit-jupiter"
+	testImplementation "org.jetbrains.kotlin:kotlin-test:${project.kotlin_version}"
+
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+
+	implementation "fuzs.forgeconfigapiport:forgeconfigapiport-fabric:26.1.5"
+
+	implementation files('libs/modernui-fabric.jar')
+}
+
+tasks.withType(Test).configureEach {
+	useJUnitPlatform()
+	testLogging {
+		events "failed"
+		exceptionFormat "full"
+	}
 }
 
 processResources {
@@ -42,6 +71,7 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
+	it.options.encoding = 'UTF-8'
 }
 
 kotlin {
@@ -65,7 +95,7 @@ jar {
 	inputs.property "projectName", projectName
 
 	from("LICENSE") {
-		rename { "${it}_$projectName"}
+		rename { "${it}_$projectName" }
 	}
 }
 
@@ -79,11 +109,5 @@ publishing {
 
 	// See https://docs.gradle.org/current/userguide/publishing_maven.html for information on how to set up publishing.
 	repositories {
-	}
-}
-
-sourceSets {
-	client {
-		kotlin.srcDirs += 'src/client/kotlin'
 	}
 }

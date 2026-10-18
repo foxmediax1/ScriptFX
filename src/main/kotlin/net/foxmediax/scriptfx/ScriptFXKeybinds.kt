@@ -19,4 +19,13 @@ object ScriptFXKeybinds {
             CATEGORY
         )
     )
+
+    val openQuestJournal: KeyMapping = KeyMappingHelper.registerKeyMapping(
+        KeyMapping(
+            "key.scriptfx.open_quest_journal",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_Y,
+            CATEGORY
+        )
+    )
 }

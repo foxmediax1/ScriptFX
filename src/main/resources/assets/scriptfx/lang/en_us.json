@@ -1,4 +1,28 @@
 {
   "key.category.scriptfx.main": "ScriptFX",
-  "key.scriptfx.open_control_panel": "Open Control Panel"
+  "key.scriptfx.open_control_panel": "Open Control Panel",
+  "key.scriptfx.open_quest_journal": "Open Quest Journal",
+  "key.scriptfx.open_mui_test": "Open Modern UI Test",
+
+  "scriptfx.panel.title": "Control Panel",
+  "scriptfx.panel.projects": "Projects",
+  "scriptfx.panel.npc_editor": "NPC Editor",
+  "scriptfx.panel.particles": "Particles",
+  "scriptfx.panel.logs": "Logs",
+  "scriptfx.panel.settings": "Mod Settings",
+  "scriptfx.panel.docs": "Docs",
+
+  "scriptfx.particles.title": "Snowstorm Effects",
+  "scriptfx.particles.reload": "Reload",
+  "scriptfx.particles.stop_all": "Stop All",
+  "scriptfx.particles.empty": "No effects. Put .particle.json into projects/*/particles/",
+  "scriptfx.particles.play": "Play",
+  "scriptfx.particles.stop": "Stop",
+  "scriptfx.particles.hint": "Preview uses vanilla particles. Full Snowstorm billboard render is planned.",
+
+  "scriptfx.logs.title": "Logs",
+  "scriptfx.logs.clear": "Clear",
+
+  "scriptfx.quest.journal": "Quest Journal",
+  "scriptfx.media.need_ffmpeg": "ffmpeg required for video (PATH or scriptfx.json ffmpegPath)"
 }
