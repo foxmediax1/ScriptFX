@@ -1,16 +1,20 @@
-# ScriptFX
+<img width="640" height="128" alt="Баннер_640_128" src="https://github.com/user-attachments/assets/f07811f0-31f5-4aab-a461-f6bec66cfecb" />
 
-## INFO
-EN:
+**ScriptFX** — это мод для Minecraft Java Edition, который представляет собой скриптовый движок написанный на языке Kotlin, с помощью данного движка можно писать свои сюжетные линии, создавать катсцены, NPC, квесты.
+В самом моде в данный момент есть система катсцен, npc, частично интегрированы частицы Snowstorm, квесты, триггеры, есть свои настройки для UI мода.
 
-This mod allows you to create scripts and develop various storylines.
+## Установка
+Для установки понадобится Minecraft (версия: Fabric 26.1), загрузите последнюю версию jar-файла мода.
+Также понадобится установить следующие моды: [Fabric-API](https://modrinth.com/mod/fabric-api), [Forge Config API Port](https://modrinth.com/mod/forge-config-api-port), [Modern UI](https://modrinth.com/mod/modern-ui), [GeckoLib](https://modrinth.com/mod/geckolib). Поместите их в папку mods Minecraft и запустите игру.
 
-----------------------------------------------------------
-RU:
+После этого мод ScriptFX должен установиться и появиться в меню модов Minecraft. Если ScriptFX не установился и не отображается в меню модов Minecraft, то значит, что-то пошло не так. В таких случаях важно перепроверить куда вы поместили файлы.
 
-Данный мод позволяет создавать скрипты и создавать различные сюжетные истории.
+## Ресурсы и прочее
+В данный момент мод ещё находиться в разработке. А это значит что могут быть баги, лаги, краши и вылеты игры.
+Если вы нашли проблему во время использования мода ScriptFX, то просьба оповестить во вкладке [Проблемы](https://github.com/foxmediax1/ScriptFX/issues).
 
+Документация к моду доступна в самом UI мода, вам нужно открыть панель управления на горячую клавишу "=" и потом в правом верхнем углу нажать на кнопку "?".
 
-## License
+## Лицензия
 
-This template is available under the CC0 license. Feel free to learn from it and incorporate it in your own projects.
+Этот проект доступен по лицензии GNU General Public License v3.0 Я разрешаю создавать для данного мода модификации, а также возможность использовать в своих проектах.
