@@ -10,7 +10,7 @@
 	"contact": {
 		"sources": "https://github.com/foxmediax1/ScriptFX"
 	},
-	"license": "CC0-1.0",
+	"license": "CC0-3.0",
 	"icon": "assets/scriptfx/icon.png",
 	"environment": "*",
 	"entrypoints": {
