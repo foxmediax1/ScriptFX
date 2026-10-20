@@ -9,9 +9,14 @@ import net.foxmediax.scriptfx.npc.ScriptNpcEntity
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.resources.Identifier
 import net.minecraft.server.level.ServerLevel
+import net.minecraft.server.level.ServerPlayer
+import net.minecraft.util.Mth
+import net.minecraft.world.entity.Relative
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.phys.Vec3
 import kotlin.math.atan2
 import kotlin.math.hypot
+import kotlin.math.sqrt
 
 object NpcCommands {
 
@@ -40,7 +45,9 @@ object NpcCommands {
             val words = mutableListOf<String>()
             for (raw in args.drop(4)) {
                 val t = raw.removeSurrounding("\"").trim()
-                val angle = if (angles.size < 2) parseAngle(t, if (angles.isEmpty()) ref?.yRot else ref?.xRot) else null
+                val angle = if (angles.size < 2) {
+                    parseAngle(t, if (angles.isEmpty()) ref?.yRot else ref?.xRot)
+                } else null
                 when {
                     t.lowercase() in WORLD_KEYS -> worldKey = t
                     angle != null -> angles.add(angle)
@@ -194,9 +201,35 @@ object NpcCommands {
             val uuid = serverPlayer.uuid
             val level = serverPlayer.level() as ServerLevel
             val npc = findNpc(level, npcId)
-            if (npc == null) ScriptFXLog.warn("npc_dialog_hud: NPC '$npcId' не найден в мире (диалог без камеры и обводки)")
+            if (npc == null) {
+                ScriptFXLog.warn("npc_dialog_hud: NPC '$npcId' не найден в мире (диалог без камеры)")
+            }
 
             npc?.dialogFocus = uuid
+
+            // Точка возврата игрока
+            val backX = serverPlayer.x
+            val backY = serverPlayer.y
+            val backZ = serverPlayer.z
+            val backYaw = serverPlayer.yRot
+            val backPitch = serverPlayer.xRot
+            val backLevel = level
+
+            // Перенос игрока к точке диалоговой камеры → клиент грузит чанки
+            if (npc != null) {
+                val dx = backX - npc.x
+                val dy = backY - npc.eyeY
+                val dz = backZ - npc.z
+                val len = sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(0.001)
+                val dist = 1.55
+                val camX = npc.x + dx / len * dist
+                val camY = npc.eyeY + dy / len * dist
+                val camZ = npc.z + dz / len * dist
+
+                forceChunks(level, npc.x, npc.z, 4)
+                forceChunks(level, camX, camZ, 4)
+                silentTp(serverPlayer, level, camX, camY, camZ, backYaw, backPitch)
+            }
 
             NpcDialogWait.begin(uuid)
             ServerPlayNetworking.send(
@@ -210,13 +243,20 @@ object NpcCommands {
             fun finish(btn: Int): Boolean {
                 npc?.dialogFocus = null
                 NpcDialogWait.clear(uuid)
+                val p = ctx.server.playerList.getPlayer(uuid)
+                if (p != null) {
+                    silentTp(p, backLevel, backX, backY, backZ, backYaw, backPitch)
+                }
                 ctx.vars["dialog_button"] = btn.toString()
                 ScriptFXLog.info("dialog_button = $btn")
                 return true
             }
 
             fun step(): Boolean {
-                ctx.server.playerList.getPlayer(uuid) ?: return finish(0)
+                val p = ctx.server.playerList.getPlayer(uuid) ?: return finish(0)
+                if (npc != null && npc.isAlive) {
+                    forceChunks(p.level() as ServerLevel, npc.x, npc.z, 3)
+                }
                 return if (NpcDialogWait.isDone(uuid)) finish(NpcDialogWait.chosen(uuid)) else false
             }
 
@@ -241,7 +281,6 @@ object NpcCommands {
             if (ok) CommandResult.Continue else CommandResult.SkipBlock
         }
 
-        // npc_walk "id" x y z [speed]
         register("npc_walk") { ctx, args ->
             val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
             if (id.isEmpty() || args.size < 4) {
@@ -283,7 +322,6 @@ object NpcCommands {
             CommandResult.Continue
         }
 
-        // npc_hand "id" "minecraft:item"   |  npc_hand "id" ""  — очистить
         register("npc_hand") { ctx, args ->
             val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
             val itemId = args.getOrNull(1)?.removeSurrounding("\"")?.trim().orEmpty()
@@ -311,7 +349,6 @@ object NpcCommands {
             CommandResult.Continue
         }
 
-        // npc_drop "id" "minecraft:item" count(0..100)
         register("npc_drop") { ctx, args ->
             val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
             val itemId = args.getOrNull(1)?.removeSurrounding("\"")?.trim().orEmpty()
@@ -339,7 +376,34 @@ object NpcCommands {
         register("}") { _, _ -> CommandResult.Continue }
     }
 
-    /** "12.5", "~", "~3", "~-2" -> число. base нужен только для ~. */
+    private fun forceChunks(level: ServerLevel, x: Double, z: Double, radius: Int) {
+        val cx = Mth.floor(x) shr 4
+        val cz = Mth.floor(z) shr 4
+        for (dx in -radius..radius) {
+            for (dz in -radius..radius) {
+                runCatching { level.getChunk(cx + dx, cz + dz) }
+            }
+        }
+    }
+
+    private fun silentTp(
+        player: ServerPlayer,
+        level: ServerLevel,
+        x: Double, y: Double, z: Double,
+        yaw: Float, pitch: Float
+    ) {
+        forceChunks(level, x, z, 4)
+        player.teleportTo(
+            level, x, y, z,
+            emptySet<Relative>(),
+            yaw, pitch,
+            true
+        )
+        player.resetFallDistance()
+        player.setDeltaMovement(Vec3.ZERO)
+        runCatching { level.chunkSource.chunkMap.move(player) }
+    }
+
     private fun parseCoord(raw: String, base: Double?): Double? {
         val t = raw.removeSurrounding("\"").trim()
         if (t.startsWith("~")) {
