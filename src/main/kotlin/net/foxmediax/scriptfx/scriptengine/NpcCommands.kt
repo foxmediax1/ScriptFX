@@ -207,7 +207,7 @@ object NpcCommands {
 
             npc?.dialogFocus = uuid
 
-            // Точка возврата игрока (тело не двигаем — подлёт только на клиенте)
+            // Точка возврата игрока
             val backX = serverPlayer.x
             val backY = serverPlayer.y
             val backZ = serverPlayer.z
@@ -215,10 +215,20 @@ object NpcCommands {
             val backPitch = serverPlayer.xRot
             val backLevel = level
 
-            // Только чанки у NPC, без silentTp — иначе клиентская катсцена «съедается»
+            // Перенос игрока к точке диалоговой камеры → клиент грузит чанки
             if (npc != null) {
+                val dx = backX - npc.x
+                val dy = backY - npc.eyeY
+                val dz = backZ - npc.z
+                val len = sqrt(dx * dx + dy * dy + dz * dz).coerceAtLeast(0.001)
+                val dist = 1.55
+                val camX = npc.x + dx / len * dist
+                val camY = npc.eyeY + dy / len * dist
+                val camZ = npc.z + dz / len * dist
+
                 forceChunks(level, npc.x, npc.z, 4)
-                forceChunks(level, backX, backZ, 2)
+                forceChunks(level, camX, camZ, 4)
+                silentTp(serverPlayer, level, camX, camY, camZ, backYaw, backPitch)
             }
 
             NpcDialogWait.begin(uuid)
@@ -235,7 +245,6 @@ object NpcCommands {
                 NpcDialogWait.clear(uuid)
                 val p = ctx.server.playerList.getPlayer(uuid)
                 if (p != null) {
-                    // на случай если клиент/лаг сдвинул — вернуть точно
                     silentTp(p, backLevel, backX, backY, backZ, backYaw, backPitch)
                 }
                 ctx.vars["dialog_button"] = btn.toString()
