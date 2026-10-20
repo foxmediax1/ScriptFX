@@ -1,8 +1,8 @@
 package net.foxmediax.scriptfx.npc
 
+import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.world.entity.EntitySpawnReason
-import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 
 object NpcManager {
 
@@ -34,10 +34,13 @@ object NpcManager {
         entity.xRot = pitch
         entity.yHeadRot = yaw
         entity.yBodyRot = yaw
-        entity.npcId = id
-        entity.modelPath = def.model
-        entity.texturePath = def.texture
-        entity.animationPath = def.animation
+
+        // Важно: через сеттеры → SynchedEntityData → клиент видит текстуру/модель
+        entity.applyNpcId(id)
+        entity.applyModelPath(def.model)
+        entity.applyTexturePath(def.texture)
+        entity.applyAnimationPath(def.animation)
+
         entity.setAnim(anim.ifBlank { def.defaultAnim })
         entity.setInvulnerableFlag(def.invulnerable)
         entity.setLookAtPlayer(def.lookAtPlayer)
@@ -70,7 +73,7 @@ object NpcManager {
                 maxHealth = def.maxHealth
             )
         )
-        ScriptFXLog.info("NPC '$id' заспавнен at $x $y $z mode=${mode.id}")
+        ScriptFXLog.info("NPC '$id' заспавнен at $x $y $z mode=${mode.id} tex=${def.texture}")
         return true
     }
 
@@ -86,6 +89,33 @@ object NpcManager {
             .forEach { it.discard() }
         ScriptFXLog.info("NPC '$id' удалён")
         return true
+    }
+
+    /** Удаляет всех заспавненных ScriptFX NPC во всех измерениях сервера. */
+    fun despawnAll(server: net.minecraft.server.MinecraftServer): Int {
+        val ids = NpcRuntime.all().keys.toList()
+        var removed = 0
+        for (id in ids) {
+            for (level in server.allLevels) {
+                if (level is ServerLevel && despawn(level, id)) {
+                    removed++
+                    break
+                }
+            }
+            if (NpcRuntime.isSpawned(id)) {
+                NpcRuntime.remove(id)
+            }
+        }
+        for (level in server.allLevels) {
+            if (level !is ServerLevel) continue
+            level.getAllEntities()
+                .filterIsInstance<ScriptNpcEntity>()
+                .forEach {
+                    it.discard()
+                    removed++
+                }
+        }
+        return removed
     }
 
     fun repack(level: ServerLevel, id: String, args: List<String>): Boolean {
