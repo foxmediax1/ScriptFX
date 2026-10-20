@@ -5,7 +5,9 @@ import net.foxmediax.scriptfx.network.CutscenePayload
 import net.minecraft.server.MinecraftServer
 import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
+import net.minecraft.util.Mth
 import net.minecraft.world.entity.Relative
+import net.minecraft.world.level.GameType
 import net.minecraft.world.level.Level
 import net.minecraft.world.phys.Vec3
 import java.util.UUID
@@ -44,6 +46,7 @@ object CutsceneManager {
         val letterbox: Boolean = false,
         val letterboxHeight: Float = 0.15f,
         val savedPos: SavedPos? = null,
+        val savedGameMode: GameType? = null,
         val move: MoveAnim? = null,
         val path: MutableList<PathPoint> = mutableListOf(),
         val pathBuilding: Boolean = false,
@@ -56,7 +59,6 @@ object CutsceneManager {
 
     fun isInCutscene(player: ServerPlayer): Boolean = active.containsKey(player.uuid)
 
-    /** Вызывать каждый серверный тик из ScriptFXServer */
     fun tick(server: MinecraftServer) {
         tickCounter++
         for ((uuid, state) in active) {
@@ -66,8 +68,10 @@ object CutsceneManager {
             val elapsed = (tickCounter - move.startTick).toInt()
 
             if (elapsed >= move.durationTicks) {
-                // Конец движения
-                teleportQuiet(player, player.level() as ServerLevel, move.toX, move.toY, move.toZ, move.toYaw, move.toPitch)
+                teleportQuiet(
+                    player, player.level() as ServerLevel,
+                    move.toX, move.toY, move.toZ, move.toYaw, move.toPitch
+                )
                 active[uuid] = state.copy(move = null)
                 if (active[uuid]?.path?.isNotEmpty() == true) {
                     startNextPathPoint(player)
@@ -76,7 +80,7 @@ object CutsceneManager {
             }
 
             val t = elapsed.toFloat() / move.durationTicks
-            val s = t * t * (3f - 2f * t) // smoothstep
+            val s = t * t * (3f - 2f * t)
 
             val x = lerp(move.fromX, move.toX, s)
             val y = lerp(move.fromY, move.toY, s)
@@ -90,28 +94,41 @@ object CutsceneManager {
 
     fun start(server: MinecraftServer, mode: String, targets: List<ServerPlayer>) {
         for (player in targets) {
-            // Повторный старт не должен перезаписывать точку возврата.
             if (active.containsKey(player.uuid)) continue
             val level = player.level() as ServerLevel
             val saved = SavedPos(level, player.x, player.y, player.z, player.yRot, player.xRot)
-            active[player.uuid] = State(mode = mode, savedPos = saved)
+            val prevMode = readGameMode(player)
+
+            active[player.uuid] = State(
+                mode = mode,
+                locked = true,
+                savedPos = saved,
+                savedGameMode = prevMode
+            )
+
+            writeGameMode(player, GameType.SPECTATOR)
+
             send(player, CutscenePayload(action = CutscenePayload.START))
+            send(player, CutscenePayload(action = CutscenePayload.LOCK, flag = true))
         }
     }
 
     fun abort(player: ServerPlayer) {
-        active.remove(player.uuid) ?: return
+        val state = active.remove(player.uuid) ?: return
+        restoreGameMode(player, state.savedGameMode)
         send(player, CutscenePayload(action = CutscenePayload.END))
+        send(player, CutscenePayload(action = CutscenePayload.LOCK, flag = false))
     }
 
     fun endFor(player: ServerPlayer) {
         val state = active[player.uuid] ?: return
-        // Телепортируем, пока игрок ещё "в катсцене": миксин player_tp это проигнорирует.
         state.savedPos?.let { pos ->
             teleportQuiet(player, pos.level, pos.x, pos.y, pos.z, pos.yaw, pos.pitch)
         }
+        restoreGameMode(player, state.savedGameMode)
         active.remove(player.uuid)
         send(player, CutscenePayload(action = CutscenePayload.END))
+        send(player, CutscenePayload(action = CutscenePayload.LOCK, flag = false))
     }
 
     fun end(server: MinecraftServer, players: Collection<ServerPlayer>) {
@@ -134,15 +151,17 @@ object CutsceneManager {
         if (!isInCutscene(player)) return
 
         val level = resolveLevel(player.level().server, worldKey) ?: player.level() as ServerLevel
-        // Останавливаем текущее движение
         active.computeIfPresent(player.uuid) { _, s -> s.copy(move = null) }
 
         teleportQuiet(player, level, x, y, z, yaw, pitch)
 
-        send(player, CutscenePayload(
-            action = CutscenePayload.SET,
-            x = x, y = y, z = z, yaw = yaw, pitch = pitch, worldKey = worldKey
-        ))
+        send(
+            player,
+            CutscenePayload(
+                action = CutscenePayload.SET,
+                x = x, y = y, z = z, yaw = yaw, pitch = pitch, worldKey = worldKey
+            )
+        )
         active.computeIfPresent(player.uuid) { _, s -> s.copy(move = null, cameraPlaced = true) }
     }
 
@@ -165,12 +184,14 @@ object CutsceneManager {
         )
         active.computeIfPresent(player.uuid) { _, s -> s.copy(move = move) }
 
-        send(player, CutscenePayload(
-            action = CutscenePayload.MOVE,
-            x = x, y = y, z = z, yaw = yaw, pitch = pitch,
-            durationTicks = duration
-        ))
-
+        send(
+            player,
+            CutscenePayload(
+                action = CutscenePayload.MOVE,
+                x = x, y = y, z = z, yaw = yaw, pitch = pitch,
+                durationTicks = duration
+            )
+        )
         active.computeIfPresent(player.uuid) { _, s -> s.copy(move = move, cameraPlaced = true) }
     }
 
@@ -189,8 +210,13 @@ object CutsceneManager {
     fun setLetterbox(player: ServerPlayer, enabled: Boolean, height: Float = 0.15f) {
         if (!isInCutscene(player)) return
         val h = height.coerceIn(0f, 0.4f)
-        active.computeIfPresent(player.uuid) { _, s -> s.copy(letterbox = enabled, letterboxHeight = h) }
-        send(player, CutscenePayload(action = CutscenePayload.LETTERBOX, flag = enabled, value = h))
+        active.computeIfPresent(player.uuid) { _, s ->
+            s.copy(letterbox = enabled, letterboxHeight = h)
+        }
+        send(
+            player,
+            CutscenePayload(action = CutscenePayload.LETTERBOX, flag = enabled, value = h)
+        )
     }
 
     fun onInterrupt(player: ServerPlayer) {
@@ -204,7 +230,45 @@ object CutsceneManager {
             else -> context.player?.let { listOf(it) } ?: context.server.playerList.players
         }
 
-    // ---- helpers ----
+    // ---- game mode (26.1-safe) ----
+
+    private fun readGameMode(player: ServerPlayer): GameType {
+        return try {
+            val gm = player.gameMode
+            val method = gm.javaClass.methods.firstOrNull { m ->
+                m.parameterCount == 0 &&
+                        m.returnType == GameType::class.java &&
+                        (m.name.contains("GameMode", ignoreCase = true) ||
+                                m.name.contains("getMode", ignoreCase = true))
+            }
+            if (method != null) {
+                method.isAccessible = true
+                (method.invoke(gm) as? GameType) ?: GameType.SURVIVAL
+            } else {
+                val field = gm.javaClass.declaredFields.firstOrNull {
+                    it.type == GameType::class.java
+                }
+                field?.isAccessible = true
+                (field?.get(gm) as? GameType) ?: GameType.SURVIVAL
+            }
+        } catch (_: Throwable) {
+            GameType.SURVIVAL
+        }
+    }
+
+    private fun writeGameMode(player: ServerPlayer, mode: GameType) {
+        try {
+            player.setGameMode(mode)
+        } catch (t: Throwable) {
+            ScriptFXLog.warn("setGameMode: ${t.message}")
+        }
+    }
+
+    private fun restoreGameMode(player: ServerPlayer, mode: GameType?) {
+        writeGameMode(player, mode ?: GameType.SURVIVAL)
+    }
+
+    // ---- teleport + chunks ----
 
     private fun teleportQuiet(
         player: ServerPlayer,
@@ -212,32 +276,25 @@ object CutsceneManager {
         x: Double, y: Double, z: Double,
         yaw: Float, pitch: Float
     ) {
-        val bx = net.minecraft.util.Mth.floor(x)
-        val bz = net.minecraft.util.Mth.floor(z)
-        val cx = bx shr 4
-        val cz = bz shr 4
+        val cx = Mth.floor(x) shr 4
+        val cz = Mth.floor(z) shr 4
+        val radius = 4
 
-        // принудительно FULL-чанки 3×3 вокруг камеры
-        for (dx in -1..1) {
-            for (dz in -1..1) {
-                level.getChunk(cx + dx, cz + dz)
+        for (dx in -radius..radius) {
+            for (dz in -radius..radius) {
+                runCatching { level.getChunk(cx + dx, cz + dz) }
             }
         }
 
         val ok = player.teleportTo(
             level,
-            x,
-            y,
-            z,
+            x, y, z,
             emptySet<Relative>(),
-            yaw,
-            pitch,
+            yaw, pitch,
             true
         )
         player.resetFallDistance()
         player.setDeltaMovement(Vec3.ZERO)
-
-        // обновить tracking (если метод есть в 26.1)
         runCatching { level.chunkSource.chunkMap.move(player) }
 
         if (!ok) {
@@ -296,10 +353,10 @@ object CutsceneManager {
             active.computeIfPresent(player.uuid) { _, s -> s.copy(pathBuilding = false) }
             return 0
         }
-        val total = state.path.sumOf { it.durationTicks }
-        active[player.uuid] = state.copy(pathBuilding = false, path = state.path.toMutableList())
+        val count = state.path.size
+        active[player.uuid] = state.copy(pathBuilding = false)
         startNextPathPoint(player)
-        return total
+        return count
     }
 
     private fun startNextPathPoint(player: ServerPlayer) {
@@ -317,26 +374,30 @@ object CutsceneManager {
             startTick = tickCounter,
             durationTicks = point.durationTicks
         )
-        active[player.uuid] = state.copy(move = move)
-
-        send(player, CutscenePayload(
-            action = CutscenePayload.MOVE,
-            x = point.x, y = point.y, z = point.z,
-            yaw = point.yaw, pitch = point.pitch,
-            durationTicks = point.durationTicks
-        ))
-
         active[player.uuid] = state.copy(move = move, cameraPlaced = true)
+
+        send(
+            player,
+            CutscenePayload(
+                action = CutscenePayload.MOVE,
+                x = point.x, y = point.y, z = point.z,
+                yaw = point.yaw, pitch = point.pitch,
+                durationTicks = point.durationTicks
+            )
+        )
     }
 
     fun setFov(player: ServerPlayer, fov: Float, durationTicks: Int) {
         if (!isInCutscene(player)) return
         active.computeIfPresent(player.uuid) { _, s -> s.copy(fov = fov) }
-        send(player, CutscenePayload(
-            action = CutscenePayload.FOV,
-            value = fov,
-            durationTicks = durationTicks.coerceAtLeast(0)
-        ))
+        send(
+            player,
+            CutscenePayload(
+                action = CutscenePayload.FOV,
+                value = fov,
+                durationTicks = durationTicks.coerceAtLeast(0)
+            )
+        )
     }
 
     fun lookAt(
@@ -346,7 +407,6 @@ object CutsceneManager {
     ) {
         val state = active[player.uuid] ?: return
 
-        // Клиент стартует камеру на уровне глаз, а после camera_set/move - в точке камеры.
         val ox = player.x
         val oy = if (state.cameraPlaced) player.y else player.eyeY
         val oz = player.z
@@ -367,8 +427,7 @@ object CutsceneManager {
     }
 
     private fun resolveActive(context: ScriptContext): List<ServerPlayer> {
-        val inCutscene = context.server.playerList.players
-            .filter { CutsceneManager.isInCutscene(it) }
+        val inCutscene = context.server.playerList.players.filter { isInCutscene(it) }
         val bound = context.player
         return if (bound != null) inCutscene.filter { it == bound } else inCutscene
     }
