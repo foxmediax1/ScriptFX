@@ -21,9 +21,6 @@ object CurrentNpcResources {
     @JvmField var texture: String = DEFAULT_TEXTURE
     @JvmField var animation: String = DEFAULT_ANIMATION
 
-    /** Флаг: успешно ли загружена кастомная модель */
-    @JvmField var customModelLoaded: Boolean = false
-
     fun normalizeModelOrAnim(raw: String, fallback: String): String {
         if (raw.isBlank()) return fallback
         if (NpcCustoms.isCustoms(raw)) return raw
@@ -54,23 +51,15 @@ object CurrentNpcResources {
         return "$nsSafe:$path"
     }
 
-    fun safeParse(id: String, fallback: String): Identifier {
-        return try {
-            Identifier.parse(id)
-        } catch (_: Exception) {
-            Identifier.parse(fallback)
-        }
-    }
+    fun apply(entity: ScriptNpcEntity) {
+        entity.syncPathsFromData()
 
-    fun apply(entity: ScriptNpcEntity): Boolean {
         val found = NpcRegistry.findById(entity.npcId)
         val project = found?.first
 
         val modelRaw = entity.modelPath
         val animRaw = entity.animationPath
         val texRaw = entity.texturePath
-
-        customModelLoaded = false
 
         if (project != null && NpcCustoms.isCustoms(modelRaw)) {
             val h = LocalNpcAssets.ensure(
@@ -84,16 +73,29 @@ object CurrentNpcResources {
                 model = h.modelId.toString()
                 animation = h.animId.toString()
                 texture = h.textureId.toString()
-                customModelLoaded = true
-                return true
+                return
             }
-            ScriptFXLog.warn("customs load failed for ${entity.npcId}, hiding NPC")
-            return false  // Не удалось загрузить — скрываем
+            ScriptFXLog.warn(
+                "customs load failed npc=${entity.npcId} project=$project model=$modelRaw → default"
+            )
+            model = DEFAULT_MODEL
+            animation = DEFAULT_ANIMATION
+            texture = DEFAULT_TEXTURE
+            return
         }
 
         model = normalizeModelOrAnim(modelRaw, DEFAULT_MODEL)
         animation = normalizeModelOrAnim(animRaw, DEFAULT_ANIMATION)
         texture = when {
+            NpcCustoms.isCustoms(texRaw) && project != null -> {
+                LocalNpcAssets.ensure(
+                    project,
+                    entity.npcId,
+                    modelRaw.ifBlank { texRaw },
+                    animRaw.ifBlank { texRaw },
+                    texRaw
+                )?.textureId?.toString() ?: DEFAULT_TEXTURE
+            }
             NpcCustoms.isCustoms(texRaw) -> DEFAULT_TEXTURE
             texRaw.isNotBlank() -> try {
                 Identifier.parse(texRaw).toString()
@@ -102,8 +104,6 @@ object CurrentNpcResources {
             }
             else -> DEFAULT_TEXTURE
         }
-        customModelLoaded = true  // Стандартная модель всегда доступна
-        return true
     }
 }
 
@@ -136,22 +136,6 @@ class ScriptNpcRenderer(
     ctx,
     ScriptNpcModel()
 ) {
-
-    override fun shouldRender(
-        entity: ScriptNpcEntity,
-        frustum: net.minecraft.client.renderer.culling.Frustum,
-        x: Double,
-        y: Double,
-        z: Double
-    ): Boolean {
-        // Проверяем, загрузилась ли кастомная модель
-        val loaded = CurrentNpcResources.apply(entity)
-        if (!loaded) {
-            return false  // Не рендерим, если кастомная модель не загрузилась
-        }
-        return super.shouldRender(entity, frustum, x, y, z)
-    }
-
     override fun extractRenderState(
         entity: ScriptNpcEntity,
         state: LivingEntityRenderState,
