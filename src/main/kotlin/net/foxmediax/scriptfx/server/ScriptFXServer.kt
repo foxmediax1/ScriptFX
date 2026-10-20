@@ -1,6 +1,7 @@
 package net.foxmediax.scriptfx.server
 
 import com.mojang.brigadier.arguments.StringArgumentType
+import com.mojang.brigadier.context.CommandContext
 import net.fabricmc.api.ModInitializer
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents
@@ -16,6 +17,9 @@ import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
 import net.foxmediax.scriptfx.network.NpcInteractKeyPayload
 import net.foxmediax.scriptfx.npc.NpcDialogWait
 import net.foxmediax.scriptfx.npc.NpcInteractWait
+import net.foxmediax.scriptfx.npc.NpcManager
+import net.foxmediax.scriptfx.npc.NpcRuntime
+import net.foxmediax.scriptfx.npc.ScriptNpcEntity
 import net.foxmediax.scriptfx.quest.QuestManager
 import net.foxmediax.scriptfx.scriptengine.CameraCommands
 import net.foxmediax.scriptfx.scriptengine.CutsceneManager
@@ -28,6 +32,7 @@ import net.minecraft.commands.Commands
 import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.network.chat.Component
 import net.minecraft.server.MinecraftServer
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.permissions.Permissions
 import net.minecraft.world.InteractionResult
@@ -53,13 +58,11 @@ object ScriptFXServer : ModInitializer {
             CutsceneManager.tick(server)
         }
 
-        // ЕДИНСТВЕННАЯ регистрация JOIN
         ServerPlayConnectionEvents.JOIN.register { handler, _, server ->
             TriggerManager.onPlayerJoin(server, handler.player)
             QuestManager.onJoin(handler.player)
         }
 
-        // ЕДИНСТВЕННАЯ регистрация DISCONNECT
         ServerPlayConnectionEvents.DISCONNECT.register { handler, _ ->
             CutsceneManager.endFor(handler.player)
             TriggerManager.onPlayerLeave(handler.player.uuid)
@@ -80,7 +83,6 @@ object ScriptFXServer : ModInitializer {
             TriggerManager.onPlayerRespawn(server, newPlayer)
         }
 
-        // trigger_globalplay player_click
         UseItemCallback.EVENT.register { player, world, hand ->
             if (!world.isClientSide && player is ServerPlayer) {
                 val server = player.level().server
@@ -110,13 +112,11 @@ object ScriptFXServer : ModInitializer {
         ServerPlayNetworking.registerGlobalReceiver(NpcDialogChoicePayload.TYPE) { payload, ctx ->
             NpcDialogWait.notifyChoice(ctx.player().uuid, payload.button)
         }
-
         ServerPlayNetworking.registerGlobalReceiver(MediaEndPayload.TYPE) { payload, context ->
             MediaCommands.onVideoEnded(context.player(), payload.videoId)
         }
     }
 
-    /** /scriptfx start_script, stop_script, stop_all_scripts, camera_reset, reload */
     private fun registerCommands() {
         CommandRegistrationCallback.EVENT.register { dispatcher, _, _ ->
             dispatcher.register(
@@ -163,6 +163,21 @@ object ScriptFXServer : ModInitializer {
                                 1
                             }
                     )
+                    .then(
+                        Commands.literal("stop_kill_npcs")
+                            .executes { ctx: CommandContext<CommandSourceStack> ->
+                                killAllNpcs(ctx.source)
+                            }
+                    )
+                    .then(
+                        Commands.literal("stop_killnpc")
+                            .then(
+                                Commands.argument("id", StringArgumentType.string())
+                                    .executes { ctx: CommandContext<CommandSourceStack> ->
+                                        killOneNpc(ctx)
+                                    }
+                            )
+                    )
             )
         }
     }
@@ -178,7 +193,10 @@ object ScriptFXServer : ModInitializer {
         val stopped = ScriptManager.stopScript(name)
         when {
             stopped > 0 ->
-                source.sendSuccess({ Component.literal("Скрипт '$name' аварийно завершён (экземпляров: $stopped)") }, true)
+                source.sendSuccess(
+                    { Component.literal("Скрипт '$name' аварийно завершён (экземпляров: $stopped)") },
+                    true
+                )
             ScriptManager.loadedScript(name) != null ->
                 source.sendFailure(Component.literal("Скрипт '$name' сейчас не запущен"))
             else ->
@@ -198,7 +216,9 @@ object ScriptFXServer : ModInitializer {
             source.sendSuccess({ Component.literal("Скрипт '$name' запущен") }, true)
             1
         } else {
-            source.sendFailure(Component.literal("Скрипт '$name' не запущен: достигнут лимит одновременных скриптов"))
+            source.sendFailure(
+                Component.literal("Скрипт '$name' не запущен: достигнут лимит одновременных скриптов")
+            )
             0
         }
     }
@@ -213,5 +233,58 @@ object ScriptFXServer : ModInitializer {
             source.sendFailure(Component.literal("Сейчас нет запущенных скриптов"))
         }
         return stopped
+    }
+
+    private fun killAllNpcs(source: CommandSourceStack): Int {
+        val n = NpcManager.despawnAll(source.server)
+        return if (n > 0) {
+            source.sendSuccess({ Component.literal("Удалено NPC: $n") }, true)
+            n
+        } else {
+            source.sendFailure(Component.literal("В мире нет ScriptFX NPC"))
+            0
+        }
+    }
+
+    private fun killOneNpc(ctx: CommandContext<CommandSourceStack>): Int {
+        val source = ctx.source
+        val id = StringArgumentType.getString(ctx, "id")
+            .trim()
+            .removeSurrounding("\"")
+        if (id.isEmpty()) {
+            source.sendFailure(Component.literal("Укажи id NPC"))
+            return 0
+        }
+
+        val server = source.server
+        var removed = false
+
+        if (NpcRuntime.isSpawned(id)) {
+            for (level in server.allLevels) {
+                if (level is ServerLevel && NpcManager.despawn(level, id)) {
+                    removed = true
+                    break
+                }
+            }
+            NpcRuntime.remove(id)
+        }
+
+        for (level in server.allLevels) {
+            if (level !is ServerLevel) continue
+            val list = level.getAllEntities()
+                .filterIsInstance<ScriptNpcEntity>()
+                .filter { it.npcId == id }
+            list.forEach { it.discard() }
+            if (list.isNotEmpty()) removed = true
+        }
+        NpcRuntime.remove(id)
+
+        return if (removed) {
+            source.sendSuccess({ Component.literal("NPC '$id' удалён") }, true)
+            1
+        } else {
+            source.sendFailure(Component.literal("NPC '$id' не найден в мире"))
+            0
+        }
     }
 }
