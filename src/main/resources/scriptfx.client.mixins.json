@@ -10,7 +10,8 @@
     "WindowAccessor",
     "ChatComponentAccessor",
     "ChatComponentHudMixin",
-    "MinecraftSetScreenMixin"
+    "MinecraftSetScreenMixin",
+    "KeyboardInputMixin"
   ],
   "injectors": {
     "defaultRequire": 1
