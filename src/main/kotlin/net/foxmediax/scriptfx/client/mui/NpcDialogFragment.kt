@@ -28,6 +28,7 @@ class NpcDialogModel(
 ) {
     val shownAt = System.currentTimeMillis()
     @Volatile var picked = false
+    @Volatile var textDone = false
 
     // "Страж: кто идёт?" -> "кто идёт?" (имя уже в шапке)
     val bodyText: String = fullText.trim().let { t ->
@@ -43,9 +44,16 @@ class NpcDialogModel(
     }
 
     fun revealedChars(): Int {
+        if (textDone) return bodyText.length
         val perChar = ScriptFXConfig.dialogTypewriterMs.coerceAtLeast(1)
         return ((System.currentTimeMillis() - shownAt) / perChar).toInt().coerceIn(0, bodyText.length)
     }
+
+    fun skipTypewriter() {
+        textDone = true
+    }
+
+    fun isTextComplete(): Boolean = revealedChars() >= bodyText.length
 }
 
 class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
@@ -65,17 +73,21 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         const val COL_BTN_HOVER = 0xFF2A2446.toInt()
         const val COL_BTN_PRESSED = 0xFF3C3162.toInt()
         const val COL_CHIP_TEXT = 0xFF14101F.toInt()
+        const val COL_HINT = 0xFF8888A0.toInt()
     }
 
     @Volatile private var rootView: View? = null
     private var scroll: ScrollView? = null
     private var bodyView: TextView? = null
+    private var buttonsPanel: LinearLayout? = null
+    private var hintView: TextView? = null
     private var shownChars = -1
     private var userScrolled = false
+    private var buttonsVisible = false
 
     private val frame = object : Runnable {
         override fun run() {
-            val root = rootView ?: return          // экран закрыт: цикл останавливается
+            val root = rootView ?: return
             val m = model ?: return
 
             root.alpha = m.fade() * MAX_ALPHA
@@ -87,7 +99,18 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
                 if (!userScrolled) scrollToEnd()
             }
 
-            val done = m.fade() >= 1f && n >= m.bodyText.length
+            // Кнопки появляются после полного текста (или skip)
+            val complete = m.isTextComplete()
+            if (complete && !buttonsVisible) {
+                buttonsVisible = true
+                buttonsPanel?.alpha = 1f
+                buttonsPanel?.visibility = View.VISIBLE
+                hintView?.text = "1–${m.buttons.size.coerceAtLeast(1)} · выбор"
+            } else if (!complete) {
+                buttonsPanel?.alpha = 0.35f
+            }
+
+            val done = m.fade() >= 1f && complete
             if (!done) root.postDelayed(this, FRAME_MS)
         }
     }
@@ -100,7 +123,7 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         val ctx = requireContext()
         val root = FrameLayout(ctx)
         val m = model
-        if (m == null) {                           // восстановление без модели: закрываемся
+        if (m == null) {
             val mc = Minecraft.getInstance()
             mc.execute { mc.setScreen(null) }
             return root
@@ -110,8 +133,23 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         root.isFocusableInTouchMode = true
         root.setOnKeyListener { _, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+            // Space / Enter — пропуск печати
+            if (keyCode == GLFW.GLFW_KEY_SPACE || keyCode == GLFW.GLFW_KEY_ENTER) {
+                if (!m.isTextComplete()) {
+                    m.skipTypewriter()
+                    return@setOnKeyListener true
+                }
+            }
             val n = keyCode - GLFW.GLFW_KEY_1
-            if (n in m.buttons.indices) { pick(m, n + 1); true } else false
+            if (n in m.buttons.indices) {
+                pick(m, n + 1)
+                true
+            } else false
+        }
+
+        // Клик по карточке — skip typewriter
+        root.setOnClickListener {
+            if (!m.isTextComplete()) m.skipTypewriter()
         }
 
         // ---------- слева: карточка с именем и текстом ----------
@@ -152,7 +190,6 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         bodyView = body
 
         val sv = ScrollView(ctx).apply {
-            // колесо или перетаскивание полосы: дальше не автопрокручиваем
             setOnGenericMotionListener { _, _ -> userScrolled = true; false }
             setOnTouchListener { _, e ->
                 if (e.action == MotionEvent.ACTION_DOWN) userScrolled = true
@@ -163,14 +200,26 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         scroll = sv
         card.addView(sv, LinearLayout.LayoutParams(MATCH, dp(ctx, 130)))
 
+        hintView = TextView(ctx).apply {
+            text = "Пробел — пропуск текста"
+            textSize = 10f
+            setTextColor(COL_HINT)
+            setPadding(dp(ctx, 12), 0, dp(ctx, 12), dp(ctx, 8))
+        }
+        card.addView(hintView, LinearLayout.LayoutParams(MATCH, WRAP))
+
         root.addView(
             card,
-            FrameLayout.LayoutParams(dp(ctx, 250), WRAP, Gravity.CENTER_VERTICAL or Gravity.START)
+            FrameLayout.LayoutParams(dp(ctx, 270), WRAP, Gravity.CENTER_VERTICAL or Gravity.START)
                 .apply { leftMargin = dp(ctx, 24) }
         )
 
         // ---------- справа: варианты ответа ----------
-        val right = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        val right = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            alpha = 0.35f
+        }
+        buttonsPanel = right
         m.buttons.forEachIndexed { i, label ->
             right.addView(
                 answerRow(ctx, m, i, label),
@@ -179,7 +228,7 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         }
         root.addView(
             right,
-            FrameLayout.LayoutParams(dp(ctx, 180), WRAP, Gravity.CENTER_VERTICAL or Gravity.END)
+            FrameLayout.LayoutParams(dp(ctx, 190), WRAP, Gravity.CENTER_VERTICAL or Gravity.END)
                 .apply { rightMargin = dp(ctx, 24) }
         )
 
@@ -189,7 +238,6 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         return root
     }
 
-    /** Кнопка-ответ: цифра в «чипе» + текст (длинный текст переносится, кнопка растёт). */
     private fun answerRow(ctx: Context, m: NpcDialogModel, index: Int, label: String): View {
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -224,6 +272,8 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
         rootView = null
         scroll = null
         bodyView = null
+        buttonsPanel = null
+        hintView = null
         super.onDestroyView()
     }
 
@@ -236,10 +286,15 @@ class NpcDialogFragment(private val model: NpcDialogModel?) : Fragment() {
     }
 
     private fun pick(m: NpcDialogModel, button: Int) {
-        if (m.fade() <= 0.8f) return               // ответ только после появления окна
+        if (m.fade() <= 0.8f) return
+        // Пока текст не допечатан — сначала skip, второй клик по кнопке выберет
+        if (!m.isTextComplete()) {
+            m.skipTypewriter()
+            return
+        }
         if (m.picked) return
         m.picked = true
-        m.onChoose(button)                         // дальше: в основной поток (см. NpcDialogClient)
+        m.onChoose(button)
     }
 
     private fun dp(ctx: Context, value: Int): Int =
