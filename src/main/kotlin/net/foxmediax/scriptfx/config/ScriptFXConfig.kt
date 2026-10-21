@@ -26,17 +26,15 @@ object ScriptFXConfig {
     var messageBorder: Int = DEFAULT_MESSAGE_BORDER
     var centerSystemMessages: Boolean = true
 
-    /** Максимум одновременно запущенных скриптов. 0 или меньше 0 — без лимита. */
     var maxScripts: Int = 0
-
-    /** Режим отладки — подробные логи. */
     var debugMode: Boolean = false
+    var ffmpegPath: String? = null
 
     /**
-     * Полный путь к ffmpeg (например C:/ffmpeg/bin/ffmpeg.exe).
-     * null или "" — искать `ffmpeg` в PATH.
+     * Громкость видео ScriptFX 0.0 … 1.0.
+     * Ползунок «ScriptFX Video» в Настройки → Музыка и звуки.
      */
-    var ffmpegPath: String? = null
+    var videoVolume: Float = 1f
 
     private val gson = GsonBuilder().setPrettyPrinting().create()
     private val configPath = FabricLoader.getInstance().configDir.resolve("scriptfx.json")
@@ -53,7 +51,8 @@ object ScriptFXConfig {
         var centerSystemMessages: Boolean = true,
         var maxScripts: Int = 0,
         var debugMode: Boolean = false,
-        var ffmpegPath: String? = null
+        var ffmpegPath: String? = null,
+        var videoVolume: Float = 1f
     )
 
     fun load() {
@@ -81,6 +80,7 @@ object ScriptFXConfig {
             maxScripts = data.maxScripts
             debugMode = data.debugMode
             ffmpegPath = data.ffmpegPath?.takeIf { it.isNotBlank() }
+            videoVolume = data.videoVolume.coerceIn(0f, 1f)
         } catch (e: Exception) {
             try {
                 Files.copy(
@@ -108,7 +108,8 @@ object ScriptFXConfig {
             centerSystemMessages = centerSystemMessages,
             maxScripts = maxScripts,
             debugMode = debugMode,
-            ffmpegPath = ffmpegPath
+            ffmpegPath = ffmpegPath,
+            videoVolume = videoVolume.coerceIn(0f, 1f)
         )
         configPath.writeText(gson.toJson(data))
     }
@@ -116,5 +117,24 @@ object ScriptFXConfig {
     private fun applyAll() {
         Mp4Decoder.ffmpegPath = ffmpegPath
         ScriptFXLog.debugEnabled = debugMode
+    }
+
+    /** Итоговая громкость ролика: slider × Master (0..1). */
+    fun effectiveVideoVolume(): Float {
+        val master = try {
+            val opts = net.minecraft.client.Minecraft.getInstance().options
+            val m = opts.javaClass.methods.firstOrNull {
+                it.name == "getSoundSourceOption" && it.parameterCount == 1
+            }
+            if (m != null) {
+                m.isAccessible = true
+                val opt = m.invoke(opts, net.minecraft.sounds.SoundSource.MASTER)
+                val get = opt?.javaClass?.methods?.firstOrNull { it.name == "get" && it.parameterCount == 0 }
+                ((get?.invoke(opt) as? Number)?.toDouble() ?: 1.0).toFloat()
+            } else 1f
+        } catch (_: Throwable) {
+            1f
+        }
+        return (videoVolume.coerceIn(0f, 1f) * master.coerceIn(0f, 1f)).coerceIn(0f, 1f)
     }
 }
