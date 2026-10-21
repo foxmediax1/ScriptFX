@@ -100,11 +100,11 @@ object NpcPreviewHelper {
 
         entity.npcId = def.id
         entity.modelPath = def.model.takeIf { it.isNotBlank() }
-            ?: CurrentNpcResources.DEFAULT_MODEL
+            ?: NpcAssetResolver.DEFAULT_MODEL
         entity.texturePath = def.texture.takeIf { it.isNotBlank() }
-            ?: CurrentNpcResources.DEFAULT_TEXTURE
+            ?: NpcAssetResolver.DEFAULT_TEXTURE
         entity.animationPath = def.animation.takeIf { it.isNotBlank() }
-            ?: CurrentNpcResources.DEFAULT_ANIMATION
+            ?: NpcAssetResolver.DEFAULT_ANIMATION
 
         entity.setAnim(def.defaultAnim.ifBlank { "idle" })
         entity.setLookAtPlayer(false)
@@ -172,13 +172,13 @@ object NpcPreviewHelper {
         if (width > sw * 0.55f || height > sh * 0.85f) return
 
         try {
-            val ok = CurrentNpcResources.apply(entity)
+            val resolved = NpcAssetResolver.resolveFor(entity)
             val wantsCustoms =
                 NpcCustoms.isCustoms(def.model) ||
                         NpcCustoms.isCustoms(def.texture) ||
                         NpcCustoms.isCustoms(def.animation)
 
-            if (!ok && wantsCustoms) {
+            if (wantsCustoms && !resolved.customLoaded) {
                 loadError = ERROR_MSG
                 drawError(graphics, b)
                 return
