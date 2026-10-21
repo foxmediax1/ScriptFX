@@ -11,7 +11,6 @@ object Mp4Decoder {
 
     var ffmpegPath: String? = null
 
-    /** Ключ videoId -> future декодирования (чтобы не запускать ffmpeg дважды). */
     private val decoding = ConcurrentHashMap<String, CompletableFuture<VideoMeta?>>()
 
     private fun cacheRoot(): File =
@@ -20,10 +19,6 @@ object Mp4Decoder {
 
     private fun ffmpegBin(): String = ffmpegPath?.takeIf { it.isNotBlank() } ?: "ffmpeg"
 
-    /**
-     * Неблокирующий вариант: декодирует в общем пуле, повторные вызовы того же
-     * видео возвращают тот же future. Вызывайте из скриптов через WaitUntil { future.isDone }.
-     */
     fun ensureDecodedAsync(meta: VideoMeta): CompletableFuture<VideoMeta?> {
         val key = "${meta.project}/${meta.id}"
         return decoding.computeIfAbsent(key) {
@@ -55,27 +50,42 @@ object Mp4Decoder {
             outDir.mkdirs()
             framesDir.mkdirs()
             framesDir.listFiles()?.forEach { it.delete() }
+            if (audioFile.isFile) audioFile.delete()
 
             val pattern = File(framesDir, "%06d.png").absolutePath
             val ok = runFfmpeg(
                 listOf(
                     ffmpegBin(), "-y", "-i", mp4.absolutePath,
-                    "-vf", "fps=24", "-q:v", "3", pattern
+                    "-vf", "fps=24,scale='min(1280,iw)':-2",
+                    "-q:v", "3", pattern
                 ),
                 600
             )
             if (!ok) {
-                ScriptFXLog.warn("Mp4Decoder: ffmpeg failed — install ffmpeg and add to PATH")
+                ScriptFXLog.warn("Mp4Decoder: ffmpeg frames failed — проверьте ffmpeg в PATH")
                 return null
             }
 
-            runFfmpeg(
+            val audioOk = runFfmpeg(
                 listOf(
                     ffmpegBin(), "-y", "-i", mp4.absolutePath,
-                    "-vn", "-c:a", "libvorbis", "-q:a", "6", audioFile.absolutePath
+                    "-vn", "-map", "0:a:0?",
+                    "-c:a", "libvorbis", "-q:a", "5",
+                    audioFile.absolutePath
                 ),
                 300
             )
+            if (!audioOk || !audioFile.isFile || audioFile.length() <= 0L) {
+                ScriptFXLog.warn(
+                    "Mp4Decoder: audio extract failed for ${mp4.name} " +
+                            "(нет аудиотрека или нет libvorbis?)"
+                )
+            } else {
+                ScriptFXLog.info(
+                    "Mp4Decoder: audio OK ${audioFile.name} (${audioFile.length()} bytes)"
+                )
+            }
+
             stampFile.writeText(stamp)
         }
 
@@ -85,11 +95,14 @@ object Mp4Decoder {
             .orEmpty()
         if (frames.isEmpty()) return null
 
-        val soundId = if (audioFile.isFile) {
+        val soundId = if (audioFile.isFile && audioFile.length() > 0L) {
             val sid = "_cache_${meta.project}_${meta.id}"
             MediaRegistry.registerCacheSound(sid, audioFile, meta.project)
             sid
-        } else meta.soundId
+        } else {
+            ScriptFXLog.warn("Mp4Decoder: no audio.ogg for ${meta.project}/${meta.id}")
+            meta.soundId
+        }
 
         return meta.copy(
             fps = 24f,
@@ -116,11 +129,13 @@ object Mp4Decoder {
 
             if (!p.waitFor(timeoutSec, TimeUnit.SECONDS)) {
                 p.destroyForcibly()
-                ScriptFXLog.warn("Mp4Decoder: ffmpeg timeout (${timeoutSec}s) для ${cmd[2]}")
+                ScriptFXLog.warn("Mp4Decoder: ffmpeg timeout (${timeoutSec}s)")
                 return false
             }
             if (p.exitValue() != 0) {
-                ScriptFXLog.warn("Mp4Decoder: ffmpeg exit=${p.exitValue()} для ${cmd[2]}: ${output.take(500)}")
+                ScriptFXLog.warn(
+                    "Mp4Decoder: ffmpeg exit=${p.exitValue()}: ${output.take(500)}"
+                )
                 return false
             }
             true
