@@ -45,6 +45,7 @@ object ScriptFXClient : ClientModInitializer {
 
         LocalNpcAssets.clear()
         LocalNpcAssets.tryEnableResourcePack()
+        ScriptFXSoundOptions.init()
 
         ClientPlayNetworking.registerGlobalReceiver(CameraPayload.TYPE) { payload, _ ->
             CameraOverlay.receive(payload)
@@ -135,6 +136,7 @@ object ScriptFXClient : ClientModInitializer {
         }
 
         CutsceneClient.init()
+        DialogHudSupport.init()
 
         ClientPlayNetworking.registerGlobalReceiver(NpcInteractListenPayload.TYPE) { payload, _ ->
             NpcInteractClient.setListenKey(payload.key)
@@ -170,7 +172,16 @@ object ScriptFXClient : ClientModInitializer {
                 val mc = Minecraft.getInstance()
                 val sw = mc.window.guiScaledWidth
                 val sh = mc.window.guiScaledHeight
-                net.foxmediax.scriptfx.client.media.VideoPlayer.render(sw, sh) { tex, x, y, w, h ->
+                val vp = net.foxmediax.scriptfx.client.media.VideoPlayer
+
+                val a = vp.overlayBlackAlpha()
+                if (a > 0.001f) {
+                    val alpha = (a * 255f).toInt().coerceIn(0, 255)
+                    val color = (alpha shl 24) // ARGB чёрный
+                    graphics.fill(0, 0, sw, sh, color)
+                }
+
+                vp.render(sw, sh) { tex, x, y, w, h ->
                     graphics.blit(
                         RenderPipelines.GUI_TEXTURED,
                         tex,
