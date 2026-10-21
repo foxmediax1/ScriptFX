@@ -12,6 +12,10 @@ object MediaClient {
 
     private val sounds = linkedMapOf<String, FileSoundInstance>()
 
+    /** Пауза кастомных FileSoundInstance. */
+    @Volatile
+    private var soundsPaused: Boolean = false
+
     private var savedVolumes: Map<SoundSource, Double>? = null
     private var videoMuteActive = false
 
@@ -37,7 +41,6 @@ object MediaClient {
     }
 
     private fun playSound(payload: MediaPayload) {
-        // НЕ вызывать MediaRegistry.reload() — сносит cache-звуки видео
         val entry = MediaRegistry.sound(payload.id)
         if (entry == null) {
             ScriptFXLog.warn("MediaClient: sound '${payload.id}' not found")
@@ -46,7 +49,6 @@ object MediaClient {
         playFile(payload.id, entry.file, payload.volume, payload.pitch, payload.loop)
     }
 
-    /** Прямой play с диска (видео-аудио). */
     fun playFile(
         key: String,
         file: File,
@@ -63,7 +65,9 @@ object MediaClient {
 
         val inst = FileSoundInstance(file, volume, pitch, loop, useVideoSlider = videoSlider)
         sounds[key] = inst
-        if (soundsPaused) inst.setPaused(true)
+        if (soundsPaused) {
+            runCatching { inst.setPaused(true) }
+        }
 
         val mc = Minecraft.getInstance()
         val run = Runnable {
@@ -76,12 +80,34 @@ object MediaClient {
                 ScriptFXLog.warn("MediaClient: play failed: ${t.message}")
             }
         }
-        if (try { mc.isSameThread } catch (_: Throwable) { true }) run.run()
-        else mc.execute(run)
+        if (try {
+                mc.isSameThread
+            } catch (_: Throwable) {
+                true
+            }
+        ) {
+            run.run()
+        } else {
+            mc.execute(run)
+        }
     }
 
     fun applyVideoVolumeToPlaying() {
         sounds.values.distinct().forEach { it.refreshVolume() }
+    }
+
+    fun pauseSounds() {
+        soundsPaused = true
+        sounds.values.distinct().forEach {
+            runCatching { it.setPaused(true) }
+        }
+    }
+
+    fun resumeSounds() {
+        soundsPaused = false
+        sounds.values.distinct().forEach {
+            runCatching { it.setPaused(false) }
+        }
     }
 
     fun stopSound(id: String) {
@@ -155,6 +181,7 @@ object MediaClient {
 
     fun clear() {
         stopAllSounds()
+        soundsPaused = false
         VideoPlayer.stopAll()
         endVideoMute()
     }
