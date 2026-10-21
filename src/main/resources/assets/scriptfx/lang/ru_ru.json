@@ -24,5 +24,6 @@
   "scriptfx.logs.clear": "Очистить",
 
   "scriptfx.quest.journal": "Журнал квестов",
-  "scriptfx.media.need_ffmpeg": "Для видео нужен ffmpeg (PATH или ffmpegPath в scriptfx.json)"
+  "scriptfx.media.need_ffmpeg": "Для видео нужен ffmpeg (PATH или ffmpegPath в scriptfx.json)",
+  "options.scriptfx.video_volume": "ScriptFX Видео: %s%%"
 }
