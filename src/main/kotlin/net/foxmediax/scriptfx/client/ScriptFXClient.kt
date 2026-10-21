@@ -38,11 +38,13 @@ object ScriptFXClient : ClientModInitializer {
     override fun onInitializeClient() {
 
         ScriptFXKeybinds
-
         ScriptFXConfig.load()
         ParticleRegistry.reload()
         ParticleWorldRenderer.init()
         net.foxmediax.scriptfx.media.MediaRegistry.reload()
+
+        LocalNpcAssets.clear()
+        LocalNpcAssets.tryEnableResourcePack()
 
         ClientPlayNetworking.registerGlobalReceiver(CameraPayload.TYPE) { payload, _ ->
             CameraOverlay.receive(payload)

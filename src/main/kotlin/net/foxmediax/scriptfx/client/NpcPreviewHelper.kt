@@ -225,7 +225,6 @@ object NpcPreviewHelper {
         val y = b.y0 + (b.y1 - b.y0) / 2 - font.lineHeight / 2
         val color = 0xFFFF5555.toInt()
 
-        // GuiGraphicsExtractor в 26.1 без drawString — ищем любой draw* на graphics или Font
         val drawn = runCatching {
             val gClass = graphics.javaClass
             for (m in gClass.methods) {
@@ -257,7 +256,6 @@ object NpcPreviewHelper {
         }.getOrDefault(false)
 
         if (!drawn) {
-            // fallback: только лог + флаг для NpcPreviewView (ModernUI TextView)
             ScriptFXLog.warn("NpcPreview: $ERROR_MSG (GUI text draw unavailable)")
         }
     }

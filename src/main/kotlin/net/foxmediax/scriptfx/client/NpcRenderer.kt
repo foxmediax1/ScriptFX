@@ -10,13 +10,12 @@ import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.client.renderer.entity.EntityRendererProvider
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState
 import net.minecraft.resources.Identifier
-import java.io.File
 
 object NpcAssetResolver {
 
     const val DEFAULT_MODEL = "scriptfx:female_models"
     const val DEFAULT_ANIMATION = "scriptfx:female_models"
-    const val DEFAULT_TEXTURE = "scriptfx:textures/npc/temple_female_skin.png"
+    const val DEFAULT_TEXTURE = "scriptfx:textures/npc/temple_female_skins.png"
 
     data class Resolved(
         val model: Identifier,
@@ -25,38 +24,34 @@ object NpcAssetResolver {
         val customLoaded: Boolean
     )
 
-    private fun inferProjectForNpc(npcId: String): String? {
+    private fun resolveProjectByNpcId(npcId: String): String? {
         val root = NpcRegistry.projectsRoot()
         if (!root.isDirectory) return null
 
         return root.listFiles()
             ?.filter { it.isDirectory }
             ?.firstNotNullOfOrNull { projectDir ->
-                val npcDir = File(projectDir, "npc")
+                val npcDir = projectDir.resolve("npc")
                 if (!npcDir.isDirectory) return@firstNotNullOfOrNull null
 
-                val files = npcDir.listFiles() ?: return@firstNotNullOfOrNull null
-                val hasMatchingNpc = files.any { entry ->
+                val found = npcDir.listFiles()?.any { entry ->
                     if (entry.isDirectory) {
-                        val fxnpc = File(entry, "${npcId}.fxnpc")
-                        fxnpc.exists() || File(entry, "$npcId.fxnpc").exists()
+                        val fxnpc = entry.resolve("$npcId.fxnpc")
+                        fxnpc.exists()
                     } else {
-                        entry.isFile && entry.name.equals("$npcId.fxnpc", true)
+                        entry.isFile && entry.name.equals("$npcId.fxnpc", ignoreCase = true)
                     }
-                }
-                if (hasMatchingNpc) projectDir.name else null
-            }
-    }
+                } == true
 
-    private fun resolveProject(entity: ScriptNpcEntity): String? {
-        return NpcRegistry.findById(entity.npcId)?.first
-            ?: inferProjectForNpc(entity.npcId)
+                if (found) projectDir.name else null
+            }
     }
 
     fun resolveFor(entity: ScriptNpcEntity): Resolved {
         entity.syncPathsFromData()
 
-        val project = resolveProject(entity)
+        val project = NpcRegistry.findById(entity.npcId)?.first
+            ?: resolveProjectByNpcId(entity.npcId)
         val modelRaw = entity.modelPath
         val animRaw = entity.animationPath
         val texRaw = entity.texturePath
@@ -69,7 +64,6 @@ object NpcAssetResolver {
                 animPath = animRaw.ifBlank { modelRaw },
                 texPath = texRaw.ifBlank { modelRaw }
             )
-
             if (handle != null) {
                 return Resolved(
                     model = handle.modelId,
@@ -80,7 +74,7 @@ object NpcAssetResolver {
             }
 
             ScriptFXLog.warn(
-                "NpcAssetResolver: custom model failed npc=${entity.npcId}, project=$project, fallback defaults"
+                "NpcAssetResolver: custom model failed for npc=${entity.npcId}, project=$project. Falling back."
             )
 
             return Resolved(
@@ -141,7 +135,6 @@ object NpcAssetResolver {
             .removeSuffix(".json")
             .removeSuffix(".geo")
             .removeSuffix(".animation")
-
         path = path.removeSuffix(".animation").removeSuffix(".geo")
         path = NpcCustoms.sanitizePath(path)
 
