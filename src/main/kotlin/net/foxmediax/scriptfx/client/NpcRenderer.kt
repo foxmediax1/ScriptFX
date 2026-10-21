@@ -52,29 +52,31 @@ object NpcAssetResolver {
 
         val project = NpcRegistry.findById(entity.npcId)?.first
             ?: resolveProjectByNpcId(entity.npcId)
+
         val modelRaw = entity.modelPath
         val animRaw = entity.animationPath
         val texRaw = entity.texturePath
 
         if (project != null && NpcCustoms.isCustoms(modelRaw)) {
-            val handle = LocalNpcAssets.ensure(
+            val h = LocalNpcAssets.ensure(
                 project = project,
                 npcId = entity.npcId,
                 modelPath = modelRaw,
                 animPath = animRaw.ifBlank { modelRaw },
                 texPath = texRaw.ifBlank { modelRaw }
             )
-            if (handle != null) {
+
+            if (h != null) {
                 return Resolved(
-                    model = handle.modelId,
-                    texture = handle.textureId,
-                    animation = handle.animId,
+                    model = h.modelId,
+                    animation = h.animId,
+                    texture = h.textureId,
                     customLoaded = true
                 )
             }
 
             ScriptFXLog.warn(
-                "NpcAssetResolver: custom model failed for npc=${entity.npcId}, project=$project. Falling back."
+                "NpcAssetResolver: custom model failed for npc=${entity.npcId}, project=$project"
             )
 
             return Resolved(
@@ -90,14 +92,14 @@ object NpcAssetResolver {
 
         val textureId = when {
             project != null && NpcCustoms.isCustoms(texRaw) -> {
-                val handle = LocalNpcAssets.ensure(
+                val h = LocalNpcAssets.ensure(
                     project = project,
                     npcId = entity.npcId,
                     modelPath = modelRaw.ifBlank { texRaw },
                     animPath = animRaw.ifBlank { texRaw },
                     texPath = texRaw
                 )
-                handle?.textureId ?: safeId(DEFAULT_TEXTURE)
+                h?.textureId ?: safeId(DEFAULT_TEXTURE)
             }
 
             NpcCustoms.isCustoms(texRaw) -> safeId(DEFAULT_TEXTURE)

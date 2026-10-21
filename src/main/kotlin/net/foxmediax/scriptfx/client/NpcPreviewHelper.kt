@@ -89,7 +89,6 @@ object NpcPreviewHelper {
     private fun createPreviewEntity(def: NpcDefinition): ScriptNpcEntity? {
         val mc = Minecraft.getInstance()
         val level = mc.level ?: return null
-
         val entity = NpcEntities.SCRIPT_NPC.create(level, EntitySpawnReason.LOAD) ?: return null
 
         entity.setPos(0.0, 0.0, 0.0)
@@ -99,12 +98,9 @@ object NpcPreviewHelper {
         entity.tickCount = 20
 
         entity.npcId = def.id
-        entity.modelPath = def.model.takeIf { it.isNotBlank() }
-            ?: NpcAssetResolver.DEFAULT_MODEL
-        entity.texturePath = def.texture.takeIf { it.isNotBlank() }
-            ?: NpcAssetResolver.DEFAULT_TEXTURE
-        entity.animationPath = def.animation.takeIf { it.isNotBlank() }
-            ?: NpcAssetResolver.DEFAULT_ANIMATION
+        entity.modelPath = def.model.takeIf { it.isNotBlank() } ?: NpcAssetResolver.DEFAULT_MODEL
+        entity.texturePath = def.texture.takeIf { it.isNotBlank() } ?: NpcAssetResolver.DEFAULT_TEXTURE
+        entity.animationPath = def.animation.takeIf { it.isNotBlank() } ?: NpcAssetResolver.DEFAULT_ANIMATION
 
         entity.setAnim(def.defaultAnim.ifBlank { "idle" })
         entity.setLookAtPlayer(false)
@@ -128,9 +124,7 @@ object NpcPreviewHelper {
             entity.isCustomNameVisible = false
         }
 
-        ScriptFXLog.info(
-            "NpcPreview: entity ${def.id} model=${entity.modelPath} tex=${entity.texturePath}"
-        )
+        ScriptFXLog.info("NpcPreview: entity ${def.id} model=${entity.modelPath} tex=${entity.texturePath}")
         return entity
     }
 

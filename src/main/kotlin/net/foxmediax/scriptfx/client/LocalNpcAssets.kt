@@ -39,14 +39,12 @@ object LocalNpcAssets {
 
         try {
             val mc = Minecraft.getInstance()
-            if (mc != null) {
-                mc.execute {
-                    try {
-                        mc.reloadResourcePacks()
-                        ScriptFXLog.info("LocalNpcAssets: resource packs reloaded")
-                    } catch (t: Throwable) {
-                        ScriptFXLog.warn("LocalNpcAssets: reloadResourcePacks failed: ${t.message}")
-                    }
+            mc.execute {
+                try {
+                    mc.reloadResourcePacks()
+                    ScriptFXLog.info("LocalNpcAssets: reloaded resource packs")
+                } catch (t: Throwable) {
+                    ScriptFXLog.warn("LocalNpcAssets: reloadResourcePacks failed: ${t.message}")
                 }
             }
         } catch (t: Throwable) {
@@ -138,7 +136,6 @@ object LocalNpcAssets {
             handles[key] = handle
 
             tryEnableResourcePack()
-
             ScriptFXLog.info("LocalNpcAssets: OK $key model=$modelId anim=$animId tex=$textureId")
             handle
         } catch (t: Throwable) {
