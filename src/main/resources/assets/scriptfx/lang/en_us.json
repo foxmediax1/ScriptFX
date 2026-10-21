@@ -24,5 +24,6 @@
   "scriptfx.logs.clear": "Clear",
 
   "scriptfx.quest.journal": "Quest Journal",
-  "scriptfx.media.need_ffmpeg": "ffmpeg required for video (PATH or scriptfx.json ffmpegPath)"
+  "scriptfx.media.need_ffmpeg": "ffmpeg required for video (PATH or scriptfx.json ffmpegPath)",
+  "options.scriptfx.video_volume": "ScriptFX Video: %s%%"
 }
