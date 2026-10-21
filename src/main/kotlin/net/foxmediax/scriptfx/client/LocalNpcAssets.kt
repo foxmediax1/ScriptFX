@@ -12,14 +12,6 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.ConcurrentHashMap
 
-/**
- * Копирует geo/anim/png NPC в resourcepacks/scriptfx_customs
- * и регистрирует текстуру через DynamicTexture (мир/превью без F3+T для текстуры).
- *
- * Model/anim: Identifier customs:<name> → GeckoLib ищет
- * assets/customs/geckolib/models/<name>.geo.json в активном resource pack.
- * Пак нужно один раз включить (или autoEnablePack из ScriptFXClient).
- */
 object LocalNpcAssets {
 
     data class Handle(
@@ -38,7 +30,29 @@ object LocalNpcAssets {
         resourcePackDir.resolve("assets/customs")
     }
 
-    fun packDir(): Path = resourcePackDir
+    fun tryEnableResourcePack() {
+        val dir = resourcePackDir.toAbsolutePath()
+        if (!Files.isDirectory(dir)) {
+            ScriptFXLog.warn("LocalNpcAssets: resource pack dir not found: $dir")
+            return
+        }
+
+        try {
+            val mc = Minecraft.getInstance()
+            if (mc != null) {
+                mc.execute {
+                    try {
+                        mc.reloadResourcePacks()
+                        ScriptFXLog.info("LocalNpcAssets: resource packs reloaded")
+                    } catch (t: Throwable) {
+                        ScriptFXLog.warn("LocalNpcAssets: reloadResourcePacks failed: ${t.message}")
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            ScriptFXLog.warn("LocalNpcAssets: tryEnableResourcePack failed: ${t.message}")
+        }
+    }
 
     fun ensure(
         project: String,
@@ -48,23 +62,18 @@ object LocalNpcAssets {
         texPath: String
     ): Handle? {
         val name = NpcCustoms.sanitizePath(NpcCustoms.strip(modelPath))
-        if (name.isBlank()) {
-            ScriptFXLog.warn("LocalNpcAssets: blank model name from '$modelPath'")
-            return null
-        }
+        if (name.isBlank()) return null
+
         val key = "${NpcCustoms.sanitizePath(project)}/${NpcCustoms.sanitizePath(npcId)}/$name"
         handles[key]?.let { return it }
 
         val modelFile = NpcCustoms.modelFile(project, npcId, modelPath)
-        if (modelFile == null || !modelFile.isFile) {
-            ScriptFXLog.warn(
-                "LocalNpcAssets: model file not found key=$key path=$modelPath " +
-                        "dir=${net.foxmediax.scriptfx.npc.NpcRegistry.customsModels(project, npcId).absolutePath}"
-            )
+        if (modelFile == null) {
+            ScriptFXLog.warn("LocalNpcAssets: model file not found for $key")
             return null
         }
 
-        ScriptFXLog.info("LocalNpcAssets: copying ${modelFile.name} → $name")
+        ScriptFXLog.info("LocalNpcAssets: copying ${modelFile.name}")
 
         return try {
             val modelsDir = assetsDir.resolve("geckolib/models")
@@ -78,7 +87,6 @@ object LocalNpcAssets {
             val packMcmeta = resourcePackDir.resolve("pack.mcmeta")
             if (!Files.exists(packMcmeta)) {
                 Files.createDirectories(resourcePackDir)
-                // pack_format: при несовпадении с 26.1 подними/опусти число в IDEA по ванили
                 Files.writeString(
                     packMcmeta,
                     """
@@ -105,8 +113,6 @@ object LocalNpcAssets {
                     animsDir.resolve("$name.animation.json"),
                     StandardCopyOption.REPLACE_EXISTING
                 )
-            } else {
-                ScriptFXLog.warn("LocalNpcAssets: animation not found for $key (geo only)")
             }
 
             val texFile = NpcCustoms.textureFile(project, npcId, texPath.ifBlank { modelPath })
@@ -121,33 +127,25 @@ object LocalNpcAssets {
             val modelId = Identifier.fromNamespaceAndPath("customs", name)
             val animId = Identifier.fromNamespaceAndPath("customs", name)
 
-            val defaultTex = Identifier.fromNamespaceAndPath(
-                "scriptfx",
-                "textures/npc/temple_female_skin.png"
-            )
             val textureId = if (texFile != null && texFile.isFile) {
-                registerDynamicTexture(key, texFile) ?: defaultTex
+                registerDynamicTexture(key, texFile)
+                    ?: Identifier.fromNamespaceAndPath("scriptfx", "textures/npc/temple_female_skins.png")
             } else {
-                ScriptFXLog.warn("LocalNpcAssets: texture missing for $key")
-                defaultTex
+                Identifier.fromNamespaceAndPath("scriptfx", "textures/npc/temple_female_skins.png")
             }
 
-            val h = Handle(modelId, animId, textureId)
-            handles[key] = h
-            ScriptFXLog.info("LocalNpcAssets: OK $key model=$modelId tex=$textureId")
-            h
+            val handle = Handle(modelId, animId, textureId)
+            handles[key] = handle
+
+            tryEnableResourcePack()
+
+            ScriptFXLog.info("LocalNpcAssets: OK $key model=$modelId anim=$animId tex=$textureId")
+            handle
         } catch (t: Throwable) {
             ScriptFXLog.warn("LocalNpcAssets: failed: ${t.message}")
             t.printStackTrace()
             null
         }
-    }
-
-    /** Сброс кэша handle (после смены файлов на диске). */
-    fun invalidate(project: String, npcId: String, modelPath: String) {
-        val name = NpcCustoms.sanitizePath(NpcCustoms.strip(modelPath))
-        val key = "${NpcCustoms.sanitizePath(project)}/${NpcCustoms.sanitizePath(npcId)}/$name"
-        handles.remove(key)
     }
 
     private fun registerDynamicTexture(key: String, file: java.io.File): Identifier? {
@@ -164,20 +162,6 @@ object LocalNpcAssets {
         } catch (t: Throwable) {
             ScriptFXLog.warn("LocalNpcAssets dyn texture: ${t.message}")
             null
-        }
-    }
-
-    /**
-     * Пытается включить пак scriptfx_customs в списке ресурспаков клиента.
-     * API 26.1 может отличаться — при ошибке компиляции поправь имена методов в IDEA.
-     */
-    fun tryEnableResourcePack() {
-        val dir = resourcePackDir.toAbsolutePath()
-        if (Files.isDirectory(dir)) {
-            ScriptFXLog.info(
-                "LocalNpcAssets: pack folder ready at $dir — " +
-                        "enable 'ScriptFX Custom NPC Assets' in Resource Packs if customs models are missing"
-            )
         }
     }
 
