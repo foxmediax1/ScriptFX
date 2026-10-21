@@ -10,12 +10,13 @@ import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.client.renderer.entity.EntityRendererProvider
 import net.minecraft.client.renderer.entity.state.LivingEntityRenderState
 import net.minecraft.resources.Identifier
+import java.io.File
 
 object NpcAssetResolver {
 
     const val DEFAULT_MODEL = "scriptfx:female_models"
     const val DEFAULT_ANIMATION = "scriptfx:female_models"
-    const val DEFAULT_TEXTURE = "scriptfx:textures/npc/temple_female_skins.png"
+    const val DEFAULT_TEXTURE = "scriptfx:textures/npc/temple_female_skin.png"
 
     data class Resolved(
         val model: Identifier,
@@ -24,17 +25,42 @@ object NpcAssetResolver {
         val customLoaded: Boolean
     )
 
+    private fun inferProjectForNpc(npcId: String): String? {
+        val root = NpcRegistry.projectsRoot()
+        if (!root.isDirectory) return null
+
+        return root.listFiles()
+            ?.filter { it.isDirectory }
+            ?.firstNotNullOfOrNull { projectDir ->
+                val npcDir = File(projectDir, "npc")
+                if (!npcDir.isDirectory) return@firstNotNullOfOrNull null
+
+                val files = npcDir.listFiles() ?: return@firstNotNullOfOrNull null
+                val hasMatchingNpc = files.any { entry ->
+                    if (entry.isDirectory) {
+                        val fxnpc = File(entry, "${npcId}.fxnpc")
+                        fxnpc.exists() || File(entry, "$npcId.fxnpc").exists()
+                    } else {
+                        entry.isFile && entry.name.equals("$npcId.fxnpc", true)
+                    }
+                }
+                if (hasMatchingNpc) projectDir.name else null
+            }
+    }
+
+    private fun resolveProject(entity: ScriptNpcEntity): String? {
+        return NpcRegistry.findById(entity.npcId)?.first
+            ?: inferProjectForNpc(entity.npcId)
+    }
+
     fun resolveFor(entity: ScriptNpcEntity): Resolved {
         entity.syncPathsFromData()
 
-        val found = NpcRegistry.findById(entity.npcId)
-        val project = found?.first
-
+        val project = resolveProject(entity)
         val modelRaw = entity.modelPath
         val animRaw = entity.animationPath
         val texRaw = entity.texturePath
 
-        // 1) Кастомные ресурсы: грузятся только для конкретного NPC и проекта
         if (project != null && NpcCustoms.isCustoms(modelRaw)) {
             val handle = LocalNpcAssets.ensure(
                 project = project,
@@ -54,7 +80,7 @@ object NpcAssetResolver {
             }
 
             ScriptFXLog.warn(
-                "NpcAssetResolver: custom model failed for npc=${entity.npcId}, project=$project, fallback to defaults"
+                "NpcAssetResolver: custom model failed npc=${entity.npcId}, project=$project, fallback defaults"
             )
 
             return Resolved(
@@ -65,7 +91,6 @@ object NpcAssetResolver {
             )
         }
 
-        // 2) Стандартный путь: нормализуем модель/анимацию/текстуру
         val modelId = safeId(normalizeResourcePath(modelRaw, DEFAULT_MODEL))
         val animId = safeId(normalizeResourcePath(animRaw, DEFAULT_ANIMATION))
 
@@ -78,14 +103,11 @@ object NpcAssetResolver {
                     animPath = animRaw.ifBlank { texRaw },
                     texPath = texRaw
                 )
-
                 handle?.textureId ?: safeId(DEFAULT_TEXTURE)
             }
 
             NpcCustoms.isCustoms(texRaw) -> safeId(DEFAULT_TEXTURE)
-
             texRaw.isNotBlank() -> safeId(texRaw)
-
             else -> safeId(DEFAULT_TEXTURE)
         }
 
@@ -103,7 +125,6 @@ object NpcAssetResolver {
 
         val ns: String
         val body: String
-
         if (':' in raw) {
             val parts = raw.split(':', limit = 2)
             ns = parts[0]
@@ -140,14 +161,18 @@ object NpcAssetResolver {
 }
 
 class ScriptNpcModel : GeoModel<ScriptNpcEntity>() {
+    companion object {
+        @Volatile
+        var currentEntity: ScriptNpcEntity? = null
+    }
 
     override fun getModelResource(renderState: GeoRenderState): Identifier {
-        val entity = renderState.entity as? ScriptNpcEntity ?: return Identifier.parse(NpcAssetResolver.DEFAULT_MODEL)
+        val entity = currentEntity ?: return Identifier.parse(NpcAssetResolver.DEFAULT_MODEL)
         return NpcAssetResolver.resolveFor(entity).model
     }
 
     override fun getTextureResource(renderState: GeoRenderState): Identifier {
-        val entity = renderState.entity as? ScriptNpcEntity ?: return Identifier.parse(NpcAssetResolver.DEFAULT_TEXTURE)
+        val entity = currentEntity ?: return Identifier.parse(NpcAssetResolver.DEFAULT_TEXTURE)
         return NpcAssetResolver.resolveFor(entity).texture
     }
 
@@ -167,8 +192,7 @@ class ScriptNpcRenderer(
         state: LivingEntityRenderState,
         partialTick: Float
     ) {
-        // Никакого глобального CurrentNpcResources больше нет.
-        // Каждый NPC решает свои ресурсы локально через NpcAssetResolver.
+        ScriptNpcModel.currentEntity = entity
         super.extractRenderState(entity, state, partialTick)
     }
 }
