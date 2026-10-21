@@ -30,27 +30,7 @@ object LocalNpcAssets {
         resourcePackDir.resolve("assets/customs")
     }
 
-    fun tryEnableResourcePack() {
-        val dir = resourcePackDir.toAbsolutePath()
-        if (!Files.isDirectory(dir)) {
-            ScriptFXLog.warn("LocalNpcAssets: resource pack dir not found: $dir")
-            return
-        }
-
-        try {
-            val mc = Minecraft.getInstance()
-            mc.execute {
-                try {
-                    mc.reloadResourcePacks()
-                    ScriptFXLog.info("LocalNpcAssets: reloaded resource packs")
-                } catch (t: Throwable) {
-                    ScriptFXLog.warn("LocalNpcAssets: reloadResourcePacks failed: ${t.message}")
-                }
-            }
-        } catch (t: Throwable) {
-            ScriptFXLog.warn("LocalNpcAssets: tryEnableResourcePack failed: ${t.message}")
-        }
-    }
+    private const val PACK_FOLDER_NAME = "scriptfx_customs"
 
     fun ensure(
         project: String,
@@ -63,15 +43,22 @@ object LocalNpcAssets {
         if (name.isBlank()) return null
 
         val key = "${NpcCustoms.sanitizePath(project)}/${NpcCustoms.sanitizePath(npcId)}/$name"
-        handles[key]?.let { return it }
 
         val modelFile = NpcCustoms.modelFile(project, npcId, modelPath)
         if (modelFile == null) {
             ScriptFXLog.warn("LocalNpcAssets: model file not found for $key")
+            handles.remove(key)
             return null
         }
 
-        ScriptFXLog.info("LocalNpcAssets: copying ${modelFile.name}")
+        val destGeo = assetsDir.resolve("geckolib/models/$name.geo.json")
+        val cached = handles[key]
+        // Отдаём кэш только если geo уже лежит в паке
+        if (cached != null && Files.isRegularFile(destGeo)) {
+            return cached
+        }
+
+        ScriptFXLog.info("LocalNpcAssets: copying ${modelFile.name} → $key")
 
         return try {
             val modelsDir = assetsDir.resolve("geckolib/models")
@@ -82,21 +69,7 @@ object LocalNpcAssets {
             Files.createDirectories(animsDir)
             Files.createDirectories(texturesDir)
 
-            val packMcmeta = resourcePackDir.resolve("pack.mcmeta")
-            if (!Files.exists(packMcmeta)) {
-                Files.createDirectories(resourcePackDir)
-                Files.writeString(
-                    packMcmeta,
-                    """
-                    {
-                      "pack": {
-                        "description": "ScriptFX Custom NPC Assets",
-                        "pack_format": 46
-                      }
-                    }
-                    """.trimIndent()
-                )
-            }
+            writePackMcmeta()
 
             Files.copy(
                 modelFile.toPath(),
@@ -127,21 +100,91 @@ object LocalNpcAssets {
 
             val textureId = if (texFile != null && texFile.isFile) {
                 registerDynamicTexture(key, texFile)
-                    ?: Identifier.fromNamespaceAndPath("scriptfx", "textures/npc/temple_female_skins.png")
+                    ?: Identifier.fromNamespaceAndPath(
+                        "scriptfx",
+                        "textures/npc/temple_female_skin.png"
+                    )
             } else {
-                Identifier.fromNamespaceAndPath("scriptfx", "textures/npc/temple_female_skins.png")
+                Identifier.fromNamespaceAndPath(
+                    "scriptfx",
+                    "textures/npc/temple_female_skin.png"
+                )
             }
 
             val handle = Handle(modelId, animId, textureId)
             handles[key] = handle
+            ScriptFXLog.info("LocalNpcAssets: OK $key model=$modelId tex=$textureId")
 
-            tryEnableResourcePack()
-            ScriptFXLog.info("LocalNpcAssets: OK $key model=$modelId anim=$animId tex=$textureId")
+            // Пак должен быть включён, иначе GeckoLib не видит geo/anim
+            tryEnableResourcePack(forceReload = true)
+
             handle
         } catch (t: Throwable) {
             ScriptFXLog.warn("LocalNpcAssets: failed: ${t.message}")
             t.printStackTrace()
             null
+        }
+    }
+
+    private fun writePackMcmeta() {
+        Files.createDirectories(resourcePackDir)
+        val packMcmeta = resourcePackDir.resolve("pack.mcmeta")
+        Files.writeString(
+            packMcmeta,
+            """
+            {
+              "pack": {
+                "description": "ScriptFX Custom NPC Assets",
+                "pack_format": 48
+              }
+            }
+            """.trimIndent()
+        )
+    }
+
+    /**
+     * Включает folder-pack `resourcepacks/scriptfx_customs`.
+     * Без этого GeckoLib не находит `customs:*.geo.json`.
+     */
+    fun tryEnableResourcePack(forceReload: Boolean = false) {
+        val mc = Minecraft.getInstance() ?: return
+        try {
+            writePackMcmeta()
+
+            val repo = mc.resourcePackRepository
+            repo.reload()
+
+            val pack = repo.availablePacks.firstOrNull { p ->
+                val id = p.id
+                id == "file/$PACK_FOLDER_NAME" ||
+                        id.endsWith(PACK_FOLDER_NAME) ||
+                        id.contains(PACK_FOLDER_NAME)
+            }
+
+            if (pack == null) {
+                ScriptFXLog.warn(
+                    "LocalNpcAssets: pack '$PACK_FOLDER_NAME' not found in repository " +
+                            "(dir=${resourcePackDir.toAbsolutePath()})"
+                )
+                return
+            }
+
+            val selected = repo.selectedIds.toMutableList()
+            val alreadyOn = selected.contains(pack.id)
+
+            if (!alreadyOn) {
+                selected.add(pack.id)
+                repo.setSelected(selected)
+                ScriptFXLog.info("LocalNpcAssets: enabled pack ${pack.id}")
+                // Применяет список и перезагружает ресурсы
+                mc.options.updateResourcePacks(repo)
+            } else if (forceReload) {
+                ScriptFXLog.info("LocalNpcAssets: pack already on, reloading resources")
+                mc.reloadResourcePacks()
+            }
+        } catch (t: Throwable) {
+            ScriptFXLog.warn("LocalNpcAssets.tryEnableResourcePack: ${t.message}")
+            t.printStackTrace()
         }
     }
 
