@@ -33,6 +33,7 @@ import net.minecraft.server.permissions.Permissions
 object ScriptFXClient : ClientModInitializer {
 
     private val REQUIRED_PERMISSION = Permissions.COMMANDS_GAMEMASTER
+    private var triedEnableCustomsPack = false
 
     override fun onInitializeClient() {
 
@@ -78,6 +79,16 @@ object ScriptFXClient : ClientModInitializer {
             HudElement { graphics, _ -> CenterMessageOverlay.render(graphics) }
         )
 
+        ClientPlayConnectionEvents.JOIN.register { _, _, _ ->
+            // После входа в мир: попробовать включить customs-пак один раз
+            if (!triedEnableCustomsPack) {
+                triedEnableCustomsPack = true
+                Minecraft.getInstance().execute {
+                    LocalNpcAssets.tryEnableResourcePack()
+                }
+            }
+        }
+
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             CenterMessageOverlay.clear()
             CameraOverlay.clear()
@@ -85,24 +96,19 @@ object ScriptFXClient : ClientModInitializer {
             NpcPreviewHelper.clear()
             QuestClient.clear()
             ParticleRuntime.clear()
+            LocalNpcAssets.clear()
             net.foxmediax.scriptfx.client.media.MediaClient.clear()
+            triedEnableCustomsPack = false
         }
 
-        /*
-         * GeckoLib entity renderer.
-         */
         EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC, ::ScriptNpcRenderer)
 
-        /*
-         * NPC editor preview: ModernUI рисует свой фон, мы рендерим модель поверх.
-         */
         ScreenEvents.AFTER_INIT.register { _, screen, _, _ ->
             ScreenEvents.afterExtract(screen).register { _, graphics, _, _, _ ->
                 NpcPreviewHelper.renderInGui(graphics)
             }
         }
 
-        // ОДИН тик частиц за клиентский тик
         ClientTickEvents.END_CLIENT_TICK.register { client ->
             ParticleRuntime.tick(1f / 20f)
 

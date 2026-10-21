@@ -36,7 +36,7 @@ class ScriptNpcEntity(
 
     var npcId: String = ""
     var modelPath: String = "scriptfx:female_models"
-    var texturePath: String = "scriptfx:textures/npc/temple_female_skins.png"
+    var texturePath: String = "scriptfx:textures/npc/temple_female_skin.png"
     var animationPath: String = "scriptfx:female_models"
 
     @Volatile
@@ -96,7 +96,7 @@ class ScriptNpcEntity(
         builder.define(DATA_MODE, NpcMode.INTERACT.id)
         builder.define(DATA_NPC_ID, "")
         builder.define(DATA_MODEL, "scriptfx:female_models")
-        builder.define(DATA_TEXTURE, "scriptfx:textures/npc/temple_female_skins.png")
+        builder.define(DATA_TEXTURE, "scriptfx:textures/npc/temple_female_skin.png")
         builder.define(DATA_ANIM_PATH, "scriptfx:female_models")
     }
 

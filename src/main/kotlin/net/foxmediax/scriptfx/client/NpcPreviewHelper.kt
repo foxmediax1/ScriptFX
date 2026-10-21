@@ -20,12 +20,18 @@ object NpcPreviewHelper {
         val y1: Int
     )
 
+    private const val ERROR_MSG = "Ошибка при загрузке модели"
+
     @Volatile
     var definition: NpcDefinition? = null
         private set
 
     @Volatile
     var bounds: Bounds? = null
+        private set
+
+    @Volatile
+    var loadError: String? = null
         private set
 
     var angleX: Float = 0.4f
@@ -37,45 +43,28 @@ object NpcPreviewHelper {
     private var previewEntity: ScriptNpcEntity? = null
     private var boundKey: String? = null
 
-    fun setDefinition(
-        def: NpcDefinition?
-    ) {
+    @Volatile
+    var suppressRender: Boolean = false
 
+    fun setDefinition(def: NpcDefinition?) {
         if (definition?.id != def?.id) {
             angleX = 0.4f
             angleY = -0.2f
         }
-
         definition = def
-
+        loadError = null
         if (def == null) {
             previewEntity = null
             boundKey = null
         }
     }
 
-    fun setBounds(
-        x0: Int,
-        y0: Int,
-        x1: Int,
-        y1: Int
-    ) {
-
-        if (
-            x1 - x0 < 8 ||
-            y1 - y0 < 8
-        ) {
+    fun setBounds(x0: Int, y0: Int, x1: Int, y1: Int) {
+        if (x1 - x0 < 8 || y1 - y0 < 8) {
             bounds = null
             return
         }
-
-        bounds =
-            Bounds(
-                x0,
-                y0,
-                x1,
-                y1
-            )
+        bounds = Bounds(x0, y0, x1, y1)
     }
 
     fun clearBounds() {
@@ -87,46 +76,21 @@ object NpcPreviewHelper {
         bounds = null
         previewEntity = null
         boundKey = null
-
+        loadError = null
         angleX = 0.4f
         angleY = -0.2f
     }
 
-    fun drag(
-        dx: Float,
-        dy: Float
-    ) {
+    fun drag(dx: Float, dy: Float) {
         angleX += dx * 0.01f
-
-        angleY =
-            (
-                    angleY +
-                            dy * 0.01f
-                    )
-                .coerceIn(
-                    -1.0f,
-                    1.0f
-                )
-
+        angleY = (angleY + dy * 0.01f).coerceIn(-1.0f, 1.0f)
     }
 
-    private fun createPreviewEntity(
-        def: NpcDefinition
-    ): ScriptNpcEntity? {
+    private fun createPreviewEntity(def: NpcDefinition): ScriptNpcEntity? {
+        val mc = Minecraft.getInstance()
+        val level = mc.level ?: return null
 
-        val mc =
-            Minecraft.getInstance()
-
-        val level =
-            mc.level
-                ?: return null
-
-        val entity =
-            NpcEntities.SCRIPT_NPC.create(
-                level,
-                EntitySpawnReason.LOAD
-            )
-                ?: return null
+        val entity = NpcEntities.SCRIPT_NPC.create(level, EntitySpawnReason.LOAD) ?: return null
 
         entity.setPos(0.0, 0.0, 0.0)
         entity.xo = 0.0
@@ -134,31 +98,15 @@ object NpcPreviewHelper {
         entity.zo = 0.0
         entity.tickCount = 20
 
-        entity.npcId =
-            def.id
+        entity.npcId = def.id
+        entity.modelPath = def.model.takeIf { it.isNotBlank() }
+            ?: CurrentNpcResources.DEFAULT_MODEL
+        entity.texturePath = def.texture.takeIf { it.isNotBlank() }
+            ?: CurrentNpcResources.DEFAULT_TEXTURE
+        entity.animationPath = def.animation.takeIf { it.isNotBlank() }
+            ?: CurrentNpcResources.DEFAULT_ANIMATION
 
-        entity.modelPath =
-            def.model
-                .takeIf { it.isNotBlank() }
-                ?: CurrentNpcResources.DEFAULT_MODEL
-
-        entity.texturePath =
-            def.texture
-                .takeIf { it.isNotBlank() }
-                ?: CurrentNpcResources.DEFAULT_TEXTURE
-
-        entity.animationPath =
-            def.animation
-                .takeIf { it.isNotBlank() }
-                ?: CurrentNpcResources.DEFAULT_ANIMATION
-
-        entity.setAnim(
-            def.defaultAnim
-                .ifBlank {
-                    "idle"
-                }
-        )
-
+        entity.setAnim(def.defaultAnim.ifBlank { "idle" })
         entity.setLookAtPlayer(false)
         entity.setInvulnerableFlag(true)
         entity.setNoGravity(true)
@@ -168,7 +116,6 @@ object NpcPreviewHelper {
         entity.yRot = 0f
         entity.yBodyRot = 0f
         entity.yHeadRot = 0f
-
         entity.yRotO = 0f
         entity.yBodyRotO = 0f
         entity.yHeadRotO = 0f
@@ -181,46 +128,33 @@ object NpcPreviewHelper {
             entity.isCustomNameVisible = false
         }
 
-        // Логируем для отладки
-        ScriptFXLog.info("NpcPreview: created entity for ${def.id}, model=${entity.modelPath}, anim=${entity.animationPath}")
-
+        ScriptFXLog.info(
+            "NpcPreview: entity ${def.id} model=${entity.modelPath} tex=${entity.texturePath}"
+        )
         return entity
     }
 
-    private fun ensureEntity(
-        def: NpcDefinition
-    ): ScriptNpcEntity? {
+    private fun ensureEntity(def: NpcDefinition): ScriptNpcEntity? {
+        val key = listOf(
+            def.id,
+            def.model,
+            def.texture,
+            def.animation,
+            def.defaultAnim,
+            def.displayName,
+            def.nametag
+        ).joinToString("|")
 
-        val key =
-            listOf(
-                def.id,
-                def.model,
-                def.texture,
-                def.animation,
-                def.defaultAnim,
-                def.displayName,
-                def.nametag
-            ).joinToString("|")
-
-        if (
-            previewEntity != null &&
-            boundKey == key
-        ) {
+        if (previewEntity != null && boundKey == key) {
             return previewEntity
         }
 
-        val created =
-            createPreviewEntity(def)
-                ?: return null
-
+        val created = createPreviewEntity(def) ?: return null
         previewEntity = created
         boundKey = key
-
+        loadError = null
         return created
     }
-
-    @Volatile
-    var suppressRender: Boolean = false
 
     fun renderInGui(graphics: GuiGraphicsExtractor) {
         if (suppressRender) return
@@ -237,21 +171,26 @@ object NpcPreviewHelper {
         val sh = mc.window.guiScaledHeight
         if (width > sw * 0.55f || height > sh * 0.85f) return
 
-        val size = (minOf(width, height) * 0.38f)
-            .toInt()
-            .coerceIn(32, 72)
-
-        val cx = (b.x0 + b.x1) / 2f
-        val cy = (b.y0 + b.y1) / 2f + height * 0.05f
-
-        val mouseX = cx - angleX * 40f
-        val mouseY = cy - angleY * 40f
-
         try {
-            CurrentNpcResources.apply(entity)
+            val ok = CurrentNpcResources.apply(entity)
+            val wantsCustoms =
+                NpcCustoms.isCustoms(def.model) ||
+                        NpcCustoms.isCustoms(def.texture) ||
+                        NpcCustoms.isCustoms(def.animation)
 
-            // Логируем применённые ресурсы для отладки
-            ScriptFXLog.debug("NpcPreview render: model=${CurrentNpcResources.model}, texture=${CurrentNpcResources.texture}, anim=${CurrentNpcResources.animation}")
+            if (!ok && wantsCustoms) {
+                loadError = ERROR_MSG
+                drawError(graphics, b)
+                return
+            }
+
+            loadError = null
+
+            val size = (minOf(width, height) * 0.38f).toInt().coerceIn(32, 72)
+            val cx = (b.x0 + b.x1) / 2f
+            val cy = (b.y0 + b.y1) / 2f + height * 0.05f
+            val mouseX = cx - angleX * 40f
+            val mouseY = cy - angleY * 40f
 
             graphics.enableScissor(b.x0, b.y0, b.x1, b.y1)
             try {
@@ -272,6 +211,54 @@ object NpcPreviewHelper {
             }
         } catch (t: Throwable) {
             ScriptFXLog.error("NpcPreview render failed", t)
+            loadError = ERROR_MSG
+            drawError(graphics, b)
+        }
+    }
+
+    private fun drawError(graphics: GuiGraphicsExtractor, b: Bounds) {
+        val mc = Minecraft.getInstance()
+        val font = mc.font
+        val text = ERROR_MSG
+        val tw = font.width(text)
+        val x = b.x0 + (b.x1 - b.x0 - tw) / 2
+        val y = b.y0 + (b.y1 - b.y0) / 2 - font.lineHeight / 2
+        val color = 0xFFFF5555.toInt()
+
+        // GuiGraphicsExtractor в 26.1 без drawString — ищем любой draw* на graphics или Font
+        val drawn = runCatching {
+            val gClass = graphics.javaClass
+            for (m in gClass.methods) {
+                if (!m.name.contains("draw", ignoreCase = true) &&
+                    !m.name.contains("string", ignoreCase = true) &&
+                    !m.name.contains("text", ignoreCase = true)
+                ) continue
+                m.isAccessible = true
+                val n = m.parameterCount
+                try {
+                    when {
+                        n == 5 -> {
+                            m.invoke(graphics, font, text, x, y, color)
+                            return@runCatching true
+                        }
+                        n == 6 -> {
+                            m.invoke(graphics, font, text, x.toFloat(), y.toFloat(), color, false)
+                            return@runCatching true
+                        }
+                        n == 7 -> {
+                            m.invoke(graphics, font, Component.literal(text), x, y, color, false)
+                            return@runCatching true
+                        }
+                    }
+                } catch (_: Throwable) {
+                }
+            }
+            false
+        }.getOrDefault(false)
+
+        if (!drawn) {
+            // fallback: только лог + флаг для NpcPreviewView (ModernUI TextView)
+            ScriptFXLog.warn("NpcPreview: $ERROR_MSG (GUI text draw unavailable)")
         }
     }
 
