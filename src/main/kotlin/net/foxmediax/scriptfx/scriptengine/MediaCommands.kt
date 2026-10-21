@@ -51,6 +51,8 @@ object MediaCommands {
         }
 
         // video_play <id> [x y w h|fullscreen]
+        // video_play <id> [x y w h|fullscreen]
+        // Скрипт стоппится до конца ролика (все целевые игроки прислали MediaEnd).
         register("video_play") { ctx, args ->
             val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
             if (id.isEmpty()) {
@@ -84,34 +86,62 @@ object MediaCommands {
             }
 
             var sent = false
+            var failed = false
 
             CommandResult.WaitUntil {
+                // 1) Ждём ffmpeg
                 if (!future.isDone) {
                     return@WaitUntil false
                 }
 
+                // 2) Один раз отправляем видео клиентам
                 if (!sent) {
                     sent = true
 
-                    val decoded = future.get()
+                    val decoded = try {
+                        future.get()
+                    } catch (t: Throwable) {
+                        ScriptFXLog.warn("video_play '$id': ошибка future: ${t.message}")
+                        null
+                    }
+
                     if (decoded == null) {
                         ScriptFXLog.warn("video_play '$id': декодирование не удалось (проверьте ffmpeg)")
+                        failed = true
                         return@WaitUntil true
                     }
 
                     val players = targets(ctx)
+                    if (players.isEmpty()) {
+                        ScriptFXLog.warn("video_play '$id': нет игроков — пропускаю ожидание")
+                        failed = true
+                        return@WaitUntil true
+                    }
 
-                    // Запоминаем зрителей для отслеживания окончания просмотра
+                    // Запоминаем зрителей: скрипт ждёт, пока набор опустеет
                     pendingVideoEnds[id] = players.map { it.uuid }.toMutableSet()
 
                     broadcast(ctx, MediaPayload.videoPlay(id, x, y, w, h, preview = false))
 
                     for (p in players) enterSpectator(p)
 
-                    ScriptFXLog.info("video_play '$id' запущено для ${players.size} игрок(ов)")
+                    ScriptFXLog.info(
+                        "video_play '$id' запущено для ${players.size} игрок(ов), " +
+                                "скрипт ждёт окончания"
+                    )
                 }
 
-                true
+                if (failed) return@WaitUntil true
+
+                // 3) Ждём, пока все досмотрят (или video_stop / уход игроков очистят pending)
+                val waiting = pendingVideoEnds[id]
+                val done = waiting == null || waiting.isEmpty()
+                if (done) {
+                    // на всякий случай убрать пустой set
+                    pendingVideoEnds.remove(id)
+                    ScriptFXLog.info("video_play '$id': просмотр завершён, скрипт продолжает")
+                }
+                done
             }
         }
 
@@ -205,7 +235,15 @@ object MediaCommands {
 
     fun onPlayerLeave(p: ServerPlayer) {
         // игрок ушёл во время видео: считаем, что «досмотрел», чтобы не висеть в pending
-        pendingVideoEnds.values.forEach { it.remove(p.uuid) }
+        val it = pendingVideoEnds.entries.iterator()
+        while (it.hasNext()) {
+            val e = it.next()
+            e.value.remove(p.uuid)
+            if (e.value.isEmpty()) {
+                it.remove()
+                ScriptFXLog.info("Media: pending '${e.key}' очищен (игроки вышли)")
+            }
+        }
         leaveSpectator(p)
     }
 
