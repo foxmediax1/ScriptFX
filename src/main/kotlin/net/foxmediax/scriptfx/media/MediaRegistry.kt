@@ -25,6 +25,8 @@ data class VideoMeta(
 object MediaRegistry {
 
     private val sounds = linkedMapOf<String, SoundEntry>()
+    /** Кэш-аудио из ffmpeg — reload() их НЕ чистит. */
+    private val cacheSounds = linkedMapOf<String, SoundEntry>()
     private val videos = linkedMapOf<String, VideoMeta>()
 
     fun projectsRoot(): File =
@@ -33,32 +35,30 @@ object MediaRegistry {
     fun reload() {
         sounds.clear()
         videos.clear()
+        // cacheSounds не трогаем
         val root = projectsRoot()
         if (!root.isDirectory) return
 
         root.listFiles()?.filter { it.isDirectory }?.forEach { projectDir ->
             val project = projectDir.name
 
-            // --- audio/*.ogg ---
             File(projectDir, "audio").listFiles()
                 ?.filter { it.isFile && it.extension.equals("ogg", ignoreCase = true) }
                 ?.forEach { f ->
                     val id = f.nameWithoutExtension
                     val entry = SoundEntry(id, f, project)
-                    putSound(id, entry)
-                    putSound("$project/$id", entry)
+                    sounds[id] = entry
+                    sounds["$project/$id"] = entry
                 }
 
-            // --- video/<id>/ ---
             File(projectDir, "video").listFiles()
                 ?.filter { it.isFile && it.extension.equals("mp4", ignoreCase = true) }
                 ?.forEach { f ->
                     val id = f.nameWithoutExtension
-                    // frames пустые — заполнятся при decode
                     val entry = VideoMeta(
                         id = id,
                         project = project,
-                        dir = f, // для mp4 dir = сам файл
+                        dir = f,
                         fps = 24f,
                         loop = false,
                         soundId = null,
@@ -66,25 +66,19 @@ object MediaRegistry {
                         frames = emptyList(),
                         sourceMp4 = f
                     )
-                    putVideo(id, entry)
-                    putVideo("$project/$id", entry)
+                    videos[id] = entry
+                    videos["$project/$id"] = entry
                     ScriptFXLog.info("Video (mp4): $project/$id")
                 }
         }
-        ScriptFXLog.info("Media: ${sounds.size} sound keys, ${videos.size} video keys")
-    }
-
-    private fun putSound(key: String, entry: SoundEntry) {
-        sounds[key] = entry
-    }
-
-    private fun putVideo(key: String, entry: VideoMeta) {
-        videos[key] = entry
+        ScriptFXLog.info(
+            "Media: ${sounds.size} project sounds, ${cacheSounds.size} cache, ${videos.size} videos"
+        )
     }
 
     fun sound(id: String): SoundEntry? {
         val k = id.removeSurrounding("\"").trim()
-        return sounds[k]
+        return sounds[k] ?: cacheSounds[k]
     }
 
     fun video(id: String): VideoMeta? {
@@ -93,12 +87,21 @@ object MediaRegistry {
     }
 
     fun listSounds(): List<SoundEntry> =
-        sounds.values.distinctBy { it.file.absolutePath }.sortedBy { "${it.project}/${it.id}" }
+        (sounds.values + cacheSounds.values)
+            .distinctBy { it.file.absolutePath }
+            .sortedBy { "${it.project}/${it.id}" }
 
     fun listVideos(): List<VideoMeta> =
         videos.values.distinctBy { it.dir.absolutePath }.sortedBy { "${it.project}/${it.id}" }
 
     fun registerCacheSound(id: String, file: File, project: String) {
-        sounds[id] = SoundEntry(id, file, project)
+        if (!file.isFile || file.length() <= 0L) {
+            ScriptFXLog.warn("MediaRegistry: cache sound invalid: ${file.path}")
+            return
+        }
+        cacheSounds[id] = SoundEntry(id, file, project)
+        ScriptFXLog.info(
+            "MediaRegistry: cache sound '$id' → ${file.absolutePath} (${file.length()} bytes)"
+        )
     }
 }
