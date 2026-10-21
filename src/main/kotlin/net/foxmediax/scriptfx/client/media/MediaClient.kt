@@ -6,12 +6,12 @@ import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.client.Minecraft
 import net.minecraft.client.OptionInstance
 import net.minecraft.sounds.SoundSource
+import java.io.File
 
 object MediaClient {
 
     private val sounds = linkedMapOf<String, FileSoundInstance>()
 
-    /** Сохранённые громкости категорий на время видео */
     private var savedVolumes: Map<SoundSource, Double>? = null
     private var videoMuteActive = false
 
@@ -27,7 +27,6 @@ object MediaClient {
             }
             MediaPayload.VIDEO_STOP -> {
                 VideoPlayer.stop(payload.id)
-                // звук ролика из meta тоже гасим по id, если знаем
                 if (!VideoPlayer.hasActive()) endVideoMute()
             }
             MediaPayload.VIDEO_STOP_ALL -> {
@@ -37,41 +36,64 @@ object MediaClient {
         }
     }
 
-    // -------------------------------------------------------------------------
-    // Sound
-    // -------------------------------------------------------------------------
-
     private fun playSound(payload: MediaPayload) {
-        MediaRegistry.reload()
+        // НЕ вызывать MediaRegistry.reload() — сносит cache-звуки видео
         val entry = MediaRegistry.sound(payload.id)
         if (entry == null) {
             ScriptFXLog.warn("MediaClient: sound '${payload.id}' not found")
             return
         }
-        if (!entry.file.isFile) {
-            ScriptFXLog.warn("MediaClient: missing ${entry.file}")
-            return
-        }
-        stopSound(payload.id)
-        val inst = FileSoundInstance(
-            entry.file,
-            payload.volume,
-            payload.pitch,
-            payload.loop
-        )
-        sounds[payload.id] = inst
-        sounds[entry.id] = inst
-        Minecraft.getInstance().soundManager.play(inst)
-        ScriptFXLog.info("MediaClient: play ${entry.project}/${entry.id}")
+        playFile(payload.id, entry.file, payload.volume, payload.pitch, payload.loop)
     }
 
-    private fun stopSound(id: String) {
+    /** Прямой play с диска (видео-аудио). */
+    fun playFile(
+        key: String,
+        file: File,
+        volume: Float = 1f,
+        pitch: Float = 1f,
+        loop: Boolean = false,
+        videoSlider: Boolean = false
+    ) {
+        if (!file.isFile || file.length() <= 0L) {
+            ScriptFXLog.warn("MediaClient: playFile missing/empty ${file.path}")
+            return
+        }
+        stopSound(key)
+
+        val inst = FileSoundInstance(file, volume, pitch, loop, useVideoSlider = videoSlider)
+        sounds[key] = inst
+        if (soundsPaused) inst.setPaused(true)
+
+        val mc = Minecraft.getInstance()
+        val run = Runnable {
+            try {
+                mc.soundManager.play(inst)
+                ScriptFXLog.info(
+                    "MediaClient: playFile key=$key videoSlider=$videoSlider size=${file.length()}"
+                )
+            } catch (t: Throwable) {
+                ScriptFXLog.warn("MediaClient: play failed: ${t.message}")
+            }
+        }
+        if (try { mc.isSameThread } catch (_: Throwable) { true }) run.run()
+        else mc.execute(run)
+    }
+
+    fun applyVideoVolumeToPlaying() {
+        sounds.values.distinct().forEach { it.refreshVolume() }
+    }
+
+    fun stopSound(id: String) {
         val key = id.trim()
         if (key.isEmpty()) return
         val inst = sounds.remove(key)
         sounds.entries.removeIf { it.value === inst }
         if (inst != null) {
-            Minecraft.getInstance().soundManager.stop(inst)
+            try {
+                Minecraft.getInstance().soundManager.stop(inst)
+            } catch (_: Throwable) {
+            }
         }
     }
 
@@ -79,13 +101,13 @@ object MediaClient {
         val all = sounds.values.distinct()
         sounds.clear()
         val sm = Minecraft.getInstance().soundManager
-        all.forEach { sm.stop(it) }
+        all.forEach {
+            try {
+                sm.stop(it)
+            } catch (_: Throwable) {
+            }
+        }
     }
-
-    // -------------------------------------------------------------------------
-    // Video mute: всё кроме MASTER → 0
-    // FileSoundInstance на MASTER остаётся слышен
-    // -------------------------------------------------------------------------
 
     fun beginVideoMute() {
         if (videoMuteActive) return
@@ -113,10 +135,6 @@ object MediaClient {
         ScriptFXLog.info("MediaClient: video mute OFF")
     }
 
-    /**
-     * 26.1: Options.getSoundSourceOption(SoundSource) → OptionInstance<Double>
-     * Если имя метода другое — поправь по IDEA (getSoundCategoryVolume / soundSourceVolumes).
-     */
     @Suppress("UNCHECKED_CAST")
     private fun soundOption(opts: Any, src: SoundSource): OptionInstance<Double>? {
         return try {
@@ -129,7 +147,6 @@ object MediaClient {
                 m.isAccessible = true
                 return m.invoke(opts, src) as? OptionInstance<Double>
             }
-            // fallback: поле Map / array
             null
         } catch (_: Throwable) {
             null
