@@ -55,6 +55,15 @@ object CutsceneClient {
     var dialogCam = false
         private set
 
+    /**
+     * Скрыть интерфейс игрока (хотбар, хп, прицел…) во время диалоговой камеры.
+     * Чат рисуется отдельно — см. DialogHudSupport.
+     */
+    var hidePlayerHud = false
+        private set
+
+    private var dialogSavedHideGui: Boolean? = null
+
     val cameraControlled: Boolean
         get() = active || dialogCam
 
@@ -251,7 +260,8 @@ object CutsceneClient {
             return
         }
         val t = elapsed.toFloat() / moveDurationTicks.coerceAtLeast(1)
-        val s = smoothstep(t)
+        // Диалог — cubic, обычная катсцена — smoothstep
+        val s = if (dialogCam) easeInOutCubic(t) else smoothstep(t)
         tickX = lerp(moveFromX, moveToX, s)
         tickY = lerp(moveFromY, moveToY, s)
         tickZ = lerp(moveFromZ, moveToZ, s)
@@ -284,7 +294,8 @@ object CutsceneClient {
             return
         }
         val t = elapsed.toFloat() / fovDurationTicks.coerceAtLeast(1)
-        tickFov = lerp(fovFrom, fovTo, smoothstep(t))
+        val s = if (dialogCam) easeInOutCubic(t) else smoothstep(t)
+        tickFov = lerp(fovFrom, fovTo, s)
     }
 
     /** Вызывается из CameraMixin раз за кадр. */
@@ -345,6 +356,8 @@ object CutsceneClient {
 
     /** Полный сброс диалоговой камеры + возврат взгляда игроку. */
     fun clearDialogCamera() {
+        setDialogPlayerHudHidden(false)
+
         dialogCam = false
         dialogFovActive = false
         pendingDialogFovClear = false
@@ -385,7 +398,22 @@ object CutsceneClient {
     // Математика
     // ------------------------------------------------------------------
 
-    private fun smoothstep(t: Float) = t * t * (3f - 2f * t)
+    private fun smoothstep(t: Float): Float {
+        val x = t.coerceIn(0f, 1f)
+        return x * x * (3f - 2f * x)
+    }
+
+    /** Более «кинематографичная» кривая для диалогового подлёта. */
+    private fun easeInOutCubic(t: Float): Float {
+        val x = t.coerceIn(0f, 1f)
+        return if (x < 0.5f) {
+            4f * x * x * x
+        } else {
+            val u = -2f * x + 2f
+            1f - (u * u * u) / 2f
+        }
+    }
+
     private fun lerp(a: Double, b: Double, t: Float) = a + (b - a) * t
     private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
@@ -417,6 +445,7 @@ object CutsceneClient {
         }
         dialogFovActive = true
         lastTickNanos = System.nanoTime()
+        setDialogPlayerHudHidden(true)
     }
 
     fun endDialogFocus(durationTicks: Int = 8) {
@@ -448,17 +477,21 @@ object CutsceneClient {
     // ------------------------------------------------------------------
 
     /**
-     * Подлёт к NPC. Камера едет от глаз игрока к точке между игроком и NPC
-     * и смотрит на NPC. Стартовый угол = текущий взгляд игрока.
+     * Подлёт к NPC.
+     * Камера едет от глаз игрока к точке чуть сбоку на [distance] блоков
+     * и смотрит в глаза NPC. FOV сужается параллельно.
+     *
+     * Важно: сервер не должен TP игрока в точку камеры до вызова —
+     * иначе from ≈ to и анимация не видна.
      */
     fun startDialogApproach(
         npcX: Double,
         npcY: Double,
         npcZ: Double,
-        durationTicks: Int = 12,
-        approach: Float = 0.40f, // больше не используем как долю пути
-        targetFov: Float = 42f,
-        distance: Double = 1.6,  // блоков от NPC
+        durationTicks: Int = 20,
+        approach: Float = 0.40f, // legacy, не используется
+        targetFov: Float = 38f,
+        distance: Double = 2.15,
         onDone: (() -> Unit)? = null
     ) {
         val mc = Minecraft.getInstance()
@@ -476,17 +509,23 @@ object CutsceneClient {
         retX = fromX; retY = fromY; retZ = fromZ
         retYaw = fromYaw; retPitch = fromPitch
 
-        // точка на луче NPC → игрок, на расстоянии distance от NPC
+        // Вектор от NPC к игроку (горизонт)
         var dx = fromX - npcX
         var dz = fromZ - npcZ
         val len = sqrt(dx * dx + dz * dz).coerceAtLeast(0.001)
         dx /= len
         dz /= len
 
-        val dist = distance.coerceIn(1.0, 3.5)
-        val toX = npcX + dx * dist
-        val toY = npcY // глаза NPC
-        val toZ = npcZ + dz * dist
+        // Небольшой боковой сдвиг — кадр не «в лоб»
+        val side = 0.22
+        val sx = -dz * side
+        val sz = dx * side
+
+        val dist = distance.coerceIn(1.35, 4.0)
+        val toX = npcX + dx * dist + sx
+        // Чуть ниже глаз NPC — «портрет»
+        val toY = npcY - 0.05
+        val toZ = npcZ + dz * dist + sz
 
         val (lookYaw, lookPitch) = lookAngles(toX, toY, toZ, npcX, npcY, npcZ)
 
@@ -494,35 +533,38 @@ object CutsceneClient {
         tickYaw = fromYaw; tickPitch = fromPitch
         prevX = fromX; prevY = fromY; prevZ = fromZ
         prevYaw = fromYaw; prevPitch = fromPitch
+        camX = fromX; camY = fromY; camZ = fromZ
+        camYaw = fromYaw; camPitch = fromPitch
 
         moveFromX = fromX; moveFromY = fromY; moveFromZ = fromZ
         moveFromYaw = fromYaw; moveFromPitch = fromPitch
         moveToX = toX; moveToY = toY; moveToZ = toZ
         moveToYaw = lookYaw; moveToPitch = lookPitch
         moveStartTick = tickCounter
-        moveDurationTicks = durationTicks.coerceAtLeast(1)
+        moveDurationTicks = durationTicks.coerceIn(8, 60)
         isMoving = true
         onMoveDone = onDone
 
         val base = baseFov()
         dialogRestoreFov = base
         fovFrom = base
-        fovTo = targetFov.coerceIn(30f, 60f)
+        fovTo = targetFov.coerceIn(28f, 55f)
         fovStartTick = tickCounter
-        fovDurationTicks = durationTicks.coerceAtLeast(1)
+        fovDurationTicks = moveDurationTicks
         fovAnimating = true
         tickFov = base
         prevFov = base
         dialogFovActive = true
 
         dialogCam = true
+        setDialogPlayerHudHidden(true)
         dialogReturnTimeout = -1
         lastTickNanos = System.nanoTime()
     }
 
     /** Отлёт обратно к сохранённой позе игрока. */
     fun startDialogReturn(
-        durationTicks: Int = 12,
+        durationTicks: Int = 16,
         onDone: (() -> Unit)? = null
     ) {
         if (!dialogCam && !dialogFovActive) {
@@ -542,18 +584,18 @@ object CutsceneClient {
         moveToX = retX; moveToY = retY; moveToZ = retZ
         moveToYaw = retYaw; moveToPitch = retPitch
         moveStartTick = tickCounter
-        moveDurationTicks = durationTicks.coerceAtLeast(1)
+        moveDurationTicks = durationTicks.coerceIn(6, 40)
         isMoving = true
 
         val fromFov = tickFov ?: baseFov()
         fovFrom = fromFov
         fovTo = dialogRestoreFov
         fovStartTick = tickCounter
-        fovDurationTicks = durationTicks.coerceAtLeast(1)
+        fovDurationTicks = moveDurationTicks
         fovAnimating = true
         dialogFovActive = true
 
-        dialogReturnTimeout = durationTicks + 5
+        dialogReturnTimeout = moveDurationTicks + 8
 
         onMoveDone = {
             clearDialogCamera()
@@ -572,6 +614,26 @@ object CutsceneClient {
         val horiz = sqrt(dx * dx + dz * dz)
         val yaw = Math.toDegrees(atan2(-dx, dz)).toFloat()
         val pitch = Math.toDegrees(-atan2(dy, horiz)).toFloat()
-        return yaw to pitch.coerceIn(-90f, 90f)
+        return yaw to pitch.coerceIn(-89f, 89f)
+    }
+
+    private fun setDialogPlayerHudHidden(hidden: Boolean) {
+        val mc = Minecraft.getInstance()
+        if (hidden) {
+            if (!hidePlayerHud) {
+                dialogSavedHideGui = mc.options.hideGui
+            }
+            hidePlayerHud = true
+            mc.options.hideGui = true
+        } else {
+            if (!hidePlayerHud) return
+            hidePlayerHud = false
+            val restore = dialogSavedHideGui
+            dialogSavedHideGui = null
+            // Не затирать hideGui, если параллельно идёт серверная катсцена с hud_hide
+            if (!hudHidden) {
+                mc.options.hideGui = restore ?: false
+            }
+        }
     }
 }
