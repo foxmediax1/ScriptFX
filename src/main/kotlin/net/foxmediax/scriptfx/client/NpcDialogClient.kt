@@ -18,6 +18,12 @@ object NpcDialogClient {
     private var outlined: Entity? = null
     private var closing = false
 
+    /** Тики подлёта / отлёта (можно вынести в конфиг позже). */
+    private const val APPROACH_TICKS = 20
+    private const val RETURN_TICKS = 16
+    private const val APPROACH_FOV = 38f
+    private const val APPROACH_DISTANCE = 2.15
+
     val isActive: Boolean
         get() = model != null
 
@@ -55,22 +61,24 @@ object NpcDialogClient {
                 npcX = focus.x,
                 npcY = focus.eyeY,
                 npcZ = focus.z,
-                durationTicks = 12,
-                targetFov = 40f,
-                distance = 1.55
+                durationTicks = APPROACH_TICKS,
+                targetFov = APPROACH_FOV,
+                distance = APPROACH_DISTANCE
             ) {
                 if (model === m && !closing) {
                     Minecraft.getInstance().execute { show(m) }
                 }
             }
         } else {
+            // Без NPC — лёгкий zoom FOV и сразу UI
+            CutsceneClient.startDialogFocus(APPROACH_FOV, 10)
             show(m)
         }
     }
 
     fun close() {
         if (model == null || closing) return
-        closing = true   // ← сразу locksInput = false → мышь снова живая
+        closing = true
 
         val s = screen
         screen = null
@@ -86,7 +94,16 @@ object NpcDialogClient {
             return
         }
 
-        CutsceneClient.startDialogReturn(durationTicks = 12) {
+        // Если был только FOV (без entity) — плавно вернуть FOV
+        if (!CutsceneClient.dialogCam && CutsceneClient.dialogFovActive) {
+            CutsceneClient.endDialogFocus(RETURN_TICKS)
+            model = null
+            focusEntityId = -1
+            closing = false
+            return
+        }
+
+        CutsceneClient.startDialogReturn(durationTicks = RETURN_TICKS) {
             model = null
             focusEntityId = -1
             closing = false
@@ -147,8 +164,6 @@ object NpcDialogClient {
     }
 
     private fun applyOutline() {
-        // Обводка через glowing на GeckoLib ненадёжна — отключена.
-        // Включить позже через ScriptFXConfig.npcOutline + кастомный outline-pass.
         if (!ScriptFXConfig.npcOutline) {
             clearOutline()
             return
@@ -186,5 +201,4 @@ object NpcDialogClient {
             close()
         }
     }
-
 }
