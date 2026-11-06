@@ -124,6 +124,96 @@ object CommandRegistry {
         CameraCommands.install { name, handler -> register(name, handler) }
         CutsceneCommands.install { name, handler -> register(name, handler) }
         // NpcCommands.install больше НЕ вызывается здесь — он в init {}
+
+        // ==================== STATES ====================
+
+        register("state_set") { context, args ->
+            val key = args.getOrNull(0) ?: return@register CommandResult.Continue
+            val value = args.getOrNull(1) ?: return@register CommandResult.Continue
+
+            // Пытаемся понять тип значения
+            val parsed: Any = when {
+                value.equals("true", true) -> true
+                value.equals("false", true) -> false
+                value.toDoubleOrNull() != null -> value.toDouble()
+                else -> value
+            }
+
+            context.setState(key, parsed)
+            ScriptFXLog.info("state_set: $key = $parsed")
+            CommandResult.Continue
+        }
+
+        register("state_add") { context, args ->
+            val key = args.getOrNull(0) ?: return@register CommandResult.Continue
+            val amount = args.getOrNull(1)?.toDoubleOrNull() ?: return@register CommandResult.Continue
+
+            context.addState(key, amount)
+            ScriptFXLog.info("state_add: $key += $amount")
+            CommandResult.Continue
+        }
+
+        register("state_get") { context, args ->
+            val key = args.getOrNull(0) ?: return@register CommandResult.Continue
+            val value = context.getState(key)
+            ScriptMessenger.send(context, "state[$key] = $value")
+            CommandResult.Continue
+        }
+
+        register("state_remove") { context, args ->
+            val key = args.getOrNull(0) ?: return@register CommandResult.Continue
+            context.removeState(key)
+            ScriptFXLog.info("state_remove: $key")
+            CommandResult.Continue
+        }
+
+        register("state_has") { context, args ->
+            val key = args.getOrNull(0) ?: return@register CommandResult.Continue
+            val result = context.hasState(key)
+            ScriptMessenger.send(context, "state_has[$key] = $result")
+            CommandResult.Continue
+        }
+
+// ==================== PLAYER STATES ====================
+
+        register("player_state_set") { context, args ->
+            val key = args.getOrNull(0) ?: return@register CommandResult.Continue
+            val value = args.getOrNull(1) ?: return@register CommandResult.Continue
+
+            val parsed: Any = when {
+                value.equals("true", true) -> true
+                value.equals("false", true) -> false
+                value.toDoubleOrNull() != null -> value.toDouble()
+                else -> value
+            }
+
+            context.setPlayerState(key, parsed)
+            ScriptFXLog.info("player_state_set: $key = $parsed")
+            CommandResult.Continue
+        }
+
+        register("player_state_add") { context, args ->
+            val key = args.getOrNull(0) ?: return@register CommandResult.Continue
+            val amount = args.getOrNull(1)?.toDoubleOrNull() ?: return@register CommandResult.Continue
+
+            context.addPlayerState(key, amount)
+            ScriptFXLog.info("player_state_add: $key += $amount")
+            CommandResult.Continue
+        }
+
+        register("player_state_get") { context, args ->
+            val key = args.getOrNull(0) ?: return@register CommandResult.Continue
+            val value = context.getPlayerState(key)
+            ScriptMessenger.send(context, "player_state[$key] = $value")
+            CommandResult.Continue
+        }
+
+        register("player_state_remove") { context, args ->
+            val key = args.getOrNull(0) ?: return@register CommandResult.Continue
+            context.removePlayerState(key)
+            ScriptFXLog.info("player_state_remove: $key")
+            CommandResult.Continue
+        }
     }
 
     fun resolveLevel(server: net.minecraft.server.MinecraftServer, worldKey: String) =

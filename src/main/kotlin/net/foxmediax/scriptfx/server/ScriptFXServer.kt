@@ -36,6 +36,7 @@ import net.minecraft.server.level.ServerLevel
 import net.minecraft.server.level.ServerPlayer
 import net.minecraft.server.permissions.Permissions
 import net.minecraft.world.InteractionResult
+import net.foxmediax.scriptfx.core.states.StatesManager
 
 object ScriptFXServer : ModInitializer {
 
@@ -47,6 +48,8 @@ object ScriptFXServer : ModInitializer {
 
         ServerLifecycleEvents.SERVER_STARTED.register { server ->
             cachedServer = server
+            StatesManager.init()
+            StatesManager.load()
             ScriptManager.reload()
         }
 
@@ -68,6 +71,7 @@ object ScriptFXServer : ModInitializer {
             TriggerManager.onPlayerLeave(handler.player.uuid)
             QuestManager.onLeave(handler.player.uuid)
             MediaCommands.onPlayerLeave(handler.player)
+            StatesManager.savePlayer(handler.player.uuid)
         }
 
         ServerLivingEntityEvents.AFTER_DEATH.register { entity, _ ->
@@ -100,6 +104,7 @@ object ScriptFXServer : ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPING.register { server ->
             CutsceneManager.endAll(server)
             MediaCommands.onServerStopping()
+            StatesManager.save()
         }
 
         ServerLivingEntityEvents.ALLOW_DAMAGE.register { entity, _, _ ->

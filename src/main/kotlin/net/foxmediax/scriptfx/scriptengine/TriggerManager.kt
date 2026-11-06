@@ -22,11 +22,17 @@ object TriggerManager {
     /** Какие чекпоинты сейчас "содержат" игрока. */
     private val insideCheckpoint = HashMap<UUID, MutableSet<Trigger.Checkpoint>>()
 
-    // Для ender_dragon_fight / wither_boss_fight: фронт "не было -> появился" по каждому миру.
+    /** Какие once-триггеры уже сработали у игрока. */
+    private val firedOnce = HashMap<UUID, MutableSet<Trigger>>()
+
+    /** Кулдауны: ключ = playerUUID + identityHashCode(trigger) */
+    private val cooldowns = HashMap<String, Long>()
+
+    // Для ender_dragon_fight / wither_boss_fight
     private val wasDragonPresent = HashMap<ServerLevel, Boolean>()
     private val wasWitherPresent = HashMap<ServerLevel, Boolean>()
 
-    // Для player_eat: сытость игрока на прошлой проверке.
+    // Для player_eat
     private val lastFoodLevel = HashMap<UUID, Int>()
 
     private var tickCounter = 0L
@@ -36,6 +42,8 @@ object TriggerManager {
         worldStarts.clear()
         globalPlay.clear()
         insideCheckpoint.clear()
+        firedOnce.clear()
+        cooldowns.clear()
         wasDragonPresent.clear()
         wasWitherPresent.clear()
         lastFoodLevel.clear()
@@ -54,6 +62,54 @@ object TriggerManager {
         globalPlay[event] ?: emptyList()
 
     // ------------------------------------------------------------------
+    // Проверка once / cooldown / conditions
+    // ------------------------------------------------------------------
+
+    private fun canFire(trigger: Trigger, player: ServerPlayer): Boolean {
+        // Условия (States)
+        if (!TriggerConditions.check(trigger.conditions, player)) return false
+
+        // Once
+        if (trigger.once) {
+            val set = firedOnce.getOrPut(player.uuid) { HashSet() }
+            if (trigger in set) return false
+        }
+
+        // Cooldown
+        if (trigger.cooldownTicks > 0) {
+            val key = cooldownKey(player.uuid, trigger)
+            val last = cooldowns[key]
+            if (last != null && tickCounter - last < trigger.cooldownTicks) {
+                return false
+            }
+        }
+
+        return true
+    }
+
+    private fun markFired(trigger: Trigger, player: ServerPlayer) {
+        if (trigger.once) {
+            firedOnce.getOrPut(player.uuid) { HashSet() }.add(trigger)
+        }
+        if (trigger.cooldownTicks > 0) {
+            cooldowns[cooldownKey(player.uuid, trigger)] = tickCounter
+        }
+    }
+
+    private fun cooldownKey(uuid: UUID, trigger: Trigger): String =
+        "$uuid:${System.identityHashCode(trigger)}"
+
+    private fun fire(trigger: Trigger, server: MinecraftServer, player: ServerPlayer) {
+        if (!canFire(trigger, player)) return
+        markFired(trigger, player)
+        ScriptManager.runAdHoc(
+            trigger.body,
+            ScriptContext(server, player, triggerType = "trigger", scriptName = trigger.scriptName),
+            trigger.scriptName
+        )
+    }
+
+    // ------------------------------------------------------------------
     // События
     // ------------------------------------------------------------------
 
@@ -68,40 +124,35 @@ object TriggerManager {
 
     fun onPlayerJoin(server: MinecraftServer, player: ServerPlayer) {
         lastFoodLevel.remove(player.uuid)
-        worldStarts.forEach { fire(it.body, server, player, it.scriptName) }
+        worldStarts.forEach { trigger ->
+            fire(trigger, server, player)
+        }
     }
 
-    /** Вызывать из ServerPlayConnectionEvents.DISCONNECT. */
     fun onPlayerLeave(uuid: UUID) {
         lastFoodLevel.remove(uuid)
         insideCheckpoint.remove(uuid)
+        // once и cooldown оставляем (чтобы once не сбрасывался при перезаходе)
     }
 
     fun onPlayerDeath(server: MinecraftServer, player: ServerPlayer) {
-        triggersFor(GlobalPlayEvent.PLAYER_DEATH)
-            .forEach { fire(it.body, server, player, it.scriptName) }
+        triggersFor(GlobalPlayEvent.PLAYER_DEATH).forEach { fire(it, server, player) }
     }
 
     fun onPlayerRespawn(server: MinecraftServer, player: ServerPlayer) {
-        // После респауна сытость прыгает вверх - это не еда.
         lastFoodLevel.remove(player.uuid)
-        triggersFor(GlobalPlayEvent.PLAYER_RESPAWN)
-            .forEach { fire(it.body, server, player, it.scriptName) }
+        triggersFor(GlobalPlayEvent.PLAYER_RESPAWN).forEach { fire(it, server, player) }
     }
 
-    /** Вызывается из миксина ServerPlayer#teleportTo(...) при телепортации игрока. */
     fun onPlayerTeleport(server: MinecraftServer, player: ServerPlayer) {
-        // Служебные телепортации катсцены (движение камеры, возврат) не считаем.
         if (CutsceneManager.isInCutscene(player)) return
-        triggersFor(GlobalPlayEvent.PLAYER_TP)
-            .forEach { fire(it.body, server, player, it.scriptName) }
+        triggersFor(GlobalPlayEvent.PLAYER_TP).forEach { fire(it, server, player) }
     }
 
-    /** Вызывается из UseItemCallback (Fabric API), когда игрок использует предмет. */
     fun onPlayerClick(server: MinecraftServer, player: ServerPlayer, itemId: String) {
         triggersFor(GlobalPlayEvent.PLAYER_CLICK)
             .filter { matchesItemId(it.itemId, itemId) }
-            .forEach { fire(it.body, server, player, it.scriptName) }
+            .forEach { fire(it, server, player) }
     }
 
     private fun matchesItemId(expected: String?, actual: String): Boolean {
@@ -123,25 +174,28 @@ object TriggerManager {
             val radiusSq = checkpoint.radius * checkpoint.radius
 
             for (player in players) {
-                // Во время катсцены состояние не трогаем: игрок "физически" в точке камеры.
                 if (CutsceneManager.isInCutscene(player)) continue
 
                 val inside = player.level() == level &&
                         player.position().distanceToSqr(checkpoint.x, checkpoint.y, checkpoint.z) <= radiusSq
 
                 val set = insideCheckpoint.getOrPut(player.uuid) { HashSet() }
+
                 if (inside) {
-                    if (set.add(checkpoint)) {
-                        fire(checkpoint.body, server, player, checkpoint.scriptName)
+                    // Вошли в зону
+                    if (set.add(checkpoint) && !checkpoint.onExit) {
+                        fire(checkpoint, server, player)
                     }
                 } else {
-                    set.remove(checkpoint)
+                    // Вышли из зоны
+                    if (set.remove(checkpoint) && checkpoint.onExit) {
+                        fire(checkpoint, server, player)
+                    }
                 }
             }
         }
     }
 
-    /** ender_dragon_fight / wither_boss_fight: по фронту "появился" в каждом мире. */
     private fun checkGlobalEntityFights(server: MinecraftServer) {
         val dragonTriggers = triggersFor(GlobalPlayEvent.ENDER_DRAGON_FIGHT)
         val witherTriggers = triggersFor(GlobalPlayEvent.WITHER_BOSS_FIGHT)
@@ -150,13 +204,13 @@ object TriggerManager {
 
         for (level in server.allLevels) {
             val playersInLevel = server.playerList.players.filter { it.level() == level }
-            if (playersInLevel.isEmpty()) continue   // некому показывать, состояние не трогаем
+            if (playersInLevel.isEmpty()) continue
 
             if (dragonTriggers.isNotEmpty() && level.dimension() == Level.END) {
                 val present = level.getEntities(EntityType.ENDER_DRAGON) { it.isAlive }.isNotEmpty()
                 if (present && wasDragonPresent[level] != true) {
                     dragonTriggers.forEach { t ->
-                        playersInLevel.forEach { p -> fire(t.body, server, p, t.scriptName) }
+                        playersInLevel.forEach { p -> fire(t, server, p) }
                     }
                 }
                 wasDragonPresent[level] = present
@@ -166,7 +220,7 @@ object TriggerManager {
                 val present = level.getEntities(EntityType.WITHER) { it.isAlive }.isNotEmpty()
                 if (present && wasWitherPresent[level] != true) {
                     witherTriggers.forEach { t ->
-                        playersInLevel.forEach { p -> fire(t.body, server, p, t.scriptName) }
+                        playersInLevel.forEach { p -> fire(t, server, p) }
                     }
                 }
                 wasWitherPresent[level] = present
@@ -174,7 +228,6 @@ object TriggerManager {
         }
     }
 
-    /** player_eat: по росту сытости игрока между тиками. */
     private fun checkPlayerEat(server: MinecraftServer) {
         val eatTriggers = triggersFor(GlobalPlayEvent.PLAYER_EAT)
         if (eatTriggers.isEmpty()) return
@@ -183,18 +236,9 @@ object TriggerManager {
             val current = player.foodData.foodLevel
             val previous = lastFoodLevel[player.uuid]
             if (previous != null && current > previous) {
-                eatTriggers.forEach { t -> fire(t.body, server, player, t.scriptName) }
+                eatTriggers.forEach { t -> fire(t, server, player) }
             }
             lastFoodLevel[player.uuid] = current
         }
-    }
-
-    private fun fire(
-        body: List<ScriptCommand>,
-        server: MinecraftServer,
-        player: ServerPlayer,
-        scriptName: String
-    ) {
-        ScriptManager.runAdHoc(body, ScriptContext(server, player), scriptName)
     }
 }
