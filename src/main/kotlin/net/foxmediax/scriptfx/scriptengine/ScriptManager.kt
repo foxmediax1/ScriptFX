@@ -5,6 +5,7 @@ import net.foxmediax.scriptfx.config.ScriptFXConfig
 import java.io.File
 import net.foxmediax.scriptfx.npc.NpcRegistry
 import net.foxmediax.scriptfx.quest.QuestRegistry
+import net.foxmediax.scriptfx.triggers.TriggerRegistry
 
 object ScriptManager {
 
@@ -17,6 +18,7 @@ object ScriptManager {
         AvatarLoader.clearCache()
         NpcRegistry.reload()
         QuestRegistry.reload()
+        TriggerRegistry.reload()
 
         val projectsDir = FabricLoader.getInstance().configDir.resolve("scriptfx/projects").toFile()
         if (!projectsDir.exists()) {
