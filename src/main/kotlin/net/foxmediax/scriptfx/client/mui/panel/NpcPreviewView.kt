@@ -11,10 +11,13 @@ import icyllis.modernui.widget.TextView
 import net.foxmediax.scriptfx.client.NpcPreviewHelper
 import net.foxmediax.scriptfx.npc.NpcDefinition
 import net.minecraft.client.Minecraft
+import kotlin.math.abs
 
 /**
- * Центральная колонка NPC-редактора: заголовок, bounds для 3D-превью, drag, ошибка загрузки.
- * Модель рисуется снаружи (ScreenEvents + NpcPreviewHelper.renderInGui).
+ * Превью NPC:
+ * - drag = поворот
+ * - click = следующая анимация из реального списка модели
+ * - кнопки анимаций снизу
  */
 class NpcPreviewView(
     ctx: Context
@@ -22,11 +25,18 @@ class NpcPreviewView(
 
     private val titleView: TextView
     private val hintView: TextView
+    private val animView: TextView
     private val errorView: TextView
+    private val animBar: LinearLayout
 
     private var dragging = false
+    private var moved = false
     private var lastX = 0f
     private var lastY = 0f
+    private var downX = 0f
+    private var downY = 0f
+
+    var onAnimChanged: ((String) -> Unit)? = null
 
     var definition: NpcDefinition? = null
         set(value) {
@@ -39,17 +49,24 @@ class NpcPreviewView(
                 else -> value.id
             }
 
+            val anim = value?.defaultAnim?.ifBlank { "idle" } ?: "idle"
+            NpcPreviewHelper.playAnim(anim)
+            updateAnimLabel(anim)
+            rebuildAnimButtons(context)
+            highlightAnimButton(anim)
+
             post {
                 updateBounds()
                 refreshErrorState()
             }
-            // второй кадр — после apply в renderInGui
             postDelayed({ refreshErrorState() }, 50)
             postDelayed({ refreshErrorState() }, 200)
         }
 
     init {
-        background = ColorDrawable(0xFF3A3A42.toInt())
+        background = ColorDrawable(0xFF1A1028.toInt())
+        isClickable = true
+        isFocusable = true
 
         val column = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -69,7 +86,6 @@ class NpcPreviewView(
             gravity = Gravity.CENTER
         }
 
-        // Растягиваемая середина — зона модели
         val spacer = View(ctx).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -79,11 +95,25 @@ class NpcPreviewView(
         }
 
         hintView = TextView(ctx).apply {
-            text = "Тяни — поворот"
+            text = "Тяни — поворот · Клик — анимация"
             textSize = 10f
-            setTextColor(0xFF888888.toInt())
+            setTextColor(0xFF9CA3AF.toInt())
             gravity = Gravity.CENTER
         }
+
+        animView = TextView(ctx).apply {
+            text = "anim: idle"
+            textSize = 11f
+            setTextColor(PanelUi.COL_ACCENT)
+            gravity = Gravity.CENTER
+            setPadding(0, PanelUi.dp(ctx, 2), 0, PanelUi.dp(ctx, 4))
+        }
+
+        animBar = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+        }
+        rebuildAnimButtons(ctx)
 
         errorView = TextView(ctx).apply {
             text = ""
@@ -108,13 +138,26 @@ class NpcPreviewView(
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         )
+        column.addView(
+            animView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+        column.addView(
+            animBar,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         addView(
             column,
             LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
         )
 
-        // Ошибка поверх центра
         addView(
             errorView,
             LayoutParams(
@@ -123,6 +166,57 @@ class NpcPreviewView(
                 Gravity.CENTER
             )
         )
+    }
+
+    private fun rebuildAnimButtons(ctx: Context) {
+        animBar.removeAllViews()
+        for (anim in NpcPreviewHelper.previewAnims) {
+            val btn = TextView(ctx).apply {
+                text = anim
+                textSize = 10f
+                setTextColor(PanelUi.COL_TEXT)
+                background = ColorDrawable(PanelUi.COL_BTN)
+                setPadding(
+                    PanelUi.dp(ctx, 8),
+                    PanelUi.dp(ctx, 5),
+                    PanelUi.dp(ctx, 8),
+                    PanelUi.dp(ctx, 5)
+                )
+                isClickable = true
+                setOnClickListener { play(anim) }
+            }
+            animBar.addView(
+                btn,
+                LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    rightMargin = PanelUi.dp(ctx, 4)
+                    topMargin = PanelUi.dp(ctx, 2)
+                }
+            )
+        }
+    }
+
+    private fun play(anim: String) {
+        NpcPreviewHelper.playAnim(anim)
+        updateAnimLabel(anim)
+        highlightAnimButton(anim)
+        onAnimChanged?.invoke(anim)
+    }
+
+    private fun updateAnimLabel(anim: String) {
+        animView.text = "anim: $anim"
+    }
+
+    private fun highlightAnimButton(anim: String) {
+        for (i in 0 until animBar.childCount) {
+            val child = animBar.getChildAt(i) as? TextView ?: continue
+            val selected = child.text?.toString() == anim
+            child.background = ColorDrawable(
+                if (selected) PanelUi.COL_BTN_SELECTED else PanelUi.COL_BTN
+            )
+        }
     }
 
     fun refreshErrorState() {
@@ -174,8 +268,8 @@ class NpcPreviewView(
         val x1 = ((location[0] + width) / guiScale).toInt()
         val y1 = ((location[1] + height) / guiScale).toInt()
 
-        val padTop = (PanelUi.dp(context, 26) / guiScale).toInt().coerceAtLeast(14)
-        val padBottom = (PanelUi.dp(context, 20) / guiScale).toInt().coerceAtLeast(12)
+        val padTop = (PanelUi.dp(context, 28) / guiScale).toInt().coerceAtLeast(14)
+        val padBottom = (PanelUi.dp(context, 52) / guiScale).toInt().coerceAtLeast(28)
         val padX = 4
 
         val previewX0 = x0 + padX
@@ -195,20 +289,45 @@ class NpcPreviewView(
         when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 dragging = true
+                moved = false
                 lastX = event.x
                 lastY = event.y
+                downX = event.x
+                downY = event.y
                 return true
             }
+
             MotionEvent.ACTION_MOVE -> {
                 if (dragging) {
-                    NpcPreviewHelper.drag(event.x - lastX, event.y - lastY)
+                    val dx = event.x - lastX
+                    val dy = event.y - lastY
+                    if (abs(event.x - downX) > 4f || abs(event.y - downY) > 4f) {
+                        moved = true
+                    }
+                    if (moved) {
+                        NpcPreviewHelper.drag(dx, dy)
+                    }
                     lastX = event.x
                     lastY = event.y
                     return true
                 }
             }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+
+            MotionEvent.ACTION_UP -> {
+                if (dragging && !moved) {
+                    val next = NpcPreviewHelper.cycleAnim()
+                    updateAnimLabel(next)
+                    highlightAnimButton(next)
+                    onAnimChanged?.invoke(next)
+                }
                 dragging = false
+                moved = false
+                return true
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                dragging = false
+                moved = false
                 return true
             }
         }
