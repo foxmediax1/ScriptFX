@@ -2,6 +2,7 @@ package net.foxmediax.scriptfx.client.mui.panel
 
 import icyllis.modernui.core.Context
 import icyllis.modernui.graphics.drawable.ColorDrawable
+import icyllis.modernui.graphics.drawable.Drawable
 import icyllis.modernui.view.Gravity
 import icyllis.modernui.view.View
 import icyllis.modernui.view.ViewGroup
@@ -10,50 +11,39 @@ import icyllis.modernui.widget.FrameLayout
 import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
 import icyllis.modernui.widget.TextView
-import kotlin.math.max
-import icyllis.modernui.graphics.drawable.Drawable
 import net.foxmediax.scriptfx.client.mui.UiStyle
+import kotlin.math.max
 
-/**
- * Общий стиль и фабрики виджетов панели ScriptFX (Modern UI).
- * Все цвета и отступы — отсюда; страницы не дублируют «магические» числа.
- */
 object PanelUi {
-
-    // -------------------------------------------------------------------------
-    // Layout constants
-    // -------------------------------------------------------------------------
 
     const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
     const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
 
-    // -------------------------------------------------------------------------
-    // Colors (ARGB)
-    // -------------------------------------------------------------------------
+    // ---- Studio palette (под макет) ----
+    const val COL_PANEL = 0xF00B0614.toInt()
+    const val COL_LOGO = 0xFF12081F.toInt()
+    const val COL_HEADER = 0xFF140A22.toInt()
+    const val COL_SIDEBAR = 0xFF10081C.toInt()
+    const val COL_DIVIDER = 0xFF3B2760.toInt()
 
-    const val COL_PANEL = 0xF01E1E1E.toInt()
-    const val COL_LOGO = 0xFF1A1A1A.toInt()
-    const val COL_HEADER = 0xFF252525.toInt()
-    const val COL_SIDEBAR = 0xFF1A1A1A.toInt()
-    const val COL_DIVIDER = 0xFF3A3A3A.toInt()
-    const val COL_BTN = 0xFF101010.toInt()
-    const val COL_BTN_SELECTED = 0xFF2A2140.toInt()
-    const val COL_BTN_DANGER = 0xFF3A1515.toInt()
-    const val COL_ACCENT = 0xFFB026FF.toInt()
-    const val COL_TEXT = 0xFFEDEDED.toInt()
-    const val COL_MUTED = 0xFFAAAAAA.toInt()
-    const val COL_DIM = 0xFF666666.toInt()
-    const val COL_CONTENT = 0xFF000000.toInt()
-    const val COL_CARD = 0xFF101014.toInt()
-    const val COL_NAV = 0xFF141418.toInt()
-    const val COL_SUCCESS = 0xFF55FF88.toInt()
-    const val COL_WARNING = 0xFFFFAA55.toInt()
-    const val COL_ERROR = 0xFFFF5555.toInt()
-    const val COL_DANGER_TEXT = 0xFFFF8888.toInt()
+    const val COL_BTN = 0xFF1A102E.toInt()
+    const val COL_BTN_SELECTED = 0xFF6D28D9.toInt()
+    const val COL_BTN_DANGER = 0xFF3F1220.toInt()
 
-    // -------------------------------------------------------------------------
-    // Metrics
-    // -------------------------------------------------------------------------
+    const val COL_ACCENT = 0xFFA855F7.toInt()
+    const val COL_TEXT = 0xFFF5F3FF.toInt()
+    const val COL_MUTED = 0xFFC4B5FD.toInt()
+    const val COL_DIM = 0xFF8B7CB3.toInt()
+
+    const val COL_CONTENT = 0xFF0A0612.toInt()
+    const val COL_CARD = 0xFF16102A.toInt()
+    const val COL_NAV = 0xFF120A1E.toInt()
+    const val COL_STATUS = 0xFF0E0A18.toInt()
+
+    const val COL_SUCCESS = 0xFF34D399.toInt()
+    const val COL_WARNING = 0xFFFBBF24.toInt()
+    const val COL_ERROR = 0xFFF87171.toInt()
+    const val COL_DANGER_TEXT = 0xFFFCA5A5.toInt()
 
     fun dp(ctx: Context, value: Int): Int =
         (value * ctx.resources.displayMetrics.density + 0.5f).toInt()
@@ -63,44 +53,25 @@ object PanelUi {
 
     fun px1(ctx: Context): Int = max(1, dp(ctx, 1))
 
-    // -------------------------------------------------------------------------
-    // LayoutParams helpers
-    // -------------------------------------------------------------------------
+    fun lp(w: Int, h: Int) = LinearLayout.LayoutParams(w, h)
 
-    fun lp(w: Int, h: Int): LinearLayout.LayoutParams =
-        LinearLayout.LayoutParams(w, h)
-
-    fun lpWeight(weight: Float, w: Int = MATCH, h: Int = MATCH): LinearLayout.LayoutParams =
+    fun lpWeight(weight: Float, w: Int = MATCH, h: Int = MATCH) =
         LinearLayout.LayoutParams(w, h, weight)
 
     fun lpMargin(
-        w: Int,
-        h: Int,
-        left: Int = 0,
-        top: Int = 0,
-        right: Int = 0,
-        bottom: Int = 0
-    ): LinearLayout.LayoutParams =
-        LinearLayout.LayoutParams(w, h).apply {
-            leftMargin = left
-            topMargin = top
-            rightMargin = right
-            bottomMargin = bottom
-        }
+        w: Int, h: Int,
+        left: Int = 0, top: Int = 0, right: Int = 0, bottom: Int = 0
+    ) = LinearLayout.LayoutParams(w, h).apply {
+        leftMargin = left; topMargin = top; rightMargin = right; bottomMargin = bottom
+    }
 
-    // -------------------------------------------------------------------------
-    // Buttons (скруглённые, с состояниями наведения и нажатия)
-    // -------------------------------------------------------------------------
-
-    /** Фон со скруглением и состояниями, производными от базового цвета. */
-    fun btnBg(ctx: Context, base: Int, radiusDp: Float = 6f): Drawable =
+    fun btnBg(ctx: Context, base: Int, radiusDp: Float = 8f): Drawable =
         UiStyle.buttonBg(
             ctx,
             base,
-            hover = UiStyle.mix(base, 0xFFFFFFFF.toInt(), 0.10f),
-            pressed = UiStyle.mix(base, 0xFF000000.toInt(), 0.30f),
+            hover = UiStyle.mix(base, 0xFFFFFFFF.toInt(), 0.12f),
+            pressed = UiStyle.mix(base, 0xFF000000.toInt(), 0.28f),
             radiusDp = radiusDp
-            // hoverStroke по умолчанию = UiStyle.ACCENT
         )
 
     private fun styled(
@@ -108,7 +79,7 @@ object PanelUi {
         padH: Int, padV: Int, onClick: () -> Unit
     ): Button = Button(ctx).apply {
         text = label
-        this.textSize = size
+        textSize = size
         setTextColor(textColor)
         background = btnBg(ctx, base)
         setPadding(dp(ctx, padH), dp(ctx, padV), dp(ctx, padH), dp(ctx, padV))
@@ -116,21 +87,26 @@ object PanelUi {
     }
 
     fun sidebarButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        styled(ctx, label, 15f, COL_TEXT, COL_BTN, 10, 12, onClick).apply {
-            gravity = Gravity.CENTER
-            minHeight = dp(ctx, 48)
+        styled(ctx, label, 14f, COL_TEXT, COL_BTN, 12, 12, onClick).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minHeight = dp(ctx, 44)
         }
 
     fun flatButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        styled(ctx, label, 13f, COL_TEXT, COL_BTN, 10, 8, onClick)
+        styled(ctx, label, 13f, COL_TEXT, COL_BTN, 14, 10, onClick)
 
-    /** Кнопка с акцентом (сохранить, применить). */
     fun accentButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        styled(ctx, label, 13f, COL_TEXT, COL_BTN_SELECTED, 12, 8, onClick)
+        styled(ctx, label, 14f, COL_TEXT, COL_BTN_SELECTED, 16, 12, onClick)
 
-    /** Опасное действие (удалить, прервать). */
     fun dangerButton(ctx: Context, label: String, onClick: () -> Unit): Button =
-        styled(ctx, label, 13f, COL_DANGER_TEXT, COL_BTN_DANGER, 10, 8, onClick)
+        styled(ctx, label, 13f, COL_DANGER_TEXT, COL_BTN_DANGER, 12, 10, onClick)
+
+    fun tabButton(ctx: Context, label: String, selected: Boolean, onClick: () -> Unit): Button =
+        styled(
+            ctx, label, 13f, COL_TEXT,
+            if (selected) COL_BTN_SELECTED else COL_BTN,
+            14, 10, onClick
+        )
 
     fun iconButton(ctx: Context, glyph: String, onClick: () -> Unit): TextView {
         val size = dp(ctx, 32)
@@ -139,26 +115,13 @@ object PanelUi {
             textSize = 15f
             gravity = Gravity.CENTER
             setTextColor(COL_TEXT)
-            background = btnBg(ctx, COL_BTN, 6f)
+            background = btnBg(ctx, COL_BTN, 8f)
             minWidth = size
             minHeight = size
-            setPadding(0, 0, 0, 0)
             isClickable = true
             setOnClickListener { onClick() }
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Text
-    // -------------------------------------------------------------------------
-
-    fun sectionTitle(ctx: Context, text: String): TextView =
-        TextView(ctx).apply {
-            this.text = text
-            textSize = 14f
-            setTextColor(COL_ACCENT)
-            setPadding(0, dp(ctx, 10), 0, dp(ctx, 4))
-        }
 
     fun pageTitle(ctx: Context, text: String): TextView =
         TextView(ctx).apply {
@@ -167,60 +130,39 @@ object PanelUi {
             setTextColor(COL_TEXT)
         }
 
+    fun sectionTitle(ctx: Context, text: String): TextView =
+        TextView(ctx).apply {
+            this.text = text
+            textSize = 13f
+            setTextColor(COL_ACCENT)
+        }
+
     fun bodyText(ctx: Context, text: String, size: Float = 13f): TextView =
         TextView(ctx).apply {
             this.text = text
             textSize = size
             setTextColor(COL_TEXT)
-            setPadding(0, dp(ctx, 3), 0, dp(ctx, 3))
         }
 
-    fun mutedText(ctx: Context, text: String, size: Float = 13f): TextView =
+    fun mutedText(ctx: Context, text: String, size: Float = 12f): TextView =
         TextView(ctx).apply {
             this.text = text
             textSize = size
             setTextColor(COL_MUTED)
-            setPadding(0, dp(ctx, 3), 0, dp(ctx, 3))
         }
-
-    fun dimText(ctx: Context, text: String, size: Float = 12f): TextView =
-        TextView(ctx).apply {
-            this.text = text
-            textSize = size
-            setTextColor(COL_DIM)
-            setPadding(0, dp(ctx, 3), 0, dp(ctx, 3))
-        }
-    fun errorText(ctx: Context, text: String, size: Float = 12f): TextView =
-        TextView(ctx).apply {
-            this.text = text
-            textSize = size
-            setTextColor(COL_ERROR)
-            setPadding(0, dp(ctx, 2), 0, dp(ctx, 2))
-        }
-
-    // -------------------------------------------------------------------------
-    // Containers / surfaces
-    // -------------------------------------------------------------------------
 
     fun pageRoot(ctx: Context): LinearLayout =
         LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             background = ColorDrawable(COL_CONTENT)
-            setPadding(dp(ctx, 14), dp(ctx, 12), dp(ctx, 14), dp(ctx, 12))
-        }
-
-    fun navColumn(ctx: Context): LinearLayout =
-        LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            background = ColorDrawable(COL_NAV)
-            setPadding(dp(ctx, 6), dp(ctx, 6), dp(ctx, 6), dp(ctx, 6))
+            setPadding(dp(ctx, 16), dp(ctx, 14), dp(ctx, 16), dp(ctx, 14))
         }
 
     fun card(ctx: Context): LinearLayout =
         LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = ColorDrawable(COL_CARD) // или UiStyle.rounded, если уже так
-            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
+            background = ColorDrawable(COL_CARD)
+            setPadding(dp(ctx, 12), dp(ctx, 10), dp(ctx, 12), dp(ctx, 10))
         }
 
     fun horizontalRow(ctx: Context): LinearLayout =
@@ -230,40 +172,56 @@ object PanelUi {
         }
 
     fun verticalColumn(ctx: Context): LinearLayout =
-        LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-        }
+        LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
 
     fun divider(ctx: Context): View =
-        View(ctx).apply {
-            background = ColorDrawable(COL_DIVIDER)
-            minimumHeight = px1(ctx)
-        }
+        View(ctx).apply { background = ColorDrawable(COL_DIVIDER) }
 
     fun spacer(ctx: Context, heightDp: Int = 8): View =
-        View(ctx).apply {
-            minimumHeight = dp(ctx, heightDp)
-        }
+        View(ctx).apply { minimumHeight = dp(ctx, heightDp) }
 
-    /** Вертикальный ScrollView на всю ширину с контентом. */
     fun scrollColumn(ctx: Context, content: View): ScrollView =
-        ScrollView(ctx).apply {
-            addView(content, lp(MATCH, WRAP))
-        }
+        ScrollView(ctx).apply { addView(content, lp(MATCH, WRAP)) }
 
-    /** Frame на весь родитель. */
-    fun matchFrame(ctx: Context): FrameLayout =
-        FrameLayout(ctx).apply {
+    /** Трёхколоночный layout: left | center | right */
+    fun studioTriple(
+        ctx: Context,
+        left: View,
+        center: View,
+        right: View,
+        leftDp: Int = 260,
+        rightDp: Int = 300
+    ): LinearLayout {
+        return LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
             background = ColorDrawable(COL_CONTENT)
+            addView(left, lp(dp(ctx, leftDp), MATCH))
+            addView(divider(ctx), lp(px1(ctx), MATCH))
+            addView(center, LinearLayout.LayoutParams(0, MATCH, 1f))
+            addView(divider(ctx), lp(px1(ctx), MATCH))
+            addView(right, lp(dp(ctx, rightDp), MATCH))
         }
+    }
 
-    // -------------------------------------------------------------------------
-    // Composite rows
-    // -------------------------------------------------------------------------
+    fun toolbar(
+        ctx: Context,
+        title: String,
+        vararg actions: Pair<String, () -> Unit>
+    ): LinearLayout {
+        val bar = horizontalRow(ctx)
+        bar.addView(
+            pageTitle(ctx, title),
+            LinearLayout.LayoutParams(0, WRAP, 1f)
+        )
+        for ((label, click) in actions) {
+            bar.addView(
+                flatButton(ctx, label, click),
+                lpMargin(WRAP, WRAP, left = dp(ctx, 6))
+            )
+        }
+        return bar
+    }
 
-    /**
-     * Строка списка: слева текст, справа опциональная кнопка.
-     */
     fun listRow(
         ctx: Context,
         label: String,
@@ -289,25 +247,31 @@ object PanelUi {
         return row
     }
 
-    /**
-     * Заголовок страницы + ряд кнопок справа.
-     */
-    fun toolbar(
-        ctx: Context,
-        title: String,
-        vararg actions: Pair<String, () -> Unit>
-    ): LinearLayout {
-        val bar = horizontalRow(ctx)
-        bar.addView(
-            pageTitle(ctx, title),
-            LinearLayout.LayoutParams(0, WRAP, 1f)
-        )
-        for ((label, click) in actions) {
-            bar.addView(
-                flatButton(ctx, label, click),
-                lpMargin(WRAP, WRAP, left = dp(ctx, 6))
-            )
+    fun dimText(ctx: Context, text: String, size: Float = 12f): TextView =
+        TextView(ctx).apply {
+            this.text = text
+            textSize = size
+            setTextColor(COL_DIM)
+            setPadding(0, dp(ctx, 3), 0, dp(ctx, 3))
         }
-        return bar
-    }
+
+    fun errorText(ctx: Context, text: String, size: Float = 12f): TextView =
+        TextView(ctx).apply {
+            this.text = text
+            textSize = size
+            setTextColor(COL_ERROR)
+            setPadding(0, dp(ctx, 2), 0, dp(ctx, 2))
+        }
+
+    fun navColumn(ctx: Context): LinearLayout =
+        LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = ColorDrawable(COL_NAV)
+            setPadding(dp(ctx, 6), dp(ctx, 6), dp(ctx, 6), dp(ctx, 6))
+        }
+
+    fun matchFrame(ctx: Context): FrameLayout =
+        FrameLayout(ctx).apply {
+            background = ColorDrawable(COL_CONTENT)
+        }
 }
