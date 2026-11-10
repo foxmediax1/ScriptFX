@@ -19,6 +19,31 @@ object NpcPreviewHelper {
         val y1: Int
     )
 
+    /**
+     * Анимации стандартных моделей ScriptFX
+     * (совпадают с ScriptNpcEntity.KNOWN_ANIMS).
+     */
+    val DEFAULT_PREVIEW_ANIMS = listOf(
+        "idle",
+        "running",
+        "sprinting",
+        "crouching_idle",
+        "crouching",
+        "swipe",
+        "jump",
+        "land",
+        "stun1",
+        "stun1_idle",
+        "stun1_gettingUp",
+        "lying_idle",
+        "lying_running"
+    )
+
+    /** Текущий список анимаций для UI-кнопок. */
+    @Volatile
+    var previewAnims: List<String> = DEFAULT_PREVIEW_ANIMS
+        private set
+
     @Volatile
     var definition: NpcDefinition? = null
         private set
@@ -33,13 +58,27 @@ object NpcPreviewHelper {
     var angleY: Float = -0.2f
         private set
 
+    @Volatile
+    var currentAnim: String = "idle"
+        private set
+
     private var previewEntity: ScriptNpcEntity? = null
     private var boundKey: String? = null
 
-    /** Сообщение об ошибке загрузки для UI (NpcPreviewView). */
     @Volatile
     var loadError: String? = null
         private set
+
+    @Volatile
+    var suppressRender: Boolean = false
+
+    fun setPreviewAnims(anims: List<String>) {
+        previewAnims = if (anims.isEmpty()) DEFAULT_PREVIEW_ANIMS else anims.distinct()
+    }
+
+    fun resetPreviewAnims() {
+        previewAnims = DEFAULT_PREVIEW_ANIMS
+    }
 
     fun setDefinition(def: NpcDefinition?) {
         if (definition?.id != def?.id) {
@@ -53,10 +92,22 @@ object NpcPreviewHelper {
         if (def == null) {
             previewEntity = null
             boundKey = null
+            currentAnim = "idle"
+            resetPreviewAnims()
+            return
+        }
+
+        previewEntity = null
+        boundKey = null
+        currentAnim = def.defaultAnim.ifBlank { "idle" }
+
+        // customs — свободные имена; стандарт — только KNOWN_ANIMS
+        if (def.model.startsWith("customs:", ignoreCase = true)) {
+            val base = linkedSetOf("idle")
+            if (def.defaultAnim.isNotBlank()) base += def.defaultAnim
+            setPreviewAnims(base.toList())
         } else {
-            // Сбрасываем entity, чтобы ensureEntity пересоздал с новыми путями
-            previewEntity = null
-            boundKey = null
+            resetPreviewAnims()
         }
     }
 
@@ -80,11 +131,44 @@ object NpcPreviewHelper {
         loadError = null
         angleX = 0.4f
         angleY = -0.2f
+        currentAnim = "idle"
+        resetPreviewAnims()
     }
 
     fun drag(dx: Float, dy: Float) {
         angleX += dx * 0.01f
         angleY = (angleY + dy * 0.01f).coerceIn(-1.0f, 1.0f)
+    }
+
+    fun resetCamera() {
+        angleX = 0.4f
+        angleY = -0.2f
+    }
+
+    fun playAnim(name: String) {
+        val anim = name.ifBlank { "idle" }
+        currentAnim = anim
+
+        val entity = previewEntity
+        if (entity != null) {
+            try {
+                entity.setAnim(anim)
+            } catch (t: Throwable) {
+                ScriptFXLog.warn("NpcPreview: setAnim('$anim') failed: ${t.message}")
+            }
+            return
+        }
+
+        // entity ещё нет — применится при создании
+        definition?.let { ensureEntity(it) }
+    }
+
+    fun cycleAnim(): String {
+        val list = previewAnims.ifEmpty { DEFAULT_PREVIEW_ANIMS }
+        val idx = list.indexOf(currentAnim).let { if (it < 0) 0 else it }
+        val next = list[(idx + 1) % list.size]
+        playAnim(next)
+        return next
     }
 
     private fun createPreviewEntity(def: NpcDefinition): ScriptNpcEntity? {
@@ -116,15 +200,14 @@ object NpcPreviewHelper {
         entity.animationPath = def.animation.takeIf { it.isNotBlank() }
             ?: CurrentNpcResources.DEFAULT_ANIMATION
 
-        // Критично для превью на клиенте:
-        // CurrentNpcResources.apply() → syncPathsFromData() читает entityData.
-        // Без записи в DATA_* пути всегда откатываются на female.
         entity.entityData.set(ScriptNpcEntity.DATA_NPC_ID, entity.npcId)
         entity.entityData.set(ScriptNpcEntity.DATA_MODEL, entity.modelPath)
         entity.entityData.set(ScriptNpcEntity.DATA_TEXTURE, entity.texturePath)
         entity.entityData.set(ScriptNpcEntity.DATA_ANIM_PATH, entity.animationPath)
 
-        entity.setAnim(def.defaultAnim.ifBlank { "idle" })
+        val anim = currentAnim.ifBlank { def.defaultAnim.ifBlank { "idle" } }
+        currentAnim = anim
+        entity.setAnim(anim)
 
         entity.setLookAtPlayer(false)
         entity.setInvulnerableFlag(true)
@@ -149,7 +232,7 @@ object NpcPreviewHelper {
 
         ScriptFXLog.info(
             "NpcPreview: created entity for ${def.id}, model=${entity.modelPath}, " +
-                    "tex=${entity.texturePath}, anim=${entity.animationPath}"
+                    "tex=${entity.texturePath}, animFile=${entity.animationPath}, play=$anim"
         )
         loadError = null
         return entity
@@ -163,10 +246,24 @@ object NpcPreviewHelper {
             def.animation,
             def.defaultAnim,
             def.displayName,
-            def.nametag
+            def.nametag,
+            currentAnim
         ).joinToString("|")
 
         if (previewEntity != null && boundKey == key) {
+            return previewEntity
+        }
+
+        // если сменилась только анимация — не пересоздаём entity
+        val softKey = listOf(
+            def.id, def.model, def.texture, def.animation, def.defaultAnim, def.displayName, def.nametag
+        ).joinToString("|")
+        if (previewEntity != null && boundKey?.substringBeforeLast("|") == softKey) {
+            try {
+                previewEntity?.setAnim(currentAnim)
+            } catch (_: Throwable) {
+            }
+            boundKey = key
             return previewEntity
         }
 
@@ -175,9 +272,6 @@ object NpcPreviewHelper {
         boundKey = key
         return created
     }
-
-    @Volatile
-    var suppressRender: Boolean = false
 
     fun renderInGui(graphics: GuiGraphicsExtractor) {
         if (suppressRender) return
@@ -206,11 +300,6 @@ object NpcPreviewHelper {
 
         try {
             CurrentNpcResources.apply(entity)
-
-            ScriptFXLog.debug(
-                "NpcPreview render: model=${CurrentNpcResources.model}, " +
-                        "texture=${CurrentNpcResources.texture}, anim=${CurrentNpcResources.animation}"
-            )
 
             graphics.enableScissor(b.x0, b.y0, b.x1, b.y1)
             try {
