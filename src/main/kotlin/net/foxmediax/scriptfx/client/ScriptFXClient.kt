@@ -11,11 +11,15 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents
 import net.foxmediax.scriptfx.ScriptFX
 import net.foxmediax.scriptfx.ScriptFXKeybinds
+import net.foxmediax.scriptfx.hud.HudOverlay
+import net.foxmediax.scriptfx.client.hud.HudRuntime
 import net.foxmediax.scriptfx.client.mui.MuiScreens
 import net.foxmediax.scriptfx.client.particles.ParticleRuntime
 import net.foxmediax.scriptfx.client.particles.ParticleWorldRenderer
 import net.foxmediax.scriptfx.config.ScriptFXConfig
+import net.foxmediax.scriptfx.hud.HudRegistry
 import net.foxmediax.scriptfx.network.CameraPayload
+import net.foxmediax.scriptfx.network.HudPayload
 import net.foxmediax.scriptfx.network.MediaPayload
 import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
 import net.foxmediax.scriptfx.network.NpcInteractListenPayload
@@ -101,6 +105,7 @@ object ScriptFXClient : ClientModInitializer {
             ParticleRuntime.clear()
             LocalNpcAssets.clear()
             net.foxmediax.scriptfx.client.media.MediaClient.clear()
+            HudRuntime.clear()
             triedEnableCustomsPack = false
         }
 
@@ -118,6 +123,8 @@ object ScriptFXClient : ClientModInitializer {
             NpcInteractClient.tick()
             NpcPreviewHelper.clientTick()
             NpcDialogClient.tick()
+
+            HudRuntime.tick()
 
             while (ScriptFXKeybinds.openControlPanel.consumeClick()) {
                 val player = client.player ?: continue
@@ -194,6 +201,17 @@ object ScriptFXClient : ClientModInitializer {
                     )
                 }
             }
+        )
+
+        HudRegistry.reload()
+
+        ClientPlayNetworking.registerGlobalReceiver(HudPayload.TYPE) { payload, _ ->
+            HudRuntime.handlePayload(payload)
+        }
+
+        HudElementRegistry.addLast(
+            ScriptFX.id("custom_hud"),
+            HudElement { graphics, _ -> HudOverlay.render(graphics) }
         )
     }
 }
