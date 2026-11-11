@@ -16,6 +16,7 @@ object CommandRegistry {
         ParticleCommands.install { name, handler -> register(name, handler) }
         QuestCommands.install { name, handler -> register(name, handler) }
         MediaCommands.install { name, handler -> register(name, handler) }
+        HudCommands.install { name, handler -> register(name, handler) }
     }
 
     fun register(name: String, handler: CommandHandler) {
