@@ -114,7 +114,7 @@ class FileBrowser {
         if (!isSafeName(name)) return
         val projectDir = File(projectsDir, name.trim())
         projectDir.mkdirs()
-        listOf("scripts", "quests", "particles", "npc", "audio", "video", "avatars")
+        listOf("scripts", "quests", "particles", "npc", "hud", "triggers", "audio", "video", "avatars")
             .forEach { File(projectDir, it).mkdirs() }
         goTo(projectDir)
     }
