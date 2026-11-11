@@ -50,8 +50,6 @@
 		"java": ">=25",
 		"fabric-api": "*",
 		"fabric-language-kotlin": "*",
-		"geckolib": ">=5.5",
-		"modernui": "*",
-		"forgeconfigapiport": ">=26.1.0"
+		"modernui": "*"
 	}
 }
