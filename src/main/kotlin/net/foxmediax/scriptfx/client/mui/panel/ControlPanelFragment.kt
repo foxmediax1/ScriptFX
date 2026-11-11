@@ -176,6 +176,7 @@ class ControlPanelFragment : Fragment() {
         PanelSection.NPC_EDITOR -> NpcEditorPage(host)
         PanelSection.QUESTS -> QuestsPage(host)
         PanelSection.TRIGGERS -> TriggersPage(host)
+        PanelSection.HUD -> HudPage(host)
         PanelSection.PARTICLES -> ParticlesPage(host)
         PanelSection.LOGS -> LogsPage(host)
         PanelSection.SETTINGS -> PlaceholderPage(host, "Настройки")
@@ -242,6 +243,7 @@ class ControlPanelFragment : Fragment() {
             PanelSection.NPC_EDITOR to "NPC",
             PanelSection.QUESTS to "Квесты",
             PanelSection.TRIGGERS to "Триггеры",
+            PanelSection.HUD to "HUD",
             PanelSection.PARTICLES to "Частицы",
             PanelSection.LOGS to "Логи"
         )
