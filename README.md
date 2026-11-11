@@ -5,7 +5,7 @@
 
 ## Установка
 Для установки понадобится Minecraft (версия: Fabric 26.1), загрузите последнюю версию jar-файла мода.
-Также понадобится установить следующие моды: [Fabric-API](https://modrinth.com/mod/fabric-api), [Forge Config API Port](https://modrinth.com/mod/forge-config-api-port), [Modern UI](https://modrinth.com/mod/modern-ui), [GeckoLib](https://modrinth.com/mod/geckolib). Поместите их в папку mods Minecraft и запустите игру.
+Также понадобится установить следующие моды: [Fabric-API](https://modrinth.com/mod/fabric-api), Fabric-Language-Kotlin, [Modern UI](https://modrinth.com/mod/modern-ui). Поместите их в папку mods Minecraft и запустите игру.
 
 После этого мод ScriptFX должен установиться и появиться в меню модов Minecraft. Если ScriptFX не установился и не отображается в меню модов Minecraft, то значит, что-то пошло не так. В таких случаях важно перепроверить куда вы поместили файлы.
 
