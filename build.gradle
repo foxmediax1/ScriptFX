@@ -35,21 +35,24 @@ dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
-	// Fabric API. This is technically optional, but you probably want it anyway.
+	// Fabric API / Kotlin — как было (отдельно у игрока)
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 	implementation "net.fabricmc:fabric-language-kotlin:${project.fabric_kotlin_version}"
 
+	// GeckoLib — компиляция + внутрь мода
 	implementation "com.geckolib:geckolib-fabric-${minecraft_version}:${geckolib_version}"
+	include "com.geckolib:geckolib-fabric-${minecraft_version}:${geckolib_version}"
+
+	// Forge Config API Port — компиляция + внутрь мода
+	implementation "fuzs.forgeconfigapiport:forgeconfigapiport-fabric:26.1.5"
+	include "fuzs.forgeconfigapiport:forgeconfigapiport-fabric:26.1.5"
+
+	implementation files('libs/modernui-fabric.jar')
 
 	testImplementation platform("org.junit:junit-bom:${project.junit_version}")
 	testImplementation "org.junit.jupiter:junit-jupiter"
 	testImplementation "org.jetbrains.kotlin:kotlin-test:${project.kotlin_version}"
-
 	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
-
-	implementation "fuzs.forgeconfigapiport:forgeconfigapiport-fabric:26.1.5"
-
-	implementation files('libs/modernui-fabric.jar')
 }
 
 tasks.withType(Test).configureEach {
