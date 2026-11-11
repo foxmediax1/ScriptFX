@@ -5,6 +5,7 @@ enum class PanelSection(val displayName: String) {
     NPC_EDITOR("NPC"),
     QUESTS("Квесты"),
     TRIGGERS("Триггеры"),
+    HUD("HUD"),
     PARTICLES("Частицы"),
     LOGS("Логи"),
     SETTINGS("Настройки")
