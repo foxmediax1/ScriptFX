@@ -20,6 +20,7 @@ import net.foxmediax.scriptfx.network.QuestSyncPayload
 import net.foxmediax.scriptfx.network.QuestToastPayload
 import net.foxmediax.scriptfx.npc.NpcEntities
 import net.foxmediax.scriptfx.network.MediaPayload
+import net.foxmediax.scriptfx.network.VfxPayload
 
 object ScriptFX : ModInitializer {
 	const val MOD_ID: String = "scriptfx"
@@ -50,6 +51,7 @@ object ScriptFX : ModInitializer {
 		PayloadTypeRegistry.clientboundPlay().register(MediaPayload.TYPE, MediaPayload.CODEC)
 		PayloadTypeRegistry.serverboundPlay().register(MediaEndPayload.TYPE, MediaEndPayload.CODEC)
 		PayloadTypeRegistry.clientboundPlay().register(HudPayload.TYPE, HudPayload.CODEC)
+		PayloadTypeRegistry.clientboundPlay().register(VfxPayload.TYPE, VfxPayload.CODEC)
 
 		// Регистрируем реальный (GeckoLib) тип NPC-сущности, используемый npc_spawn.
 		NpcEntities.register()

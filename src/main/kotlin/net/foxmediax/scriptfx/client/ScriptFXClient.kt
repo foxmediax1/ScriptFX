@@ -33,6 +33,8 @@ import net.foxmediax.scriptfx.particles.ParticleRegistry
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.RenderPipelines
 import net.minecraft.server.permissions.Permissions
+import net.foxmediax.scriptfx.client.vfx.VfxBridge
+import net.foxmediax.scriptfx.network.VfxPayload
 
 object ScriptFXClient : ClientModInitializer {
 
@@ -53,6 +55,16 @@ object ScriptFXClient : ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(CameraPayload.TYPE) { payload, _ ->
             CameraOverlay.receive(payload)
+        }
+
+        ClientPlayNetworking.registerGlobalReceiver(VfxPayload.TYPE) { payload, _ ->
+            VfxBridge.handlePayload(
+                payload.action,
+                payload.effectId,
+                payload.ticks,
+                payload.p0,
+                payload.p1
+            )
         }
 
         HudElementRegistry.addLast(
@@ -107,6 +119,9 @@ object ScriptFXClient : ClientModInitializer {
             net.foxmediax.scriptfx.client.media.MediaClient.clear()
             HudRuntime.clear()
             triedEnableCustomsPack = false
+
+            // VFXWeaver сам гасит эффекты при выходе; при необходимости:
+            // VfxBridge — no persistent state
         }
 
         EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC, ::ScriptNpcRenderer)
