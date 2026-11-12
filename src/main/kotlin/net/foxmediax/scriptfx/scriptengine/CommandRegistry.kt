@@ -17,6 +17,7 @@ object CommandRegistry {
         QuestCommands.install { name, handler -> register(name, handler) }
         MediaCommands.install { name, handler -> register(name, handler) }
         HudCommands.install { name, handler -> register(name, handler) }
+        VfxCommands.install { name, handler -> register(name, handler) }
     }
 
     fun register(name: String, handler: CommandHandler) {
@@ -124,6 +125,7 @@ object CommandRegistry {
 
         CameraCommands.install { name, handler -> register(name, handler) }
         CutsceneCommands.install { name, handler -> register(name, handler) }
+        VfxCommands.install { name, handler -> register(name, handler) }
         // NpcCommands.install больше НЕ вызывается здесь — он в init {}
 
         // ==================== STATES ====================
