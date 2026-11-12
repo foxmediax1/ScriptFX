@@ -9,7 +9,7 @@ object ParticleCommands {
 
     fun install(register: (String, CommandHandler) -> Unit) {
 
-        // particle_play <id> [x y z]  — координаты опциональны, по умолчанию ~ ~1 ~ (чуть над головой)
+        // particle_play <id> [x y z]
         register("particle_play") { ctx, args ->
             val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
             if (id.isEmpty()) {
@@ -22,7 +22,6 @@ object ParticleCommands {
                 return@register CommandResult.Continue
             }
             val ref = ctx.player
-            // Если координаты не указаны — используем позицию игрока с небольшим смещением вверх
             val x = args.getOrNull(1)?.let { parseCoord(it, ref?.x) } ?: (ref?.x ?: 0.0)
             val y = args.getOrNull(2)?.let { parseCoord(it, ref?.y) } ?: ((ref?.y ?: 0.0) + 1.0)
             val z = args.getOrNull(3)?.let { parseCoord(it, ref?.z) } ?: (ref?.z ?: 0.0)
@@ -31,7 +30,6 @@ object ParticleCommands {
             CommandResult.Continue
         }
 
-        // particle_stop <id>
         register("particle_stop") { ctx, args ->
             val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
             if (id.isEmpty()) {
@@ -47,7 +45,6 @@ object ParticleCommands {
             CommandResult.Continue
         }
 
-        // particle_attach <effectId> <npcId> [ox oy oz]
         register("particle_attach") { ctx, args ->
             val effectId = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
             val npcId = args.getOrNull(1)?.removeSurrounding("\"")?.trim().orEmpty()
@@ -63,14 +60,10 @@ object ParticleCommands {
             val ox = args.getOrNull(2)?.toDoubleOrNull() ?: 0.0
             val oy = args.getOrNull(3)?.toDoubleOrNull() ?: 1.0
             val oz = args.getOrNull(4)?.toDoubleOrNull() ?: 0.0
-            broadcast(
-                ctx,
-                ParticlePayload(ParticlePayload.ATTACH, effectId, npcId, ox, oy, oz)
-            )
+            broadcast(ctx, ParticlePayload(ParticlePayload.ATTACH, effectId, npcId, ox, oy, oz))
             CommandResult.Continue
         }
 
-        // particle_detach <npcId> [effectId]
         register("particle_detach") { ctx, args ->
             val npcId = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
             if (npcId.isEmpty()) {
@@ -78,9 +71,32 @@ object ParticleCommands {
                 return@register CommandResult.Continue
             }
             val effectId = args.getOrNull(1)?.removeSurrounding("\"")?.trim().orEmpty()
+            broadcast(ctx, ParticlePayload(ParticlePayload.DETACH, effectId, npcId, 0.0, 0.0, 0.0))
+            CommandResult.Continue
+        }
+
+        // aaa_particle "namespace:effek" [x y z] [scale]
+        // Эффект — .efkefc в assets/<ns>/effeks/<name>.efkefc
+        register("aaa_particle") { ctx, args ->
+            val id = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
+            if (id.isEmpty()) {
+                ScriptFXLog.warn("aaa_particle: нужен id, например aaa_particles:lightning или scriptfx:boom")
+                return@register CommandResult.Continue
+            }
+            val ref = ctx.player
+            val x = args.getOrNull(1)?.let { parseCoord(it, ref?.x) } ?: (ref?.x ?: 0.0)
+            val y = args.getOrNull(2)?.let { parseCoord(it, ref?.y) } ?: ((ref?.y ?: 0.0) + 1.0)
+            val z = args.getOrNull(3)?.let { parseCoord(it, ref?.z) } ?: (ref?.z ?: 0.0)
+            val scale = args.getOrNull(4)?.toFloatOrNull() ?: 1f
+
             broadcast(
                 ctx,
-                ParticlePayload(ParticlePayload.DETACH, effectId, npcId, 0.0, 0.0, 0.0)
+                ParticlePayload(
+                    ParticlePayload.AAA,
+                    id,
+                    scale.toString(),
+                    x, y, z
+                )
             )
             CommandResult.Continue
         }
