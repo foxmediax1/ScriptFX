@@ -53,7 +53,6 @@ object ParticleRuntime {
     private fun emitVanilla() {
         val level = Minecraft.getInstance().level ?: return
         forEachParticle { _, p ->
-            // не спамим каждый тик каждой частицей
             if (Random.Default.nextFloat() > 0.45f) return@forEachParticle
             if (p.a < 0.05f) return@forEachParticle
 
@@ -62,7 +61,6 @@ object ParticleRuntime {
             val z = p.z.toDouble()
             val scale = (p.sizeX * 2f).coerceIn(0.25f, 1.5f)
 
-            // 1) Пытаемся Dust с цветом из эффекта
             val dustOk = runCatching {
                 val ri = (p.r.coerceIn(0f, 1f) * 255).toInt()
                 val gi = (p.g.coerceIn(0f, 1f) * 255).toInt()
@@ -74,7 +72,6 @@ object ParticleRuntime {
             }.getOrDefault(false)
 
             if (!dustOk) {
-                // 2) Fallback — ванильные типы
                 val type = when {
                     p.r > 0.8f && p.g > 0.6f -> net.minecraft.core.particles.ParticleTypes.FLAME
                     p.a < 0.5f -> net.minecraft.core.particles.ParticleTypes.CLOUD
@@ -98,7 +95,6 @@ object ParticleRuntime {
         val offsetZ: Double = 0.0,
         var ageSec: Float = 0f,
         var spawnAcc: Float = 0f,
-        /** Для INSTANT: отслеживаем, когда нужно следующую порцию (при LOOPING) */
         var lastBurstTime: Float = 0f,
         val particles: ArrayList<LiveParticle> = ArrayList(),
         val rng: Random = Random.Default
@@ -170,7 +166,6 @@ object ParticleRuntime {
                     }
                 }
                 ParticleEffect.RateMode.INSTANT -> {
-                    // Для INSTANT: спавним порцию сразу при старте и далее каждые activeTime секунд (если LOOPING)
                     val timeSinceLastBurst = em.ageSec - em.lastBurstTime
                     val shouldBurst = when (em.effect.lifetimeMode) {
                         ParticleEffect.LifetimeMode.ONCE ->
@@ -191,7 +186,6 @@ object ParticleRuntime {
                 val p = pit.next()
                 p.age += dtSec
 
-                // flipbook UV
                 p.flipbook?.let { fb ->
                     val t = if (fb.stretchToLifetime && p.maxAge > 0f) {
                         (p.age / p.maxAge).coerceIn(0f, 0.999f)
@@ -216,14 +210,12 @@ object ParticleRuntime {
                     continue
                 }
 
-                // fade alpha
                 val life = if (p.maxAge > 1e-6f) (p.age / p.maxAge).coerceIn(0f, 1f) else 1f
                 p.a = p.baseA * (1f - life)
                 p.r = p.baseR
                 p.g = p.baseG
                 p.b = p.baseB
 
-                // size by age (Molang)
                 if (em.effect.sizeExprX != null || em.effect.sizeExprY != null) {
                     val c = SimpleMolang.Ctx(
                         random1 = p.rand1,
@@ -245,7 +237,6 @@ object ParticleRuntime {
                     }
                 }
 
-                // motion
                 p.vx += (em.effect.accelX + p.ax) * dtSec
                 p.vy += (em.effect.accelY + p.ay) * dtSec
                 p.vz += (em.effect.accelZ + p.az) * dtSec
@@ -367,6 +358,16 @@ object ParticleRuntime {
 
     fun handlePayload(payload: ParticlePayload) {
         when (payload.action) {
+            ParticlePayload.AAA -> {
+                val scale = payload.targetNpcId.toFloatOrNull() ?: 1f
+                AaaParticleBridge.play(
+                    payload.effectId,
+                    payload.x,
+                    payload.y,
+                    payload.z,
+                    scale
+                )
+            }
             ParticlePayload.PLAY -> {
                 ParticleRegistry.reload()
                 val effect = ParticleRegistry.get(payload.effectId)
@@ -376,7 +377,6 @@ object ParticleRuntime {
                     )
                     return
                 }
-                // Удаляем старые эмиттеры с тем же эффектом в той же точке (перезапуск)
                 emitters.removeAll {
                     it.effect.identifier == effect.identifier &&
                             it.followNpcId == null &&
@@ -387,13 +387,11 @@ object ParticleRuntime {
                 val em = ActiveEmitter(effect, payload.x, payload.y, payload.z)
                 when (effect.rateMode) {
                     ParticleEffect.RateMode.INSTANT -> {
-                        // Первую порцию спавним сразу
                         val count = effect.spawnRate.toInt().coerceIn(1, effect.maxParticles)
                         repeat(count) { spawnOne(em) }
                         em.lastBurstTime = 0f
                     }
                     ParticleEffect.RateMode.STEADY -> {
-                        // Небольшой стартовый burst, чтобы было видно сразу
                         val burst = effect.spawnRate.toInt().coerceIn(1, 8)
                         repeat(burst) { spawnOne(em) }
                     }
@@ -421,7 +419,6 @@ object ParticleRuntime {
                     offsetY = payload.y,
                     offsetZ = payload.z
                 )
-                // Для INSTANT тоже спавним сразу
                 if (effect.rateMode == ParticleEffect.RateMode.INSTANT) {
                     val count = effect.spawnRate.toInt().coerceIn(1, effect.maxParticles)
                     repeat(count) { spawnOne(em) }
