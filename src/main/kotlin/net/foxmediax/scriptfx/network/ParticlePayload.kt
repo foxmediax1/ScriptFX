@@ -8,9 +8,9 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload
 
 /**
  * Сервер → клиент.
- * action: play | stop | stop_all | attach | detach
- * targetNpcId — для attach/detach (иначе "")
- * x,y,z — позиция (play) или offset (attach)
+ * action: play | stop | stop_all | attach | detach | aaa
+ * targetNpcId — для attach/detach (npc id), для aaa — scale как строка
+ * x,y,z — позиция (play/aaa) или offset (attach)
  */
 data class ParticlePayload(
     val action: String,
@@ -29,6 +29,8 @@ data class ParticlePayload(
         const val STOP_ALL = "stop_all"
         const val ATTACH = "attach"
         const val DETACH = "detach"
+        /** AAA Particles (Effekseer): effectId = namespace:effek, targetNpcId = scale */
+        const val AAA = "aaa"
 
         val TYPE: CustomPacketPayload.Type<ParticlePayload> =
             CustomPacketPayload.Type(ScriptFX.id("particle"))
