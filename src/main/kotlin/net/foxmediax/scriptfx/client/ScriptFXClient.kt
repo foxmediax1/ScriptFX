@@ -14,6 +14,7 @@ import net.foxmediax.scriptfx.ScriptFXKeybinds
 import net.foxmediax.scriptfx.hud.HudOverlay
 import net.foxmediax.scriptfx.client.hud.HudRuntime
 import net.foxmediax.scriptfx.client.mui.MuiScreens
+import net.foxmediax.scriptfx.client.particles.AaaPreviewHelper
 import net.foxmediax.scriptfx.client.particles.ParticleRuntime
 import net.foxmediax.scriptfx.client.particles.ParticleWorldRenderer
 import net.foxmediax.scriptfx.config.ScriptFXConfig
@@ -53,6 +54,14 @@ object ScriptFXClient : ClientModInitializer {
         LocalNpcAssets.tryEnableResourcePack()
         ScriptFXSoundOptions.init()
 
+        // AAA effects pack (если файл уже есть в проекте)
+        try {
+            val pack = Class.forName("net.foxmediax.scriptfx.client.AaaEffectsPack")
+            pack.getMethod("initAndEnable", Boolean::class.javaPrimitiveType).invoke(pack.kotlin.objectInstance, false)
+        } catch (_: Throwable) {
+            // опционально
+        }
+
         ClientPlayNetworking.registerGlobalReceiver(CameraPayload.TYPE) { payload, _ ->
             CameraOverlay.receive(payload)
         }
@@ -77,6 +86,12 @@ object ScriptFXClient : ClientModInitializer {
             HudElement { graphics, _ -> NpcInteractClient.render(graphics) }
         )
 
+        // AAA FBO preview поверх UI
+        HudElementRegistry.addLast(
+            ScriptFX.id("aaa_preview"),
+            HudElement { _, _ -> AaaPreviewHelper.render() }
+        )
+
         ClientReceiveMessageEvents.CHAT.register { message, signed, _, params, _ ->
             if (signed == null) {
                 CenterMessageOverlay.receiveSystem(message.string)
@@ -99,11 +114,16 @@ object ScriptFXClient : ClientModInitializer {
         )
 
         ClientPlayConnectionEvents.JOIN.register { _, _, _ ->
-            // После входа в мир: попробовать включить customs-пак один раз
             if (!triedEnableCustomsPack) {
                 triedEnableCustomsPack = true
                 Minecraft.getInstance().execute {
                     LocalNpcAssets.tryEnableResourcePack()
+                    try {
+                        val pack = Class.forName("net.foxmediax.scriptfx.client.AaaEffectsPack")
+                        pack.getMethod("tryEnableResourcePack", Boolean::class.javaPrimitiveType)
+                            .invoke(pack.kotlin.objectInstance, false)
+                    } catch (_: Throwable) {
+                    }
                 }
             }
         }
@@ -113,15 +133,13 @@ object ScriptFXClient : ClientModInitializer {
             CameraOverlay.clear()
             CutsceneClient.clear()
             NpcPreviewHelper.clear()
+            AaaPreviewHelper.clear()
             QuestClient.clear()
             ParticleRuntime.clear()
             LocalNpcAssets.clear()
             net.foxmediax.scriptfx.client.media.MediaClient.clear()
             HudRuntime.clear()
             triedEnableCustomsPack = false
-
-            // VFXWeaver сам гасит эффекты при выходе; при необходимости:
-            // VfxBridge — no persistent state
         }
 
         EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC, ::ScriptNpcRenderer)
@@ -137,6 +155,7 @@ object ScriptFXClient : ClientModInitializer {
 
             NpcInteractClient.tick()
             NpcPreviewHelper.clientTick()
+            AaaPreviewHelper.clientTick()
             NpcDialogClient.tick()
 
             HudRuntime.tick()
@@ -199,7 +218,7 @@ object ScriptFXClient : ClientModInitializer {
                 val a = vp.overlayBlackAlpha()
                 if (a > 0.001f) {
                     val alpha = (a * 255f).toInt().coerceIn(0, 255)
-                    val color = (alpha shl 24) // ARGB чёрный
+                    val color = (alpha shl 24)
                     graphics.fill(0, 0, sw, sh, color)
                 }
 
