@@ -46,14 +46,14 @@
 	],
 	"depends": {
 		"fabricloader": ">=0.19.5",
-		"minecraft": "~26.1",
+		"minecraft": ">=26.1 <26.2",
 		"java": ">=25",
-		"fabric-api": "*",
-		"fabric-language-kotlin": "*",
-		"modernui": "*"
+		"fabric-api": "*"
 	},
 	"suggests": {
 		"vfxweaver": "*",
-		"aaa_particles": "*"
+		"aaa_particles": "*",
+		"geckolib": "*",
+		"forgeconfigapiport": "*"
 	}
 }
