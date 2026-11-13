@@ -14,6 +14,7 @@ import net.foxmediax.scriptfx.ScriptFXKeybinds
 import net.foxmediax.scriptfx.hud.HudOverlay
 import net.foxmediax.scriptfx.client.hud.HudRuntime
 import net.foxmediax.scriptfx.client.mui.MuiScreens
+import net.foxmediax.scriptfx.client.particles.AaaParticleBridge
 import net.foxmediax.scriptfx.client.particles.AaaPreviewHelper
 import net.foxmediax.scriptfx.client.particles.ParticleRuntime
 import net.foxmediax.scriptfx.client.particles.ParticleWorldRenderer
@@ -128,6 +129,21 @@ object ScriptFXClient : ClientModInitializer {
             }
         }
 
+        ClientPlayConnectionEvents.JOIN.register { _, _, client ->
+            if (!triedEnableCustomsPack) {
+                triedEnableCustomsPack = true
+                client.execute {
+                    LocalNpcAssets.tryEnableResourcePack()
+                }
+            }
+            // Preload AAA на render thread после появления level (не из ModernUI)
+            client.execute {
+                client.execute {
+                    AaaParticleBridge.preloadKnownEffects()
+                }
+            }
+        }
+
         ClientPlayConnectionEvents.DISCONNECT.register { _, _ ->
             CenterMessageOverlay.clear()
             CameraOverlay.clear()
@@ -140,6 +156,7 @@ object ScriptFXClient : ClientModInitializer {
             net.foxmediax.scriptfx.client.media.MediaClient.clear()
             HudRuntime.clear()
             triedEnableCustomsPack = false
+            AaaParticleBridge.clearPreloadCache()
         }
 
         EntityRendererRegistry.register(NpcEntities.SCRIPT_NPC, ::ScriptNpcRenderer)
