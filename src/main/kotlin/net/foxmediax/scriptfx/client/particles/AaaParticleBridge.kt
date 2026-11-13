@@ -1,134 +1,221 @@
 package net.foxmediax.scriptfx.client.particles
 
-import net.fabricmc.api.EnvType
-import net.fabricmc.api.Environment
-import net.fabricmc.loader.api.FabricLoader
-import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
+import mod.chloeprime.aaaparticles.api.client.EffectRegistry
+import mod.chloeprime.aaaparticles.api.common.ParticleEmitterInfo
+import mod.chloeprime.aaaparticles.client.installer.NativePlatform
 import net.minecraft.client.Minecraft
 import net.minecraft.resources.Identifier
+import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.Level
+import net.minecraft.world.phys.Vec3
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 
-/**
- * Мост к AAA Particles (Effekseer).
- * assets/<ns>/effeks/<name>.efkefc  →  id <ns>:<name>
- */
-@Environment(EnvType.CLIENT)
 object AaaParticleBridge {
 
-    val available: Boolean
-        get() = FabricLoader.getInstance().isModLoaded("aaa_particles")
+    private val LOG: Logger = LoggerFactory.getLogger("ScriptFX")
 
-    fun play(effekId: String, x: Double, y: Double, z: Double, scale: Float = 1f) {
-        if (!available) {
-            ScriptFXLog.warn("AAA Particles не загружен — пропуск '$effekId'")
-            return
-        }
-        val level = Minecraft.getInstance().level ?: run {
-            ScriptFXLog.warn("AAA play: нет Level")
-            return
-        }
+    val available: Boolean by lazy {
         try {
-            spawn(level, toId(effekId), x, y, z, scale)
-            ScriptFXLog.info("AAA play: $effekId @ $x $y $z scale=$scale")
+            !NativePlatform.isRunningOnUnsupportedPlatform()
         } catch (t: Throwable) {
-            ScriptFXLog.warn("AAA play failed: ${t.message}")
-            t.printStackTrace()
+            LOG.warn("AAA availability check failed: {}", t.toString())
+            false
         }
     }
 
-    private fun spawn(
-        level: Level,
-        id: Identifier,
-        x: Double, y: Double, z: Double,
-        scale: Float
+    private val knownEffects = LinkedHashSet<Identifier>()
+
+    // ─────────────────────────────────────────────────────────────────
+    // Совместимость со старым API (String overloads)
+    // ─────────────────────────────────────────────────────────────────
+
+    @JvmStatic
+    @JvmOverloads
+    fun play(effekId: String, x: Double, y: Double, z: Double, scale: Float = 1.0f) {
+        val id = Identifier.tryParse(effekId) ?: run {
+            LOG.warn("AAA play: невалидный id '{}'", effekId)
+            return
+        }
+        play(id, x, y, z, scale)
+    }
+
+    @JvmStatic
+    @JvmOverloads
+    fun play(effekId: String, x: Float, y: Float, z: Float, scale: Float = 1.0f) =
+        play(effekId, x.toDouble(), y.toDouble(), z.toDouble(), scale)
+
+    @JvmStatic
+    @JvmOverloads
+    fun preload(effekId: String): Boolean {
+        val id = Identifier.tryParse(effekId) ?: return false
+        return preload(id)
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Основной API (Identifier)
+    // ─────────────────────────────────────────────────────────────────
+
+    @JvmStatic
+    @JvmOverloads
+    fun play(
+        effekId: Identifier,
+        x: Double,
+        y: Double,
+        z: Double,
+        scale: Float = 1.0f,
     ) {
-        val infoClass = loadClass(
-            "mod.chloeprime.aaaparticles.api.common.ParticleEmitterInfo",
-            "cn.chloeprime.aaaparticles.api.common.ParticleEmitterInfo"
-        ) ?: error("ParticleEmitterInfo not found")
+        LOG.info("AAA play: {} @ {} {} {} scale={}", effekId, x, y, z, scale)
+        val level = Minecraft.getInstance().level ?: return
+        knownEffects.add(effekId)
+        spawn(level, effekId, x, y, z, scale = scale)
+    }
 
-        val levelClass = loadClass(
-            "mod.chloeprime.aaaparticles.api.common.AAALevel",
-            "cn.chloeprime.aaaparticles.api.common.AAALevel"
-        ) ?: error("AAALevel not found")
+    @JvmStatic
+    @JvmOverloads
+    fun play(effekId: Identifier, x: Float, y: Float, z: Float, scale: Float = 1.0f) =
+        play(effekId, x.toDouble(), y.toDouble(), z.toDouble(), scale)
 
-        // --- create(Level, ResourceLocation/Identifier) ---
-        val createMethod = infoClass.methods.firstOrNull { m ->
-            m.name == "create" &&
-                    m.parameterCount == 2 &&
-                    Level::class.java.isAssignableFrom(m.parameterTypes[0])
-        }
-
-        val info = if (createMethod != null) {
-            createMethod.invoke(null, level, id)
-        } else {
-            // fallback
-            try {
-                infoClass.getConstructor(id.javaClass).newInstance(id)
-            } catch (_: NoSuchMethodException) {
-                // Identifier vs ResourceLocation
-                val rlClass = Class.forName("net.minecraft.resources.ResourceLocation")
-                val rl = rlClass.getMethod("parse", String::class.java).invoke(null, id.toString())
-                infoClass.getConstructor(rlClass).newInstance(rl)
+    @JvmStatic
+    fun preload(effekId: Identifier): Boolean {
+        val level = Minecraft.getInstance().level ?: return false
+        return try {
+            knownEffects.add(effekId)
+            runOnRenderThread {
+                EffectRegistry.load(effekId)
+                    .thenAccept { LOG.info("AAA preload OK: {}", effekId) }
+                    .exceptionally { t ->
+                        LOG.error("AAA preload failed: {} — {}", effekId, t.toString())
+                        null
+                    }
             }
-        }
-
-        val clone = infoClass.getMethod("clone").invoke(info)
-
-        // position(double, double, double)
-        val positioned = infoClass.methods
-            .first { it.name == "position" && it.parameterCount == 3 &&
-                    it.parameterTypes[0] == java.lang.Double.TYPE }
-            .invoke(clone, x, y, z)
-
-        // scale
-        val scaled = run {
-            val s3 = infoClass.methods.firstOrNull {
-                it.name == "scale" && it.parameterCount == 3 &&
-                        it.parameterTypes[0] == java.lang.Float.TYPE
-            }
-            val s1 = infoClass.methods.firstOrNull {
-                it.name == "scale" && it.parameterCount == 1 &&
-                        it.parameterTypes[0] == java.lang.Float.TYPE
-            }
-            when {
-                s3 != null -> s3.invoke(positioned, scale, scale, scale)
-                s1 != null -> s1.invoke(positioned, scale)
-                else -> positioned
-            }
-        }
-
-        // --- правильно выбираем addParticle(Level, boolean, ParticleEmitterInfo) ---
-        val add = levelClass.methods.firstOrNull { m ->
-            m.name == "addParticle" &&
-                    m.parameterCount == 3 &&
-                    m.parameterTypes[1] == java.lang.Boolean.TYPE   // именно boolean, не double
-        } ?: levelClass.methods.first { m ->
-            // fallback: addParticle(Level, ParticleEmitterInfo)
-            m.name == "addParticle" && m.parameterCount == 2
-        }
-
-        if (add.parameterCount == 3) {
-            add.invoke(null, level, true, scaled)   // force = true
-        } else {
-            add.invoke(null, level, scaled)
+            true
+        } catch (t: Throwable) {
+            LOG.error("AAA preload exception: {} — {}", effekId, t.toString())
+            false
         }
     }
 
-    private fun toId(raw: String): Identifier {
-        val clean = raw.trim().removeSurrounding("\"")
-        return if (clean.contains(':')) Identifier.parse(clean)
-        else Identifier.fromNamespaceAndPath("scriptfx", clean)
+    @JvmStatic
+    fun preloadKnownEffects() {
+        if (knownEffects.isEmpty()) {
+            LOG.info("AAA preloadKnownEffects: список пуст — нечего грузить")
+            return
+        }
+        LOG.info("AAA preloadKnownEffects: перезагрузка {} эффект(ов)", knownEffects.size)
+        knownEffects.toList().forEach { preload(it) }
     }
 
-    private fun loadClass(vararg names: String): Class<*>? {
-        for (n in names) {
-            try {
-                return Class.forName(n)
-            } catch (_: ClassNotFoundException) {
+    @JvmStatic
+    fun clearPreloadCache() {
+        val size = knownEffects.size
+        knownEffects.clear()
+        LOG.info("AAA clearPreloadCache: очищено {} записей", size)
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Спавн — ТЕПЕРЬ С ПЕРЕНАПРАВЛЕНИЕМ НА RENDER THREAD
+    // ─────────────────────────────────────────────────────────────────
+
+    @JvmStatic
+    @JvmOverloads
+    fun spawn(
+        level: Level,
+        effekId: String,
+        x: Double,
+        y: Double,
+        z: Double,
+        scale: Float = 1.0f,
+        speed: Float = 1.0f,
+        player: Player? = null,
+    ): Boolean {
+        val id = Identifier.tryParse(effekId) ?: return false
+        return spawn(level, id, x, y, z, scale, speed, player)
+    }
+
+    fun spawn(
+        level: Level,
+        effekId: Identifier,
+        x: Double,
+        y: Double,
+        z: Double,
+        scale: Float = 1.0f,
+        speed: Float = 1.0f,
+        player: Player? = null,
+    ): Boolean {
+        return try {
+            val info = ParticleEmitterInfo.create(level, effekId)
+                .position(Vec3(x, y, z))
+                .scale(scale)
+                .speed(speed)
+
+            // spawnInWorld() вызывает EffectRegistry.load(), который внутри
+            // делает glGetInteger() — это требует текущего OpenGL-контекста.
+            // Поэтому всегда выполняем на render thread Minecraft.
+            runOnRenderThread {
+                info.spawnInWorld(level, player)
             }
+            LOG.debug("AAA spawn queued: {} @ ({}, {}, {}) scale={}", effekId, x, y, z, scale)
+            true
+        } catch (t: Throwable) {
+            LOG.warn("AAA spawn failed for {}: {}", effekId, t.toString())
+            false
         }
-        ScriptFXLog.warn("AAA class not found, tried: ${names.joinToString()}")
-        return null
+    }
+
+    fun spawnAdvanced(
+        level: Level,
+        effekId: Identifier,
+        x: Double,
+        y: Double,
+        z: Double,
+        scale: Float = 1.0f,
+        speed: Float = 1.0f,
+        rotX: Float = 0f,
+        rotY: Float = 0f,
+        rotZ: Float = 0f,
+        parameters: Map<Int, Float> = emptyMap(),
+        triggers: List<Int> = emptyList(),
+        player: Player? = null,
+    ): Boolean {
+        return try {
+            val info = ParticleEmitterInfo.create(level, effekId)
+                .position(Vec3(x, y, z))
+                .rotation(rotX, rotY, rotZ)
+                .scale(scale)
+                .speed(speed)
+
+            parameters.forEach { (index, value) -> info.parameter(index, value) }
+            triggers.forEach { info.trigger(it) }
+
+            runOnRenderThread {
+                info.spawnInWorld(level, player)
+            }
+            LOG.debug("AAA spawnAdvanced queued: {} @ ({}, {}, {}) scale={}", effekId, x, y, z, scale)
+            true
+        } catch (t: Throwable) {
+            LOG.warn("AAA spawnAdvanced failed for {}: {}", effekId, t.toString())
+            false
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // Утилита потоковой безопасности
+    // ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Если текущий поток — render thread, выполняем сразу.
+     * Иначе ставим задачу в очередь render thread через Minecraft.execute().
+     */
+    // В классе AaaParticleBridge замените метод runOnRenderThread на следующий:
+
+    private fun runOnRenderThread(block: () -> Unit) {
+        val mc = Minecraft.getInstance()
+        if (mc.isSameThread) {
+            block()
+        } else {
+            // Используем RenderSystem для гарантированного выполнения на render thread
+            com.mojang.blaze3d.systems.RenderSystem.recordRenderCall(block)
+        }
     }
 }
