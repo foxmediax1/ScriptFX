@@ -52,16 +52,45 @@ object AaaParticleBridge {
             "cn.chloeprime.aaaparticles.api.common.AAALevel"
         ) ?: error("AAALevel not found")
 
-        val info = infoClass.getConstructor(Identifier::class.java).newInstance(id)
+        // --- create(Level, ResourceLocation/Identifier) ---
+        val createMethod = infoClass.methods.firstOrNull { m ->
+            m.name == "create" &&
+                    m.parameterCount == 2 &&
+                    Level::class.java.isAssignableFrom(m.parameterTypes[0])
+        }
+
+        val info = if (createMethod != null) {
+            createMethod.invoke(null, level, id)
+        } else {
+            // fallback
+            try {
+                infoClass.getConstructor(id.javaClass).newInstance(id)
+            } catch (_: NoSuchMethodException) {
+                // Identifier vs ResourceLocation
+                val rlClass = Class.forName("net.minecraft.resources.ResourceLocation")
+                val rl = rlClass.getMethod("parse", String::class.java).invoke(null, id.toString())
+                infoClass.getConstructor(rlClass).newInstance(rl)
+            }
+        }
+
         val clone = infoClass.getMethod("clone").invoke(info)
 
-        val positioned = infoClass.methods.first { m ->
-            m.name == "position" && m.parameterCount == 3
-        }.invoke(clone, x, y, z)
+        // position(double, double, double)
+        val positioned = infoClass.methods
+            .first { it.name == "position" && it.parameterCount == 3 &&
+                    it.parameterTypes[0] == java.lang.Double.TYPE }
+            .invoke(clone, x, y, z)
 
+        // scale
         val scaled = run {
-            val s3 = infoClass.methods.firstOrNull { it.name == "scale" && it.parameterCount == 3 }
-            val s1 = infoClass.methods.firstOrNull { it.name == "scale" && it.parameterCount == 1 }
+            val s3 = infoClass.methods.firstOrNull {
+                it.name == "scale" && it.parameterCount == 3 &&
+                        it.parameterTypes[0] == java.lang.Float.TYPE
+            }
+            val s1 = infoClass.methods.firstOrNull {
+                it.name == "scale" && it.parameterCount == 1 &&
+                        it.parameterTypes[0] == java.lang.Float.TYPE
+            }
             when {
                 s3 != null -> s3.invoke(positioned, scale, scale, scale)
                 s1 != null -> s1.invoke(positioned, scale)
@@ -69,10 +98,21 @@ object AaaParticleBridge {
             }
         }
 
-        val add = levelClass.methods.first { m ->
-            m.name == "addParticle" && m.parameterCount == 3
+        // --- правильно выбираем addParticle(Level, boolean, ParticleEmitterInfo) ---
+        val add = levelClass.methods.firstOrNull { m ->
+            m.name == "addParticle" &&
+                    m.parameterCount == 3 &&
+                    m.parameterTypes[1] == java.lang.Boolean.TYPE   // именно boolean, не double
+        } ?: levelClass.methods.first { m ->
+            // fallback: addParticle(Level, ParticleEmitterInfo)
+            m.name == "addParticle" && m.parameterCount == 2
         }
-        add.invoke(null, level, false, scaled)
+
+        if (add.parameterCount == 3) {
+            add.invoke(null, level, true, scaled)   // force = true
+        } else {
+            add.invoke(null, level, scaled)
+        }
     }
 
     private fun toId(raw: String): Identifier {
