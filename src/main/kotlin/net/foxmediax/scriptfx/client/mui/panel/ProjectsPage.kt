@@ -32,6 +32,7 @@ import net.foxmediax.scriptfx.scriptengine.ScriptContext
 import net.foxmediax.scriptfx.scriptengine.ScriptManager
 import net.minecraft.client.Minecraft
 import java.io.File
+import icyllis.modernui.core.Core
 
 /**
  * Экран «Сценарии»:
@@ -434,21 +435,32 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
 
     private fun logConsole(line: String) {
         if (!this::consoleBox.isInitialized) return
-        val color = when {
-            line.startsWith("[ERROR]") -> PanelUi.COL_ERROR
-            line.startsWith("[WARN]") -> PanelUi.COL_WARNING
-            else -> COL_MUTED
+
+        val apply = Runnable {
+            if (!this::consoleBox.isInitialized) return@Runnable
+            val color = when {
+                line.startsWith("[ERROR]") -> PanelUi.COL_ERROR
+                line.startsWith("[WARN]") -> PanelUi.COL_WARNING
+                else -> COL_MUTED
+            }
+            consoleBox.addView(
+                TextView(ctx).apply {
+                    text = line
+                    textSize = 11f
+                    setTextColor(color)
+                },
+                lp(MATCH, WRAP)
+            )
+            while (consoleBox.childCount > 40) {
+                consoleBox.removeViewAt(0)
+            }
         }
-        consoleBox.addView(
-            TextView(ctx).apply {
-                text = line
-                textSize = 11f
-                setTextColor(color)
-            },
-            lp(MATCH, WRAP)
-        )
-        while (consoleBox.childCount > 40) {
-            consoleBox.removeViewAt(0)
+
+        // ModernUI: View только с UI thread
+        if (Core.isOnUiThread()) {
+            apply.run()
+        } else {
+            Core.getUiHandler().post(apply)
         }
     }
 
