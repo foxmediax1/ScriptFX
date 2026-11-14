@@ -214,8 +214,7 @@ object AaaParticleBridge {
         if (mc.isSameThread) {
             block()
         } else {
-            // Используем RenderSystem для гарантированного выполнения на render thread
-            com.mojang.blaze3d.systems.RenderSystem.recordRenderCall(block)
+            mc.execute(block)
         }
     }
 }
