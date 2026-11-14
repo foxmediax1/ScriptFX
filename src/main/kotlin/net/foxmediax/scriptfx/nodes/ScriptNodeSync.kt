@@ -6,14 +6,18 @@ import net.foxmediax.scriptfx.scriptengine.ScriptParser
 /**
  * Двусторонняя связь .sfxs ↔ NodeGraph.
  *
- * Метаданные связей (только после режима нодов → текст):
+ * Метаданные (после режима нодов → текст):
  *   # node connect("A") if ("B")
- * скрыты при обратном разборе: из текста в ноды пишутся команды, connect-комменты не обязательны.
+ *   # node pos("A") 120.0 160.0
+ * При разборе текст → ноды connect/pos восстанавливают рёбра и координаты.
  */
 object ScriptNodeSync {
 
     private val CONNECT_RE =
         Regex("""^\s*#\s*node\s+connect\("([^"]+)"\)\s+if\s+\("([^"]+)"\)\s*$""")
+
+    private val POS_RE =
+        Regex("""^\s*#\s*node\s+pos\("([^"]+)"\)\s+(\-?\d+(?:\.\d+)?)\s+(\-?\d+(?:\.\d+)?)\s*$""")
 
     fun defaultTemplateGraph(scriptName: String = "script"): NodeGraph {
         val g = NodeGraph(id = scriptName, title = scriptName)
@@ -44,7 +48,7 @@ object ScriptNodeSync {
         return g
     }
 
-    /** Граф → текст для EditText (с # node connect). */
+    /** Граф → текст (connect + pos + команды). */
     fun graphToText(graph: NodeGraph, includeConnectMeta: Boolean = true): String {
         val sb = StringBuilder()
         sb.appendLine("# ScriptFX node graph: ${graph.id}")
@@ -54,12 +58,14 @@ object ScriptNodeSync {
                 val to = graph.node(e.to)?.title?.ifBlank { e.to } ?: e.to
                 sb.appendLine("# node connect(\"$from\") if (\"$to\")")
             }
+            for (n in graph.nodes) {
+                val title = n.title.ifBlank { n.id }
+                sb.appendLine("# node pos(\"$title\") ${n.x} ${n.y}")
+            }
             sb.appendLine()
         }
-        // Линейный порядок по рёбрам от START
         val cmds = NodeCompiler.compile(graph)
         for (c in cmds) {
-            // startscript в шаблоне START не дублируем как рантайм-команду при сохранении файла
             if (c.name == "startscript") continue
             sb.append(c.name)
             if (c.args.isNotEmpty()) {
@@ -75,23 +81,28 @@ object ScriptNodeSync {
 
     /**
      * Текст → граф.
-     * 1) Читаем # node connect — восстанавливаем рёбра по title.
-     * 2) Иначе линейная цепочка из ScriptParser.
+     * 1) # node connect / # node pos
+     * 2) иначе линейная цепочка из ScriptParser
      */
     fun textToGraph(text: String, scriptName: String): NodeGraph {
         val graph = NodeGraph(id = scriptName, title = scriptName)
-        val connects = mutableListOf<Pair<String, String>>() // fromTitle to toTitle
+        val connects = mutableListOf<Pair<String, String>>()
+        val positions = mutableMapOf<String, Pair<Float, Float>>()
 
         text.lineSequence().forEach { line ->
-            CONNECT_RE.matchEntire(line.trim())?.let { m ->
+            val t = line.trim()
+            CONNECT_RE.matchEntire(t)?.let { m ->
                 connects.add(m.groupValues[1] to m.groupValues[2])
+            }
+            POS_RE.matchEntire(t)?.let { m ->
+                positions[m.groupValues[1]] =
+                    m.groupValues[2].toFloat() to m.groupValues[3].toFloat()
             }
         }
 
         val commands = ScriptParser.parse(text)
-            .filter { it.name != "startscript" } // start — отдельная нода
+            .filter { it.name != "startscript" }
 
-        // Всегда есть START и END
         val start = GraphNode(
             id = "start",
             kind = NodeKind.START,
@@ -99,6 +110,10 @@ object ScriptNodeSync {
             params = mutableMapOf("cmd" to "startscript", "args" to scriptName),
             x = 80f, y = 160f
         )
+        positions[start.title]?.let { (x, y) ->
+            start.x = x
+            start.y = y
+        }
         graph.nodes.add(start)
 
         val bodyNodes = mutableListOf<GraphNode>()
@@ -107,6 +122,10 @@ object ScriptNodeSync {
             val n = commandToNode(cmd, i)
             n.x = 80f + (i + 1) * 240f
             n.y = 160f
+            positions[n.title]?.let { (x, y) ->
+                n.x = x
+                n.y = y
+            }
             bodyNodes.add(n)
             graph.nodes.add(n)
         }
@@ -119,6 +138,10 @@ object ScriptNodeSync {
             x = 80f + (bodyNodes.size + 1) * 240f,
             y = 160f
         )
+        positions[end.title]?.let { (x, y) ->
+            end.x = x
+            end.y = y
+        }
         graph.nodes.add(end)
 
         if (connects.isNotEmpty()) {
@@ -129,7 +152,6 @@ object ScriptNodeSync {
                 graph.edges.add(GraphEdge(a.id, "out", b.id, "in"))
             }
         } else {
-            // Линейная цепочка start → body… → end
             var prev = start.id
             for (n in bodyNodes) {
                 graph.edges.add(GraphEdge(prev, "out", n.id, "in"))
