@@ -94,7 +94,6 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     private var nodeIdSeq = 1
 
     private lateinit var nodeTitleView: TextView
-    private lateinit var nodeParamEdit: EditText
     private var selectedNodeId: String? = null
 
     private lateinit var nodeParamsBox: LinearLayout
@@ -806,14 +805,6 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             visibility = View.GONE
         }
         col.addView(nodeParamsBox, lp(MATCH, WRAP).apply { topMargin = dp(ctx, 6) })
-
-        nodeParamEdit.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            override fun afterTextChanged(s: Editable?) {
-                if (suppressNodeParam) return
-            }
-        })
 
         // --- палитра нод ---
         paletteSection = LinearLayout(ctx).apply {
