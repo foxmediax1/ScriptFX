@@ -196,4 +196,22 @@ class OverlayHost(private val ctx: Context, private val layer: FrameLayout) {
         }
         push(b, widthDp = 420, maxHeightDp = 360)
     }
+
+    fun showVideo(videoId: String, onClosed: (() -> Unit)? = null) {
+        val overlay = net.foxmediax.scriptfx.client.mui.video.UiVideoPlayerOverlay(
+            ctx,
+            videoId
+        ) { o ->
+            layer.removeView(o)
+            onClosed?.invoke()
+        }
+        layer.addView(
+            overlay,
+            FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        )
+        overlay.requestFocus()
+    }
 }
