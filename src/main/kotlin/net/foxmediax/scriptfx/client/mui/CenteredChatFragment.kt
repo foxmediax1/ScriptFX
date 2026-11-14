@@ -19,7 +19,7 @@ import icyllis.modernui.widget.FrameLayout
 import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
 import icyllis.modernui.widget.TextView
-import net.foxmediax.scriptfx.client.ChatComponentAccessor
+import net.foxmediax.scriptfx.mixin.client.ChatComponentAccessor
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.chat.GuiMessage
 import org.lwjgl.glfw.GLFW
