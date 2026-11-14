@@ -51,7 +51,7 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
     private var project: String? = null
     private var selected: ParticleEffect? = null
     private var selectedAaa: AaaEffectCatalog.Entry? = null
-    private var listMode = 0 // 0 ScriptFX, 1 AAA
+    private var listMode = 0
     private var currentTab = 0
 
     private var uiSize = 1.5f
@@ -304,8 +304,17 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         )
         col.addView(bar, lp(MATCH, WRAP))
 
+        // ═══ 3D-превью: заполняет доступное пространство, содержимое
+        // центрируется внутри самого AaaPreviewView (через onDraw/viewMatrix).
+        // Если хочется фиксированный квадрат по центру — замените на:
+        //   LinearLayout.LayoutParams(dp(ctx, 320), dp(ctx, 320)).apply {
+        //       gravity = Gravity.CENTER_HORIZONTAL
+        //   }
         aaaPreview = AaaPreviewView(ctx)
-        col.addView(aaaPreview, LinearLayout.LayoutParams(MATCH, 0, 1f))
+        col.addView(
+            aaaPreview,
+            LinearLayout.LayoutParams(MATCH, 0, 1f)
+        )
 
         previewHint = TextView(ctx).apply {
             text = "ScriptFX → у игрока · AAA → FBO"
@@ -394,7 +403,7 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         currentTab = 0
         refreshTabs()
         renderProps()
-        aaaPreview.setEffect(e.id)
+        aaaPreview.setEffect(e.id.toString())
     }
 
     private fun showEmptyProps() {
@@ -578,8 +587,20 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
 
     private fun playSelected() {
         selectedAaa?.let {
-            aaaPreview.play()
-            previewHint.text = "AAA preview: ${it.id}"
+            // Спавним в мире перед игроком.
+            val player = Minecraft.getInstance().player
+            if (player == null) {
+                previewHint.text = "Нужен мир / игрок"
+                return
+            }
+            AaaParticleBridge.play(
+                it.id.toString(),
+                player.x,
+                player.y + 1.0,
+                player.z,
+                uiAaaScale
+            )
+            previewHint.text = "▶ ${it.id} заспавнен в мире"
             return
         }
         val fx = selected ?: run {
