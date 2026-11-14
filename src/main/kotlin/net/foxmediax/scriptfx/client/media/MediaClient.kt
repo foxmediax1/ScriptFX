@@ -179,6 +179,159 @@ object MediaClient {
         }
     }
 
+    // ─── Точечное управление одним звуком ────────────────────────────
+
+    /** Возобновление одного звука. */
+    fun resumeSound(key: String) {
+        val k = key.trim()
+        if (k.isEmpty()) return
+        val inst = sounds[k] ?: return
+        runCatching {
+            inst.setPaused(false)
+            ScriptFXLog.info("MediaClient: resumeSound key=$k")
+        }
+    }
+
+    /**
+     * Пытается выставить громкость у FileSoundInstance:
+     *  1. setVolume(float)         — если есть прямой сеттер
+     *  2. updateVolume(float)
+     *  3. поле volume + refreshVolume()
+     * Если ничего не сработало — бросает исключение, чтобы вызывающий
+     * код узнал, что громкость менять нельзя.
+     */
+    private fun applyInstanceVolume(inst: FileSoundInstance, volume: Float) {
+        val cls = inst.javaClass
+        ScriptFXLog.info("applyInstanceVolume: try ${cls.simpleName} vol=$volume")
+
+        // 1. Прямые сеттеры.
+        for (name in listOf("setVolume", "updateVolume", "setGain")) {
+            val m = cls.methods.firstOrNull {
+                it.name == name && it.parameterCount == 1 &&
+                        it.parameterTypes[0] == java.lang.Float.TYPE
+            } ?: continue
+            m.isAccessible = true
+            m.invoke(inst, volume)
+            ScriptFXLog.info("applyInstanceVolume: OK via $name")
+            return
+        }
+
+        // 2. Поле + refreshVolume().
+        var field: java.lang.reflect.Field? = null
+        var c: Class<*>? = cls
+        while (c != null && c != Any::class.java) {
+            field = c.declaredFields.firstOrNull {
+                it.type == java.lang.Float.TYPE &&
+                        (it.name == "volume" || it.name == "mVolume" || it.name == "gain")
+            }
+            if (field != null) break
+            c = c.superclass
+        }
+        if (field != null) {
+            field.isAccessible = true
+            field.setFloat(inst, volume)
+            try {
+                inst.refreshVolume()
+            } catch (_: Throwable) {}
+            ScriptFXLog.info("applyInstanceVolume: OK via field ${field.name}")
+            return
+        }
+
+        // 3. Рефлексия по интерфейсу net.minecraft.client.resources.sounds.SoundInstance.
+        try {
+            val m = inst.javaClass.methods.firstOrNull {
+                it.name == "setVolume" && it.parameterCount == 1
+            }
+            if (m != null) {
+                m.isAccessible = true
+                m.invoke(inst, volume)
+                ScriptFXLog.info("applyInstanceVolume: OK via any setVolume")
+                return
+            }
+        } catch (_: Throwable) {}
+
+        throw IllegalStateException(
+            "FileSoundInstance: no setVolume/updateVolume, no volume field, no setVolume method"
+        )
+    }
+
+    /** Меняет громкость уже играющего звука [key]. */
+    fun setVolume(key: String, volume: Float) {
+        val k = key.trim()
+        if (k.isEmpty()) return
+        val inst = sounds[k] ?: run {
+            ScriptFXLog.warn("MediaClient.setVolume: no sound for key=$k")
+            return
+        }
+        val v = volume.coerceIn(0f, 1f)
+        try {
+            applyInstanceVolume(inst, v)
+            ScriptFXLog.info("MediaClient: setVolume key=$k vol=$v")
+        } catch (t: Throwable) {
+            ScriptFXLog.warn("MediaClient: setVolume failed key=$k: ${t.message}")
+        }
+    }
+
+    /** Пауза одного звука. Пытаемся setPaused, затем глушим громкостью. */
+    fun pauseSound(key: String) {
+        val k = key.trim()
+        if (k.isEmpty()) return
+        val inst = sounds[k] ?: run {
+            ScriptFXLog.warn("MediaClient.pauseSound: no sound for key=$k")
+            return
+        }
+        try {
+            inst.setPaused(true)
+            ScriptFXLog.info("MediaClient: pauseSound key=$k (setPaused)")
+        } catch (t: Throwable) {
+            ScriptFXLog.warn("MediaClient.pauseSound: setPaused failed: ${t.message}")
+        }
+        // Страховка: в MC нет per-instance pause, поэтому глушим громкостью.
+        try {
+            applyInstanceVolume(inst, 0f)
+            ScriptFXLog.info("MediaClient: pauseSound key=$k (volume=0)")
+        } catch (t: Throwable) {
+            ScriptFXLog.warn("MediaClient.pauseSound: volume mute failed: ${t.message}")
+        }
+    }
+
+    /** Возобновление одного звука с восстановлением громкости. */
+    fun resumeSound(key: String, volume: Float = 1f) {
+        val k = key.trim()
+        if (k.isEmpty()) return
+        val inst = sounds[k] ?: run {
+            ScriptFXLog.warn("MediaClient.resumeSound: no sound for key=$k")
+            return
+        }
+        try {
+            inst.setPaused(false)
+        } catch (_: Throwable) {}
+        try {
+            applyInstanceVolume(inst, volume.coerceIn(0f, 1f))
+            ScriptFXLog.info("MediaClient: resumeSound key=$k vol=$volume")
+        } catch (t: Throwable) {
+            ScriptFXLog.warn("MediaClient.resumeSound: volume restore failed: ${t.message}")
+        }
+    }
+
+    /** true, если звук сейчас на паузе. */
+    fun isSoundPaused(key: String): Boolean {
+        val k = key.trim()
+        if (k.isEmpty()) return false
+        val inst = sounds[k] ?: return false
+        // Пытаемся через рефлексию, чтобы не ловить ошибку компиляции,
+        // если метода isPaused() в FileSoundInstance нет.
+        return try {
+            val m = inst.javaClass.methods.firstOrNull {
+                it.name == "isPaused" && it.parameterCount == 0 &&
+                        it.returnType == java.lang.Boolean.TYPE
+            }
+            m?.invoke(inst) as? Boolean ?: false
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
     fun clear() {
         stopAllSounds()
         soundsPaused = false
