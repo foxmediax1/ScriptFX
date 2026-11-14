@@ -29,7 +29,6 @@ import kotlin.math.min
 /**
  * Экран настроек мода на Modern UI (замена Cloth Config).
  * Значения пишутся в ScriptFXConfig сразу, на диск сохраняются при закрытии.
- * Всё, что трогает Minecraft (смена экрана), идёт через Minecraft.execute (основной поток).
  */
 class MuiSettingsFragment(
     private val parent: Screen?,
@@ -54,15 +53,12 @@ class MuiSettingsFragment(
     private var previewBorder: FrameLayout? = null
     private var previewInner: TextView? = null
 
-    // страница палитры
     private var picker: ColorPickerView? = null
     private var pickerHex: EditText? = null
     private var pickerPreview: View? = null
     private var pickerTarget = ColorTarget.BG
     private var draft = 0
     private var suppress = false
-
-    // ------------------------------------------------------------------
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -98,9 +94,6 @@ class MuiSettingsFragment(
         return root
     }
 
-    // ------------------------------------------------------------------
-    // Страница настроек
-
     private fun buildSettingsPage(ctx: Context): View {
         val page = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -120,7 +113,7 @@ class MuiSettingsFragment(
 
         val list = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(ctx, 4), 0, dp(ctx, 10), dp(ctx, 8)) // справа место под скроллбар
+            setPadding(dp(ctx, 4), 0, dp(ctx, 10), dp(ctx, 8))
         }
         val scroll = ScrollView(ctx)
         scroll.addView(list, ViewGroup.LayoutParams(MATCH, WRAP))
@@ -161,7 +154,7 @@ class MuiSettingsFragment(
             lp(MATCH, WRAP)
         )
 
-        // --- Цвета ---
+        // --- Цвета сообщений ---
         list.addView(sectionTitle(ctx, "Цвета сообщений"), lp(MATCH, WRAP))
         list.addView(colorRow(ctx, "Фон сообщения", ColorTarget.BG), lp(MATCH, WRAP))
         list.addView(colorRow(ctx, "Обводка сообщения", ColorTarget.BORDER), lp(MATCH, WRAP))
@@ -200,6 +193,48 @@ class MuiSettingsFragment(
         list.addView(showBtn, LinearLayout.LayoutParams(WRAP, WRAP).apply {
             topMargin = dp(ctx, 8)
         })
+
+        // --- Тема UI ---
+        list.addView(sectionTitle(ctx, "Тема UI"), lp(MATCH, WRAP))
+        list.addView(
+            TextView(ctx).apply {
+                text = "Цвета чата, диалога NPC и журнала квестов хранятся в config/scriptfx.json " +
+                        "(поля chat*, dialog*, quest*). Кнопка сбрасывает их к значениям по умолчанию."
+                textSize = 11f
+                setTextColor(0xFF888888.toInt())
+                setPadding(0, 0, 0, dp(ctx, 6))
+            },
+            lp(MATCH, WRAP)
+        )
+        list.addView(
+            Button(ctx).apply {
+                text = "Сбросить тему UI"
+                textSize = 12f
+                setTextColor(0xFFFCA5A5.toInt())
+                setPadding(dp(ctx, 10), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6))
+                background = UiStyle.buttonBg(
+                    ctx, 0xFF3F1220.toInt(),
+                    UiStyle.mix(0xFF3F1220.toInt(), 0xFFFFFFFF.toInt(), 0.10f),
+                    UiStyle.mix(0xFF3F1220.toInt(), 0xFF000000.toInt(), 0.30f)
+                )
+                setOnClickListener {
+                    ScriptFXConfig.resetUiTheme()
+                    suppress = true
+                    hexFields[ColorTarget.BG]?.setText(ColorHex.format(ScriptFXConfig.messageBg))
+                    hexFields[ColorTarget.BORDER]?.setText(ColorHex.format(ScriptFXConfig.messageBorder))
+                    suppress = false
+                    swatches[ColorTarget.BG]?.background =
+                        UiStyle.rounded(ctx, ScriptFXConfig.messageBg, 4f)
+                    swatches[ColorTarget.BORDER]?.background =
+                        UiStyle.rounded(ctx, ScriptFXConfig.messageBorder, 4f)
+                    refreshPreview()
+                }
+            },
+            LinearLayout.LayoutParams(WRAP, WRAP).apply {
+                topMargin = dp(ctx, 4)
+                bottomMargin = dp(ctx, 8)
+            }
+        )
 
         // --- Медиа / FFmpeg ---
         list.addView(sectionTitle(ctx, "Медиа (видео MP4)"), lp(MATCH, WRAP))
@@ -255,7 +290,6 @@ class MuiSettingsFragment(
                 UiStyle.mix(0xFF101010.toInt(), 0xFF000000.toInt(), 0.30f)
             )
             setOnClickListener {
-                // сохраняем путь и проверяем
                 ScriptFXConfig.ffmpegPath = ffmpegEdit.text?.toString()?.trim()?.ifEmpty { null }
                 net.foxmediax.scriptfx.media.Mp4Decoder.ffmpegPath = ScriptFXConfig.ffmpegPath
                 ffmpegStatus.text = ffmpegStatusText(runProbe = true)
@@ -373,9 +407,6 @@ class MuiSettingsFragment(
         return box
     }
 
-    // ------------------------------------------------------------------
-    // Страница палитры
-
     private fun buildPickerPage(ctx: Context): View {
         val page = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -477,8 +508,6 @@ class MuiSettingsFragment(
         pageSettings?.visibility = View.VISIBLE
     }
 
-    // ------------------------------------------------------------------
-
     private fun colorOf(t: ColorTarget): Int =
         if (t == ColorTarget.BG) ScriptFXConfig.messageBg else ScriptFXConfig.messageBorder
 
@@ -500,7 +529,6 @@ class MuiSettingsFragment(
         mc.execute { if (back != null) back() else mc.setScreen(parent) }
     }
 
-    /** ESC в поле ввода: назад из палитры или закрыть настройки (с первого нажатия). */
     private fun escHandler(edit: EditText) {
         edit.setOnKeyListener { _, keyCode, event ->
             if (event.action == KeyEvent.ACTION_DOWN && keyCode == GLFW.GLFW_KEY_ESCAPE) {
@@ -509,8 +537,6 @@ class MuiSettingsFragment(
             } else false
         }
     }
-
-    // --- мелкие помощники построения ---
 
     private fun lp(w: Int, h: Int) = LinearLayout.LayoutParams(w, h)
 
@@ -562,12 +588,12 @@ class MuiSettingsFragment(
     ): LinearLayout {
         val sw = Switch(ctx).apply {
             isChecked = initial
-            // не растягивать на всю ширину
             minimumWidth = dp(ctx, 48)
             setOnCheckedChangeListener { _, checked -> onChange(checked) }
         }
         return row(ctx, label, sw, dp(ctx, 56))
     }
+
     private fun dp(ctx: Context, value: Int): Int {
         val density = ctx.resources.displayMetrics.density
         return (value * density + 0.5f).toInt()

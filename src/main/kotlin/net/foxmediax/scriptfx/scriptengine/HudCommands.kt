@@ -38,6 +38,21 @@ object HudCommands {
             broadcast(ctx, HudPayload(HudPayload.OFF_ALL, ""))
             CommandResult.Continue
         }
+
+        // hud_set "hudId" "elementId" "новый текст"
+        register("hud_set") { ctx, args ->
+            val hudId = args.getOrNull(0)?.removeSurrounding("\"")?.trim().orEmpty()
+            val elId = args.getOrNull(1)?.removeSurrounding("\"")?.trim().orEmpty()
+            val text = args.drop(2).joinToString(" ")
+                .removeSurrounding("\"")
+                .trim()
+            if (hudId.isEmpty() || elId.isEmpty()) {
+                ScriptFXLog.warn("hud_set: нужно hud_set \"hudId\" \"elementId\" \"текст\"")
+                return@register CommandResult.Continue
+            }
+            broadcast(ctx, HudPayload(HudPayload.SET, hudId, elId, text))
+            CommandResult.Continue
+        }
     }
 
     private fun broadcast(ctx: ScriptContext, payload: HudPayload) {

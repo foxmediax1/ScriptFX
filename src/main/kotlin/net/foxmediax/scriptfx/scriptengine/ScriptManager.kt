@@ -2,10 +2,11 @@ package net.foxmediax.scriptfx.scriptengine
 
 import net.fabricmc.loader.api.FabricLoader
 import net.foxmediax.scriptfx.config.ScriptFXConfig
-import java.io.File
+import net.foxmediax.scriptfx.nodes.NodeGraphRegistry
 import net.foxmediax.scriptfx.npc.NpcRegistry
 import net.foxmediax.scriptfx.quest.QuestRegistry
 import net.foxmediax.scriptfx.triggers.TriggerRegistry
+import java.io.File
 
 object ScriptManager {
 
@@ -19,6 +20,7 @@ object ScriptManager {
         NpcRegistry.reload()
         QuestRegistry.reload()
         TriggerRegistry.reload()
+        NodeGraphRegistry.reload()
 
         val projectsDir = FabricLoader.getInstance().configDir.resolve("scriptfx/projects").toFile()
         if (!projectsDir.exists()) {
@@ -40,14 +42,20 @@ object ScriptManager {
                     }
 
                     if (loadedScripts.containsKey(name)) {
-                        ScriptFXLog.warn("Скрипт с именем '$name' уже загружен из другого проекта — старый будет перезаписан")
+                        ScriptFXLog.warn(
+                            "Скрипт с именем '$name' уже загружен из другого проекта — старый будет перезаписан"
+                        )
                     }
                     loadedScripts[name] = commands
                     triggerCount += TriggerParser.registerAll(name, commands)
                 }
         }
 
-        ScriptFXLog.info("ScriptFX: загружено скриптов — ${loadedScripts.size}, из них триггеров — $triggerCount")
+        ScriptFXLog.info(
+            "ScriptFX: загружено скриптов — ${loadedScripts.size}, " +
+                    "триггеров — $triggerCount, " +
+                    "графов — ${NodeGraphRegistry.totalCount()}"
+        )
     }
 
     fun loadedScript(name: String): List<ScriptCommand>? = loadedScripts[name]
@@ -61,8 +69,35 @@ object ScriptManager {
         return scheduler.add(name) { newRunner(commands, name, context) }
     }
 
-    fun runAdHoc(commands: List<ScriptCommand>, context: ScriptContext, name: String = "ad-hoc"): Boolean =
+    /**
+     * Запуск уже готового списка команд (графы, ad-hoc).
+     * Имя должно быть уникальным в рамках лимита scheduler (например graph:intro).
+     */
+    fun runAdHoc(
+        commands: List<ScriptCommand>,
+        context: ScriptContext,
+        name: String = "ad-hoc"
+    ): Boolean =
         scheduler.add(name) { newRunner(commands, name, context) }
+
+    /** Скомпилировать и запустить node-граф. */
+    fun startGraph(graphId: String, context: ScriptContext): Boolean {
+        val graph = NodeGraphRegistry.findById(graphId) ?: run {
+            ScriptFXLog.warn("startGraph: граф '$graphId' не найден")
+            return false
+        }
+        val commands = net.foxmediax.scriptfx.nodes.NodeCompiler.compile(graph)
+        if (commands.isEmpty()) {
+            ScriptFXLog.warn("startGraph: граф '$graphId' пуст после компиляции")
+            return false
+        }
+        val runName = "graph:$graphId"
+        val ok = runAdHoc(commands, context.copy(newScriptName = runName, newTriggerType = "graph"), runName)
+        if (ok) {
+            ScriptFXLog.info("Граф '$graphId' запущен (${commands.size} команд)")
+        }
+        return ok
+    }
 
     fun stopScript(name: String, reason: String = "командой stop_script"): Int =
         scheduler.stop(name, reason)

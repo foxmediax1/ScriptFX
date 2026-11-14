@@ -15,6 +15,7 @@ import icyllis.modernui.widget.ScrollView
 import icyllis.modernui.widget.TextView
 import net.foxmediax.scriptfx.client.ClientQuest
 import net.foxmediax.scriptfx.client.QuestClient
+import net.foxmediax.scriptfx.config.ScriptFXConfig
 import net.minecraft.client.Minecraft
 import org.lwjgl.glfw.GLFW
 import kotlin.math.max
@@ -33,24 +34,6 @@ class QuestJournalFragment : Fragment() {
         const val WRAP = ViewGroup.LayoutParams.WRAP_CONTENT
         const val MATCH = ViewGroup.LayoutParams.MATCH_PARENT
         const val POLL_MS = 250L
-
-        // книга
-        const val COVER = 0xFF2B1F3A.toInt()
-        const val SPINE = 0xFF171021.toInt()
-        const val PAPER_L = 0xFFEEE5CF.toInt()
-        const val PAPER_R = 0xFFF6EEDC.toInt()
-        const val INK = 0xFF2A2118.toInt()
-        const val INK_MUTED = 0xFF6D5D45.toInt()
-        const val LINE = 0x332A2118
-        const val TAB_IDLE = 0xFFDCCFAE.toInt()
-        const val ROW_SEL = 0xFFE2D3AE.toInt()
-        const val ROW_HOVER = 0xFFE9DDBF.toInt()
-        const val BAR_BG = 0x26000000
-
-        // статусы (тёмные тона, читаются на бумаге)
-        const val ST_ACTIVE = 0xFFB07A1E.toInt()
-        const val ST_DONE = 0xFF2E7D4F.toInt()
-        const val ST_FAILED = 0xFFA23B3B.toInt()
     }
 
     @Volatile private var rootView: View? = null
@@ -78,7 +61,6 @@ class QuestJournalFragment : Fragment() {
         val ctx = requireContext()
         val root = FrameLayout(ctx)
 
-        // Y и ESC закрывают журнал (ESC обрабатываем сами: иначе Modern UI тратит первое нажатие на фокус)
         root.isFocusableInTouchMode = true
         root.setOnKeyListener { _, keyCode, event ->
             if (event.action == KeyEvent.ACTION_DOWN &&
@@ -95,21 +77,20 @@ class QuestJournalFragment : Fragment() {
 
         val book = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = UiStyle.rounded(ctx, COVER, 14f, UiStyle.ACCENT_DARK, 2)
+            background = UiStyle.rounded(ctx, ScriptFXConfig.questCover, 14f, UiStyle.ACCENT_DARK, 2)
             setPadding(dp(ctx, 10), dp(ctx, 10), dp(ctx, 10), dp(ctx, 10))
         }
 
-        // ---------- левая страница: список ----------
         val left = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = UiStyle.rounded(ctx, PAPER_L, 8f)
+            background = UiStyle.rounded(ctx, ScriptFXConfig.questPaperL, 8f)
             setPadding(dp(ctx, 16), dp(ctx, 14), dp(ctx, 14), dp(ctx, 12))
         }
         left.addView(
             TextView(ctx).apply {
                 text = "Журнал квестов"
                 textSize = 19f
-                setTextColor(INK)
+                setTextColor(ScriptFXConfig.questInk)
             },
             LinearLayout.LayoutParams(MATCH, WRAP)
         )
@@ -120,7 +101,7 @@ class QuestJournalFragment : Fragment() {
         tabsBox = tabs
         left.addView(tabs, LinearLayout.LayoutParams(MATCH, WRAP))
         left.addView(
-            View(ctx).apply { background = ColorDrawable(LINE) },
+            View(ctx).apply { background = ColorDrawable(ScriptFXConfig.questLine) },
             LinearLayout.LayoutParams(MATCH, max(1, dp(ctx, 1)))
         )
 
@@ -134,16 +115,14 @@ class QuestJournalFragment : Fragment() {
         left.addView(listScroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
         book.addView(left, LinearLayout.LayoutParams(0, MATCH, 1f))
 
-        // ---------- корешок ----------
         book.addView(
-            View(ctx).apply { background = ColorDrawable(SPINE) },
+            View(ctx).apply { background = ColorDrawable(ScriptFXConfig.questSpine) },
             LinearLayout.LayoutParams(dp(ctx, 6), MATCH)
         )
 
-        // ---------- правая страница: детали ----------
         val right = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = UiStyle.rounded(ctx, PAPER_R, 8f)
+            background = UiStyle.rounded(ctx, ScriptFXConfig.questPaperR, 8f)
             setPadding(dp(ctx, 16), dp(ctx, 14), dp(ctx, 16), dp(ctx, 12))
         }
         val detail = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
@@ -170,8 +149,6 @@ class QuestJournalFragment : Fragment() {
         super.onDestroyView()
     }
 
-    // ------------------------------------------------------------------
-
     private fun refresh() {
         val ctx = context ?: return
         shownVersion = QuestClient.version
@@ -179,7 +156,9 @@ class QuestJournalFragment : Fragment() {
         val items = QuestClient.quests
             .filter { it.status == tab.status }
             .sortedBy { it.title.lowercase() }
-        if (selectedId == null || items.none { it.id == selectedId }) selectedId = items.firstOrNull()?.id
+        if (selectedId == null || items.none { it.id == selectedId }) {
+            selectedId = items.firstOrNull()?.id
+        }
 
         buildTabs(ctx)
         renderList(ctx, items)
@@ -196,9 +175,19 @@ class QuestJournalFragment : Fragment() {
                 text = "${t.title} ($count)"
                 textSize = 12f
                 gravity = Gravity.CENTER
-                setTextColor(if (selected) PAPER_L else INK)
-                background = if (selected) UiStyle.rounded(ctx, INK, 6f)
-                else UiStyle.buttonBg(ctx, TAB_IDLE, ROW_HOVER, ROW_SEL, 6f, 0)
+                setTextColor(if (selected) ScriptFXConfig.questPaperL else ScriptFXConfig.questInk)
+                background = if (selected) {
+                    UiStyle.rounded(ctx, ScriptFXConfig.questInk, 6f)
+                } else {
+                    UiStyle.buttonBg(
+                        ctx,
+                        ScriptFXConfig.questTabIdle,
+                        ScriptFXConfig.questRowHover,
+                        ScriptFXConfig.questRowSel,
+                        6f,
+                        0
+                    )
+                }
                 setPadding(dp(ctx, 6), dp(ctx, 5), dp(ctx, 6), dp(ctx, 5))
                 isClickable = true
                 setOnClickListener {
@@ -225,7 +214,7 @@ class QuestJournalFragment : Fragment() {
                 TextView(ctx).apply {
                     text = "Здесь пока пусто"
                     textSize = 13f
-                    setTextColor(INK_MUTED)
+                    setTextColor(ScriptFXConfig.questInkMuted)
                     setPadding(0, dp(ctx, 12), 0, 0)
                 },
                 LinearLayout.LayoutParams(MATCH, WRAP)
@@ -238,8 +227,18 @@ class QuestJournalFragment : Fragment() {
             val row = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                background = if (sel) UiStyle.rounded(ctx, ROW_SEL, 6f)
-                else UiStyle.buttonBg(ctx, 0x00000000, ROW_HOVER, ROW_SEL, 6f, 0)
+                background = if (sel) {
+                    UiStyle.rounded(ctx, ScriptFXConfig.questRowSel, 6f)
+                } else {
+                    UiStyle.buttonBg(
+                        ctx,
+                        0x00000000,
+                        ScriptFXConfig.questRowHover,
+                        ScriptFXConfig.questRowSel,
+                        6f,
+                        0
+                    )
+                }
                 setPadding(dp(ctx, 8), dp(ctx, 7), dp(ctx, 8), dp(ctx, 7))
                 isClickable = true
                 setOnClickListener {
@@ -259,7 +258,7 @@ class QuestJournalFragment : Fragment() {
                 TextView(ctx).apply {
                     text = q.title
                     textSize = 14f
-                    setTextColor(INK)
+                    setTextColor(ScriptFXConfig.questInk)
                     setSingleLine(true)
                 },
                 LinearLayout.LayoutParams(0, WRAP, 1f)
@@ -269,7 +268,7 @@ class QuestJournalFragment : Fragment() {
                     TextView(ctx).apply {
                         text = "${q.objectives.count { it.done }}/${q.objectives.size}"
                         textSize = 12f
-                        setTextColor(INK_MUTED)
+                        setTextColor(ScriptFXConfig.questInkMuted)
                     },
                     LinearLayout.LayoutParams(WRAP, WRAP)
                 )
@@ -290,7 +289,7 @@ class QuestJournalFragment : Fragment() {
                 TextView(ctx).apply {
                     text = "Выберите квест на левой странице"
                     textSize = 13f
-                    setTextColor(INK_MUTED)
+                    setTextColor(ScriptFXConfig.questInkMuted)
                     gravity = Gravity.CENTER
                     setPadding(0, dp(ctx, 40), 0, 0)
                 },
@@ -303,7 +302,7 @@ class QuestJournalFragment : Fragment() {
             TextView(ctx).apply {
                 text = q.title
                 textSize = 21f
-                setTextColor(INK)
+                setTextColor(ScriptFXConfig.questInk)
             },
             LinearLayout.LayoutParams(MATCH, WRAP)
         )
@@ -318,7 +317,7 @@ class QuestJournalFragment : Fragment() {
             LinearLayout.LayoutParams(WRAP, WRAP).apply { topMargin = dp(ctx, 6) }
         )
         box.addView(
-            View(ctx).apply { background = ColorDrawable(LINE) },
+            View(ctx).apply { background = ColorDrawable(ScriptFXConfig.questLine) },
             LinearLayout.LayoutParams(MATCH, max(1, dp(ctx, 1))).apply {
                 topMargin = dp(ctx, 10)
                 bottomMargin = dp(ctx, 8)
@@ -330,7 +329,7 @@ class QuestJournalFragment : Fragment() {
                 TextView(ctx).apply {
                     text = q.description
                     textSize = 13f
-                    setTextColor(INK)
+                    setTextColor(ScriptFXConfig.questInk)
                     setPadding(0, 0, 0, dp(ctx, 10))
                 },
                 LinearLayout.LayoutParams(MATCH, WRAP)
@@ -342,12 +341,13 @@ class QuestJournalFragment : Fragment() {
                 TextView(ctx).apply {
                     text = "Цели"
                     textSize = 14f
-                    setTextColor(INK_MUTED)
+                    setTextColor(ScriptFXConfig.questInkMuted)
                     setPadding(0, dp(ctx, 4), 0, dp(ctx, 4))
                 },
                 LinearLayout.LayoutParams(MATCH, WRAP)
             )
         }
+
         for (ob in q.objectives) {
             val line = LinearLayout(ctx).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -357,7 +357,9 @@ class QuestJournalFragment : Fragment() {
                 TextView(ctx).apply {
                     text = if (ob.done) "✔" else "○"
                     textSize = 13f
-                    setTextColor(if (ob.done) ST_DONE else INK_MUTED)
+                    setTextColor(
+                        if (ob.done) ScriptFXConfig.questDone else ScriptFXConfig.questInkMuted
+                    )
                 },
                 LinearLayout.LayoutParams(dp(ctx, 20), WRAP)
             )
@@ -365,7 +367,9 @@ class QuestJournalFragment : Fragment() {
                 TextView(ctx).apply {
                     text = ob.text
                     textSize = 13f
-                    setTextColor(if (ob.done) INK_MUTED else INK)
+                    setTextColor(
+                        if (ob.done) ScriptFXConfig.questInkMuted else ScriptFXConfig.questInk
+                    )
                 },
                 LinearLayout.LayoutParams(0, WRAP, 1f)
             )
@@ -374,7 +378,7 @@ class QuestJournalFragment : Fragment() {
                     TextView(ctx).apply {
                         text = "${ob.progress}/${ob.target}"
                         textSize = 12f
-                        setTextColor(INK_MUTED)
+                        setTextColor(ScriptFXConfig.questInkMuted)
                     },
                     LinearLayout.LayoutParams(WRAP, WRAP)
                 )
@@ -388,18 +392,25 @@ class QuestJournalFragment : Fragment() {
                 val p = ob.progress.coerceIn(0, ob.target)
                 val bar = LinearLayout(ctx).apply {
                     orientation = LinearLayout.HORIZONTAL
-                    background = UiStyle.rounded(ctx, BAR_BG, 3f)
+                    background = UiStyle.rounded(ctx, ScriptFXConfig.questBarBg, 3f)
                 }
                 if (p > 0) {
                     bar.addView(
                         View(ctx).apply {
-                            background = UiStyle.rounded(ctx, if (ob.done) ST_DONE else ST_ACTIVE, 3f)
+                            background = UiStyle.rounded(
+                                ctx,
+                                if (ob.done) ScriptFXConfig.questDone else ScriptFXConfig.questActive,
+                                3f
+                            )
                         },
                         LinearLayout.LayoutParams(0, MATCH, p.toFloat())
                     )
                 }
                 if (ob.target - p > 0) {
-                    bar.addView(View(ctx), LinearLayout.LayoutParams(0, MATCH, (ob.target - p).toFloat()))
+                    bar.addView(
+                        View(ctx),
+                        LinearLayout.LayoutParams(0, MATCH, (ob.target - p).toFloat())
+                    )
                 }
                 box.addView(
                     bar,
@@ -413,9 +424,9 @@ class QuestJournalFragment : Fragment() {
     }
 
     private fun statusColor(status: String): Int = when (status) {
-        "completed" -> ST_DONE
-        "failed" -> ST_FAILED
-        else -> ST_ACTIVE
+        "completed" -> ScriptFXConfig.questDone
+        "failed" -> ScriptFXConfig.questFailed
+        else -> ScriptFXConfig.questActive
     }
 
     private fun statusLabel(status: String): String = when (status) {

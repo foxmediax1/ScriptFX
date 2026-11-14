@@ -5,6 +5,7 @@ import net.fabricmc.api.Environment
 import net.foxmediax.scriptfx.hud.HudDefinition
 import net.foxmediax.scriptfx.hud.HudRegistry
 import net.foxmediax.scriptfx.network.HudPayload
+import java.util.concurrent.ConcurrentHashMap
 
 @Environment(EnvType.CLIENT)
 object HudRuntime {
@@ -17,12 +18,15 @@ object HudRuntime {
     )
 
     private val active = linkedMapOf<String, Active>()
+    /** Runtime-текст: hudId → (elementId → text). Не пишет в JSON. */
+    private val textOverrides = ConcurrentHashMap<String, ConcurrentHashMap<String, String>>()
 
     fun handlePayload(payload: HudPayload) {
         when (payload.action) {
             HudPayload.ON -> show(payload.hudId)
             HudPayload.OFF -> hide(payload.hudId)
             HudPayload.OFF_ALL -> hideAll()
+            HudPayload.SET -> setText(payload.hudId, payload.elementId, payload.text)
         }
     }
 
@@ -46,8 +50,17 @@ object HudRuntime {
         active.keys.toList().forEach { hide(it) }
     }
 
+    fun setText(hudId: String, elementId: String, text: String) {
+        if (hudId.isBlank() || elementId.isBlank()) return
+        textOverrides.getOrPut(hudId) { ConcurrentHashMap() }[elementId] = text
+    }
+
+    fun textFor(hudId: String, elementId: String, fallback: String): String =
+        textOverrides[hudId]?.get(elementId) ?: fallback
+
     fun clear() {
         active.clear()
+        textOverrides.clear()
     }
 
     fun tick() {

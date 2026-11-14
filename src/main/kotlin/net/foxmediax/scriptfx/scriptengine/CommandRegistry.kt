@@ -1,5 +1,6 @@
 package net.foxmediax.scriptfx.scriptengine
 
+import net.foxmediax.scriptfx.nodes.NodeCommands
 import net.minecraft.ChatFormatting
 import net.minecraft.world.level.Level
 import net.minecraft.world.entity.Relative
@@ -18,6 +19,7 @@ object CommandRegistry {
         MediaCommands.install { name, handler -> register(name, handler) }
         HudCommands.install { name, handler -> register(name, handler) }
         VfxCommands.install { name, handler -> register(name, handler) }
+        NodeCommands.install { name, handler -> register(name, handler) }
     }
 
     fun register(name: String, handler: CommandHandler) {

@@ -20,6 +20,7 @@ object Documentation {
         section == "Скрипты" && subsection == "Частицы" -> PARTICLES
         section == "Скрипты" && subsection == "Звук и видео" -> MEDIA
         section == "Скрипты" && subsection == "Квесты" -> QUESTS
+        section == "Скрипты" && subsection == "HUD" -> HUD
         section == "Триггеры" -> TRIGGERS
         section == "Примеры скриптов" -> TEMPLES_SCRIPTS
         section == "Чат и сообщения" -> MESSAGES
@@ -86,6 +87,27 @@ object Documentation {
         Пример скрипта с аватаром: 
         
         printNPC "рассказчик.png" "Когда-то давно, мы жили мирно..." "gold" "Рассказчик" "aqua"
+        ---
+        Допустимые цвета для "цвет имени" и "цвет текста" (регистр не важен):
+
+        black — чёрный
+        dark_blue — тёмно-синий
+        dark_green — тёмно-зелёный
+        dark_aqua — тёмно-бирюзовый
+        dark_red — тёмно-красный
+        dark_purple — тёмно-фиолетовый
+        gold — золотой
+        gray — серый
+        dark_gray — тёмно-серый
+        blue — синий
+        green — зелёный
+        aqua — бирюзовый / голубой
+        red — красный
+        light_purple — светло-фиолетовый / розовый
+        yellow — жёлтый
+        white — белый
+
+        Неизвестный цвет подставляется как white.
         ---
     """.trimIndent().lines()
 
@@ -718,6 +740,51 @@ object Documentation {
     Настройки - вид сообщений, системные сообщения по центру, обводка NPC в диалоге, максимум одновременно запущенных скриптов, путь к ffmpeg, цвета плашек (HEX и палитра).
     ---
     Если панель закрывается с несохранёнными правками, она спросит, что делать.
+    ---
+""".trimIndent().lines()
+
+    private val HUD: List<String> = """
+    Раздел: "HUD (кастомный интерфейс)"
+    ---
+    Кастомный HUD — панели поверх игры: текст, прямоугольники, (в будущем картинки).
+    Описание лежит в JSON: config/scriptfx/projects/<проект>/hud/<id>.json
+    ---
+    1. Создание HUD
+
+    Создайте файл в папке hud проекта. Обязательные поля:
+    id — уникальный идентификатор (латиница, цифры, _ -)
+    width, height — размер панели
+    anchor — угол привязки к экрану
+    offsetX, offsetY — отступ от якоря
+    background — цвет фона (ARGB int)
+    elements — список элементов (RECT / TEXT / IMAGE)
+    showAnim / hideAnim — анимация появления и исчезновения (fade)
+    ---
+    Якоря (anchor):
+    TOP_LEFT, TOP_CENTER, TOP_RIGHT
+    CENTER_LEFT, CENTER, CENTER_RIGHT
+    BOTTOM_LEFT, BOTTOM_CENTER, BOTTOM_RIGHT
+    ---
+    Элементы:
+    RECT — залитый прямоугольник (x, y, w, h, color)
+    TEXT — текст (x, y, text, color, fontSize). Перенос строк: \n в JSON
+    IMAGE — зарезервировано (пока серый прямоугольник)
+    ---
+    2. Команды скрипта
+
+    hud_on "id" — показать HUD с анимацией появления
+    hud_off "id" — скрыть HUD с анимацией исчезновения
+    hud_off_all — скрыть все активные кастомные HUD
+    ---
+    Пример:
+
+    hud_on "quest_panel"
+    ticktime "8.sec"
+    hud_off "quest_panel"
+    ---
+    Заготовка можно создать кодом:
+    HudRegistry.createStub("имя_проекта", "quest_panel", "Квест")
+    — файл появится в projects/имя_проекта/hud/quest_panel.json
     ---
 """.trimIndent().lines()
 }

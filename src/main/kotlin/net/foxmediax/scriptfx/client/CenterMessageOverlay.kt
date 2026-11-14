@@ -123,6 +123,7 @@ object CenterMessageOverlay {
     }
 
     /** Сообщение скрипта (print / printNPC). Вызывается из сетевого обработчика (клиентский поток). */
+    /** Сообщение скрипта (print / printNPC). Вызывается из сетевого обработчика (клиентский поток). */
     fun receive(payload: ScriptMessagePayload) {
         when (ScriptFXConfig.messageMode) {
             MessageDisplayMode.VANILLA ->
@@ -136,7 +137,8 @@ object CenterMessageOverlay {
                         avatarOf(payload.avatar)
                     )
                 )
-                ScriptChatHistory.add(payload.toComponent())   // запись в историю окна чата
+                // передаём PNG, чтобы аватар появился и в истории чата
+                ScriptChatHistory.add(payload.toComponent(), payload.avatar)
             }
         }
     }

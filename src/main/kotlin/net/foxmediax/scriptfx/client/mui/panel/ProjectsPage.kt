@@ -1,6 +1,10 @@
 package net.foxmediax.scriptfx.client.mui.panel
 
 import icyllis.modernui.core.Context
+import icyllis.modernui.core.Core
+import icyllis.modernui.graphics.Bitmap
+import icyllis.modernui.graphics.BitmapFactory
+import icyllis.modernui.graphics.Image
 import icyllis.modernui.graphics.drawable.ColorDrawable
 import icyllis.modernui.text.Editable
 import icyllis.modernui.text.TextWatcher
@@ -9,6 +13,7 @@ import icyllis.modernui.view.MotionEvent
 import icyllis.modernui.view.View
 import icyllis.modernui.widget.EditText
 import icyllis.modernui.widget.FrameLayout
+import icyllis.modernui.widget.ImageView
 import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
 import icyllis.modernui.widget.TextView
@@ -28,31 +33,28 @@ import net.foxmediax.scriptfx.client.mui.panel.PanelUi.lp
 import net.foxmediax.scriptfx.client.mui.panel.PanelUi.px1
 import net.foxmediax.scriptfx.gui.FileBrowser
 import net.foxmediax.scriptfx.gui.FileEntry
+import net.foxmediax.scriptfx.nodes.NodeCanvasView
+import net.foxmediax.scriptfx.nodes.NodeGraph
+import net.foxmediax.scriptfx.nodes.NodePalette
+import net.foxmediax.scriptfx.nodes.ScriptNodeSync
 import net.foxmediax.scriptfx.scriptengine.ScriptContext
+import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.foxmediax.scriptfx.scriptengine.ScriptManager
 import net.minecraft.client.Minecraft
 import java.io.File
-import icyllis.modernui.core.Core
-import icyllis.modernui.graphics.Bitmap
-import icyllis.modernui.graphics.BitmapFactory
-import icyllis.modernui.graphics.Image
-import icyllis.modernui.widget.ImageView
-import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 
 /**
  * Экран «Сценарии»:
- * проводник | редактор + консоль | свойства
+ * проводник | редактор (ноды / текст) + консоль | свойства + палитра нод
  */
 class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPage(host) {
 
     private lateinit var ctx: Context
     private lateinit var overlays: OverlayHost
 
-    // left
     private lateinit var treeBox: LinearLayout
     private lateinit var pathView: TextView
 
-    // center
     private lateinit var tabTitle: TextView
     private lateinit var edit: EditText
     private lateinit var editorScroll: ScrollView
@@ -60,12 +62,19 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     private lateinit var contentHost: FrameLayout
     private lateinit var consoleBox: LinearLayout
 
+    private lateinit var nodeCanvas: NodeCanvasView
+    private lateinit var textEditorWrap: View
+    private lateinit var nodeEditorWrap: FrameLayout
+    private lateinit var modeBtn: TextView
+
+    private lateinit var paletteSearch: EditText
+    private lateinit var paletteBox: LinearLayout
+    private lateinit var paletteSection: LinearLayout
+
     private var previewImage: Image? = null
     private var viewingImage = false
-
     private var videoOverlayOpen = false
 
-    // right
     private lateinit var propName: TextView
     private lateinit var propPath: TextView
     private lateinit var propStatus: TextView
@@ -75,6 +84,12 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     private var last = ""
     private var suppress = false
     private val undoStack = ArrayDeque<String>()
+
+    /** true = нодовый редактор, false = текст */
+    private var nodeMode = true
+    private var graph: NodeGraph = ScriptNodeSync.defaultTemplateGraph()
+    private var syncing = false
+    private var nodeIdSeq = 1
 
     @Volatile
     private var dirty = false
@@ -111,6 +126,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         root.addView(overlayLayer, FrameLayout.LayoutParams(MATCH, MATCH))
 
         refreshTree()
+        refreshPalette("")
         showEmptyEditor()
         return root
     }
@@ -121,26 +137,13 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     private fun openVideoPreview(videoId: String) {
-        ScriptFXLog.info("ProjectsPage.openVideoPreview: start for '$videoId'")
-
-        // 1. Сначала проверяем, не открыт ли уже плеер, чтобы не дублировать.
-        if (videoOverlayOpen) {
-            ScriptFXLog.info("ProjectsPage.openVideoPreview: overlay already open, skip")
-            return
-        }
+        if (videoOverlayOpen) return
         videoOverlayOpen = true
-
-        // 2. Показываем оверлей СРАЗУ (без обращения к реестру), чтобы UI не подвис.
         try {
-            ScriptFXLog.info("ProjectsPage.openVideoPreview: calling overlays.showVideo")
-            overlays.showVideo(videoId) {
-                ScriptFXLog.info("ProjectsPage.openVideoPreview: overlay closed")
-                videoOverlayOpen = false
-            }
-            ScriptFXLog.info("ProjectsPage.openVideoPreview: showVideo returned")
+            overlays.showVideo(videoId) { videoOverlayOpen = false }
         } catch (t: Throwable) {
             videoOverlayOpen = false
-            ScriptFXLog.warn("ProjectsPage.openVideoPreview: showVideo failed: ${t.message}")
+            ScriptFXLog.warn("showVideo failed: ${t.message}")
         }
     }
 
@@ -170,7 +173,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     // ------------------------------------------------------------------
-    // LEFT: проводник
+    // LEFT
     // ------------------------------------------------------------------
 
     private fun buildExplorer(ctx: Context): View {
@@ -196,22 +199,15 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         }
         col.addView(pathView, lp(MATCH, WRAP))
 
-        val actions = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
-        actions.addView(
-            PanelUi.flatButton(ctx, "Создать") { openBackgroundMenu() },
-            lp(WRAP, WRAP)
-        )
+        val actions = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        actions.addView(PanelUi.flatButton(ctx, "Создать") { openBackgroundMenu() }, lp(WRAP, WRAP))
         actions.addView(
             PanelUi.flatButton(ctx, "Обновить") { refreshTree() },
             lp(WRAP, WRAP).apply { leftMargin = dp(ctx, 6) }
         )
         col.addView(actions, lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) })
 
-        treeBox = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-        }
+        treeBox = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(ctx)
         scroll.addView(treeBox, lp(MATCH, WRAP))
         col.addView(scroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
@@ -277,9 +273,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
                     ) {
                         onMenu()
                         true
-                    } else {
-                        false
-                    }
+                    } else false
                 }
             }
             addView(
@@ -295,7 +289,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     // ------------------------------------------------------------------
-    // CENTER: вкладка + редактор + консоль
+    // CENTER
     // ------------------------------------------------------------------
 
     private fun buildEditorColumn(ctx: Context): View {
@@ -304,7 +298,6 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             background = ColorDrawable(COL_CONTENT)
         }
 
-        // --- вкладка ---
         val tabs = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -318,26 +311,17 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             setTextColor(COL_TEXT)
         }
         tabs.addView(tabTitle, LinearLayout.LayoutParams(0, WRAP, 1f))
-        tabs.addView(
-            PanelUi.flatButton(ctx, "▶") { runScript() },
-            lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 4) }
-        )
-        tabs.addView(
-            PanelUi.flatButton(ctx, "💾") { save() },
-            lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 4) }
-        )
-        tabs.addView(
-            PanelUi.flatButton(ctx, "✕") { closeFile() },
-            lp(WRAP, WRAP)
-        )
+        tabs.addView(PanelUi.flatButton(ctx, "▶") { runScript() }, lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 4) })
+        tabs.addView(PanelUi.flatButton(ctx, "💾") { save() }, lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 4) })
+        tabs.addView(PanelUi.flatButton(ctx, "✕") { closeFile() }, lp(WRAP, WRAP))
         col.addView(tabs, lp(MATCH, WRAP))
         col.addView(dividerH(ctx), lp(MATCH, px1(ctx)))
 
-        // --- область контента: текст ИЛИ картинка ---
         contentHost = FrameLayout(ctx).apply {
             background = ColorDrawable(COL_CONTENT)
         }
 
+        // --- TEXT ---
         edit = EditText(ctx).apply {
             textSize = 13f
             setTextColor(COL_TEXT)
@@ -350,7 +334,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                 override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 override fun afterTextChanged(s: Editable?) {
-                    if (suppress) return
+                    if (suppress || syncing) return
                     val text = s?.toString() ?: return
                     if (text != last) {
                         undoStack.addLast(last)
@@ -362,11 +346,44 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
                 }
             })
         }
-
-        // edit добавляется ТОЛЬКО сюда, один раз
         editorScroll = ScrollView(ctx)
         editorScroll.addView(edit, lp(MATCH, WRAP))
-        contentHost.addView(editorScroll, FrameLayout.LayoutParams(MATCH, MATCH))
+        textEditorWrap = editorScroll
+
+        // --- NODES ---
+        nodeEditorWrap = FrameLayout(ctx)
+        nodeCanvas = NodeCanvasView(ctx).apply {
+            onGraphChanged = {
+                dirty = true
+                updateProps()
+            }
+        }
+        nodeEditorWrap.addView(nodeCanvas, FrameLayout.LayoutParams(MATCH, MATCH))
+
+        // кнопка режима >_ в правом нижнем углу центра
+        modeBtn = PanelUi.flatButton(ctx, ">_") { toggleEditorMode() }
+        nodeEditorWrap.addView(
+            modeBtn,
+            FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.END).apply {
+                setMargins(0, 0, dp(ctx, 12), dp(ctx, 12))
+            }
+        )
+
+        // тот же modeBtn поверх текстового режима — через общий слой
+        val editorStack = FrameLayout(ctx)
+        editorStack.addView(textEditorWrap, FrameLayout.LayoutParams(MATCH, MATCH))
+        editorStack.addView(nodeEditorWrap, FrameLayout.LayoutParams(MATCH, MATCH))
+
+        // плавающая кнопка всегда видна
+        val floatingMode = PanelUi.flatButton(ctx, ">_") { toggleEditorMode() }
+        editorStack.addView(
+            floatingMode,
+            FrameLayout.LayoutParams(WRAP, WRAP, Gravity.BOTTOM or Gravity.END).apply {
+                setMargins(0, 0, dp(ctx, 12), dp(ctx, 12))
+            }
+        )
+
+        contentHost.addView(editorStack, FrameLayout.LayoutParams(MATCH, MATCH))
 
         imageView = ImageView(ctx).apply {
             visibility = View.GONE
@@ -379,7 +396,6 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         col.addView(contentHost, LinearLayout.LayoutParams(MATCH, 0, 1f))
         col.addView(dividerH(ctx), lp(MATCH, px1(ctx)))
 
-        // --- консоль ---
         val consoleHeader = TextView(ctx).apply {
             text = "Консоль"
             textSize = 12f
@@ -398,8 +414,48 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         consoleScroll.addView(consoleBox, lp(MATCH, WRAP))
         col.addView(consoleScroll, lp(MATCH, dp(ctx, 110)))
 
+        applyEditorVisibility()
         logConsole("[INFO] Готов к работе")
         return col
+    }
+
+    private fun toggleEditorMode() {
+        if (viewingImage || file == null || !isScriptFile(file!!)) return
+        if (nodeMode) {
+            // ноды → текст с connect-мета
+            syncing = true
+            val text = ScriptNodeSync.graphToText(graph, includeConnectMeta = true)
+            edit.setText(text)
+            last = text
+            syncing = false
+            nodeMode = false
+        } else {
+            // текст → ноды
+            val name = file?.nameWithoutExtension ?: "script"
+            graph = ScriptNodeSync.textToGraph(edit.text?.toString().orEmpty(), name)
+            nodeCanvas.graph = graph
+            nodeMode = true
+        }
+        applyEditorVisibility()
+        logConsole(if (nodeMode) "[INFO] Режим: ноды" else "[INFO] Режим: текст")
+    }
+
+    private fun applyEditorVisibility() {
+        if (viewingImage) {
+            nodeEditorWrap.visibility = View.GONE
+            textEditorWrap.visibility = View.GONE
+            return
+        }
+        if (file != null && isScriptFile(file!!) && nodeMode) {
+            nodeEditorWrap.visibility = View.VISIBLE
+            textEditorWrap.visibility = View.GONE
+            paletteSection.visibility = View.VISIBLE
+        } else {
+            nodeEditorWrap.visibility = View.GONE
+            textEditorWrap.visibility = View.VISIBLE
+            paletteSection.visibility =
+                if (file != null && isScriptFile(file!!)) View.VISIBLE else View.GONE
+        }
     }
 
     private fun showEmptyEditor() {
@@ -412,7 +468,11 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         original = ""
         last = ""
         dirty = false
+        nodeMode = true
+        graph = ScriptNodeSync.defaultTemplateGraph()
+        if (this::nodeCanvas.isInitialized) nodeCanvas.graph = graph
         tabTitle.text = "— нет файла —"
+        applyEditorVisibility()
         updateProps()
     }
 
@@ -420,7 +480,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         clearImagePreview()
         val text = try {
             f.readText()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             logConsole("[ERROR] Не удалось прочитать ${f.name}")
             return
         }
@@ -429,11 +489,42 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         last = text
         dirty = false
         undoStack.clear()
-        suppress = true
-        edit.isEnabled = true
-        edit.setText(text)
-        suppress = false
+
+        val script = isScriptFile(f)
+        if (script) {
+            val name = f.nameWithoutExtension
+            graph = if (text.isBlank()) {
+                ScriptNodeSync.defaultTemplateGraph(name)
+            } else {
+                ScriptNodeSync.textToGraph(text, name)
+            }
+            nodeCanvas.graph = graph
+            // пустой новый файл — сразу ноды; иначе текст как в файле, режим нод по умолчанию
+            nodeMode = true
+            if (text.isBlank()) {
+                val seeded = ScriptNodeSync.graphToText(graph, includeConnectMeta = true)
+                suppress = true
+                edit.isEnabled = true
+                edit.setText(seeded)
+                original = seeded
+                last = seeded
+                suppress = false
+            } else {
+                suppress = true
+                edit.isEnabled = true
+                edit.setText(text)
+                suppress = false
+            }
+        } else {
+            nodeMode = false
+            suppress = true
+            edit.isEnabled = true
+            edit.setText(text)
+            suppress = false
+        }
+
         tabTitle.text = f.name
+        applyEditorVisibility()
         updateProps()
         refreshTree()
         logConsole("[INFO] Открыт: ${f.name}")
@@ -456,6 +547,15 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         }
     }
 
+    private fun currentEditorText(): String {
+        val f = file
+        return if (f != null && isScriptFile(f) && nodeMode) {
+            ScriptNodeSync.graphToText(graph, includeConnectMeta = true)
+        } else {
+            edit.text?.toString() ?: ""
+        }
+    }
+
     private fun save() {
         if (viewingImage) {
             logConsole("[WARN] Для изображения сохранение/запуск недоступны")
@@ -463,9 +563,14 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         }
         val f = file ?: return
         try {
-            f.writeText(edit.text?.toString() ?: "")
-            original = edit.text?.toString() ?: ""
-            last = original
+            val text = currentEditorText()
+            f.writeText(text)
+            // синхронизируем текстовый буфер
+            syncing = true
+            edit.setText(text)
+            syncing = false
+            original = text
+            last = text
             dirty = false
             tabTitle.text = f.name
             updateProps()
@@ -505,7 +610,6 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
 
     private fun logConsole(line: String) {
         if (!this::consoleBox.isInitialized) return
-
         val apply = Runnable {
             if (!this::consoleBox.isInitialized) return@Runnable
             val color = when {
@@ -521,21 +625,13 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
                 },
                 lp(MATCH, WRAP)
             )
-            while (consoleBox.childCount > 40) {
-                consoleBox.removeViewAt(0)
-            }
+            while (consoleBox.childCount > 40) consoleBox.removeViewAt(0)
         }
-
-        // ModernUI: View только с UI thread
-        if (Core.isOnUiThread()) {
-            apply.run()
-        } else {
-            Core.getUiHandler().post(apply)
-        }
+        if (Core.isOnUiThread()) apply.run() else Core.getUiHandler().post(apply)
     }
 
     // ------------------------------------------------------------------
-    // RIGHT: свойства
+    // RIGHT: свойства + палитра нод
     // ------------------------------------------------------------------
 
     private fun buildProperties(ctx: Context): View {
@@ -589,9 +685,73 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         )
         col.addView(
             PanelUi.flatButton(ctx, "Запустить") { runScript() },
+            lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 12) }
+        )
+
+        // --- палитра нод ---
+        paletteSection = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        paletteSection.addView(
+            TextView(ctx).apply {
+                text = "Ноды"
+                textSize = 13f
+                setTextColor(COL_ACCENT)
+            },
             lp(MATCH, WRAP)
         )
+        paletteSection.addView(PanelUi.spacer(ctx, 6))
+
+        paletteSearch = EditText(ctx).apply {
+            hint = "Поиск нод…"
+            textSize = 12f
+            setTextColor(COL_TEXT)
+            setHintTextColor(COL_MUTED)
+            setSingleLine(true)
+            background = ColorDrawable(0xFF1A1A22.toInt())
+            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                override fun afterTextChanged(s: Editable?) {
+                    refreshPalette(s?.toString().orEmpty())
+                }
+            })
+        }
+        paletteSection.addView(paletteSearch, lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) })
+
+        paletteBox = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        val paletteScroll = ScrollView(ctx)
+        paletteScroll.addView(paletteBox, lp(MATCH, WRAP))
+        paletteSection.addView(paletteScroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
+
+        col.addView(paletteSection, LinearLayout.LayoutParams(MATCH, 0, 1f))
         return col
+    }
+
+    private fun refreshPalette(query: String) {
+        if (!this::paletteBox.isInitialized) return
+        paletteBox.removeAllViews()
+        for (t in NodePalette.search(query)) {
+            paletteBox.addView(
+                PanelUi.flatButton(ctx, t.title) {
+                    if (file == null || !isScriptFile(file!!) || viewingImage) {
+                        logConsole("[WARN] Открой .sfxs, чтобы добавить ноду")
+                        return@flatButton
+                    }
+                    if (!nodeMode) {
+                        logConsole("[WARN] Переключись в режим нод (>_)")
+                        return@flatButton
+                    }
+                    val id = "n${nodeIdSeq++}"
+                    nodeCanvas.addNode(NodePalette.spawn(t, id, 0f, 0f))
+                    dirty = true
+                    updateProps()
+                },
+                lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 4) }
+            )
+        }
     }
 
     private fun updateProps() {
@@ -635,11 +795,8 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             openVideoPreview(entry.file.nameWithoutExtension)
             return
         }
-        if (isImageFile(entry.file)) {
-            openImagePreview(entry.file)
-        } else {
-            openEditor(entry.file)
-        }
+        if (isImageFile(entry.file)) openImagePreview(entry.file)
+        else openEditor(entry.file)
     }
 
     private fun openRowMenu(entry: FileEntry) {
@@ -647,9 +804,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         items += "Открыть" to { openEntry(entry) }
         items += "Переименовать" to {
             overlays.input("Переименовать", entry.name) { newName ->
-                if (!browser.rename(entry, newName)) {
-                    logConsole("[WARN] Не удалось переименовать")
-                }
+                if (!browser.rename(entry, newName)) logConsole("[WARN] Не удалось переименовать")
                 refreshTree()
             }
         }
@@ -682,11 +837,10 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
                 refreshTree()
                 val created = File(browser.currentDir, safe)
                 if (created.exists()) {
-                    openEditor(created)
+                    if (isScriptFile(created)) seedNewScript(created)
+                    else openEditor(created)
                     logConsole("[INFO] Создан файл: $safe")
-                } else {
-                    logConsole("[WARN] Не удалось создать файл")
-                }
+                } else logConsole("[WARN] Не удалось создать файл")
             }
         }
 
@@ -709,12 +863,30 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
                 refreshTree()
                 val fileName = if (name.trim().endsWith(".sfxs")) name.trim() else "${name.trim()}.sfxs"
                 val created = File(browser.currentDir, fileName)
-                if (created.exists()) openEditor(created)
+                if (created.exists()) seedNewScript(created)
             }
         }
 
         overlays.actions("Создать", items)
     }
+
+    /** Новый .sfxs: шаблон Start → print → End, режим нод. */
+    private fun seedNewScript(f: File) {
+        val name = f.nameWithoutExtension
+        graph = ScriptNodeSync.defaultTemplateGraph(name)
+        val text = ScriptNodeSync.graphToText(graph, includeConnectMeta = true)
+        try {
+            f.writeText(text)
+        } catch (_: Exception) {}
+        openEditor(f)
+        nodeMode = true
+        nodeCanvas.graph = graph
+        applyEditorVisibility()
+        logConsole("[INFO] Шаблон нод: Начало → Сообщение → Конец")
+    }
+
+    private fun isScriptFile(f: File): Boolean =
+        f.name.lowercase().endsWith(".sfxs")
 
     private fun dividerV(ctx: Context) =
         View(ctx).apply { background = ColorDrawable(COL_DIVIDER) }
@@ -730,21 +902,17 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
 
     private fun isVideoFile(f: File): Boolean {
         val n = f.name.lowercase()
-        return n.endsWith(".mp4")
-                || n.endsWith(".webm")
-                || n.endsWith(".mkv")
-                || n.endsWith(".mov")
-                || n.endsWith(".avi")
-                || n.endsWith(".m4v")
+        return n.endsWith(".mp4") || n.endsWith(".webm") || n.endsWith(".mkv")
+                || n.endsWith(".mov") || n.endsWith(".avi") || n.endsWith(".m4v")
     }
 
     private fun clearImagePreview() {
         imageView.setImage(null as Image?)
         imageView.visibility = View.GONE
-        editorScroll.visibility = View.VISIBLE
         previewImage?.close()
         previewImage = null
         viewingImage = false
+        applyEditorVisibility()
     }
 
     private fun openImagePreview(f: File) {
@@ -759,9 +927,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
                 },
                 onNo = { doOpenImage(f) }
             )
-        } else {
-            doOpenImage(f)
-        }
+        } else doOpenImage(f)
     }
 
     private fun doOpenImage(f: File) {
@@ -777,7 +943,8 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             previewImage = img
             imageView.setImage(img)
             imageView.visibility = View.VISIBLE
-            editorScroll.visibility = View.GONE
+            nodeEditorWrap.visibility = View.GONE
+            textEditorWrap.visibility = View.GONE
 
             suppress = true
             edit.setText("")
@@ -790,6 +957,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             dirty = false
             viewingImage = true
             tabTitle.text = "🖼 ${f.name}"
+            paletteSection.visibility = View.GONE
             updateProps()
             refreshTree()
             logConsole("[INFO] Превью: ${f.name} (${img.width}×${img.height})")

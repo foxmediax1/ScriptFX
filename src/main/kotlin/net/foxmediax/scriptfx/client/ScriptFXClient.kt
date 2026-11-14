@@ -155,6 +155,7 @@ object ScriptFXClient : ClientModInitializer {
             LocalNpcAssets.clear()
             net.foxmediax.scriptfx.client.media.MediaClient.clear()
             HudRuntime.clear()
+            HudOverlay.clearTextures()
             triedEnableCustomsPack = false
             AaaParticleBridge.clearPreloadCache()
         }
