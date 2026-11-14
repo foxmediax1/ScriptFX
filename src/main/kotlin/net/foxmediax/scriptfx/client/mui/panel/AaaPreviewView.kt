@@ -3,208 +3,87 @@ package net.foxmediax.scriptfx.client.mui.panel
 import icyllis.modernui.core.Context
 import icyllis.modernui.graphics.drawable.ColorDrawable
 import icyllis.modernui.view.Gravity
-import icyllis.modernui.view.MotionEvent
-import icyllis.modernui.view.View
-import icyllis.modernui.widget.FrameLayout
 import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.TextView
-import net.foxmediax.scriptfx.client.particles.AaaPreviewHelper
-import net.minecraft.client.Minecraft
-import net.minecraft.resources.Identifier
-import kotlin.math.abs
+import net.foxmediax.scriptfx.client.mui.panel.PanelUi.COL_ACCENT
+import net.foxmediax.scriptfx.client.mui.panel.PanelUi.COL_MUTED
+import net.foxmediax.scriptfx.client.mui.panel.PanelUi.COL_TEXT
+import net.foxmediax.scriptfx.client.mui.panel.PanelUi.dp
 
-class AaaPreviewView(ctx: Context) : FrameLayout(ctx) {
+/**
+ * Заглушка вместо 3D-предпросмотра.
+ *
+ * Почему: в Minecraft 26.1 / Modern UI 3.13 UI-рендер идёт через
+ * deferred Granite-архитектуру, а EffekseerManager (AAA Particles)
+ * делает прямые GL-вызовы. Склеить их без кастомного DrawTask нельзя.
+ * Поэтому предпросмотр выполняется в мире: «▶ Play» спавнит эффект
+ * перед игроком.
+ */
+class AaaPreviewView(context: Context) : LinearLayout(context) {
 
-    private val titleView: TextView
-    private val statusView: TextView
+    private val nameView: TextView
     private val hintView: TextView
-    private val errorView: TextView
 
-    private var dragging = false
-    private var moved = false
-    private var lastX = 0f
-    private var lastY = 0f
-    private var downX = 0f
-    private var downY = 0f
-
-    var currentId: Identifier? = null
+    var effectId: String? = null
         private set
 
     init {
-        background = ColorDrawable(0xFF12081F.toInt())
-        isClickable = true
-        isFocusable = true
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        background = ColorDrawable(0xFF08080F.toInt())
 
-        val col = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(
-                PanelUi.dp(ctx, 6),
-                PanelUi.dp(ctx, 6),
-                PanelUi.dp(ctx, 6),
-                PanelUi.dp(ctx, 6)
+        nameView = TextView(context).apply {
+            text = "Эффект не выбран"
+            textSize = 18f
+            setTextColor(COL_TEXT)
+            gravity = Gravity.CENTER
+        }
+        addView(
+            nameView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
             )
-        }
+        )
 
-        titleView = TextView(ctx).apply {
-            text = "AAA Preview"
+        hintView = TextView(context).apply {
+            text = "Выбери AAA-эффект и нажми «▶ Play»\n— он появится в мире перед тобой"
             textSize = 12f
-            setTextColor(PanelUi.COL_TEXT)
+            setTextColor(COL_MUTED)
             gravity = Gravity.CENTER
+            setPadding(dp(context, 16), dp(context, 8), dp(context, 16), 0)
         }
-        statusView = TextView(ctx).apply {
-            text = ""
-            textSize = 10f
-            setTextColor(PanelUi.COL_ACCENT)
+        addView(
+            hintView,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
+
+        val playHint = TextView(context).apply {
+            text = "▶ Play"
+            textSize = 16f
+            setTextColor(COL_ACCENT)
             gravity = Gravity.CENTER
+            setPadding(0, dp(context, 16), 0, 0)
         }
-        val spacer = View(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(MATCH, 0, 1f)
-        }
-        hintView = TextView(ctx).apply {
-            text = "Тяни — orbit · Play в панели"
-            textSize = 10f
-            setTextColor(0xFF9CA3AF.toInt())
-            gravity = Gravity.CENTER
-        }
-        errorView = TextView(ctx).apply {
-            text = ""
-            textSize = 12f
-            setTextColor(0xFFFF5555.toInt())
-            gravity = Gravity.CENTER
-            visibility = View.GONE
-        }
-
-        col.addView(titleView, LinearLayout.LayoutParams(MATCH, WRAP))
-        col.addView(statusView, LinearLayout.LayoutParams(MATCH, WRAP))
-        col.addView(spacer)
-        col.addView(hintView, LinearLayout.LayoutParams(MATCH, WRAP))
-        addView(col, LayoutParams(MATCH, MATCH))
-        addView(errorView, LayoutParams(MATCH, MATCH, Gravity.CENTER))
+        addView(
+            playHint,
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
     }
 
-    fun setEffect(id: Identifier?) {
-        currentId = id
-        titleView.text = id?.toString() ?: "AAA Preview"
-        if (id == null) {
-            AaaPreviewHelper.stop()
-            statusView.text = ""
-            refreshError()
-            return
-        }
-        AaaPreviewHelper.play(id)
-        statusView.text = "playing · scale=${"%.2f".format(AaaPreviewHelper.scale)}"
-        post { updateBounds(); refreshError() }
-        postDelayed({ refreshError() }, 120)
-        postDelayed({ refreshError() }, 500)
+    fun setEffect(id: String?) {
+        effectId = id
+        nameView.text = id ?: "Эффект не выбран"
+        invalidate()
     }
 
-    fun play() {
-        val id = currentId ?: return
-        AaaPreviewHelper.play(id)
-        statusView.text = "playing"
-        refreshError()
-    }
-
-    fun stop() {
-        AaaPreviewHelper.stop()
-        statusView.text = "stopped"
-    }
-
-    fun setScale(v: Float) {
-        AaaPreviewHelper.setScale(v)
-        statusView.text = "scale=${"%.2f".format(AaaPreviewHelper.scale)}"
-    }
-
-    fun refreshError() {
-        val err = AaaPreviewHelper.loadError
-        if (err.isNullOrBlank()) {
-            errorView.visibility = View.GONE
-            errorView.text = ""
-        } else {
-            errorView.text = err
-            errorView.visibility = View.VISIBLE
-        }
-    }
-
-    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-        super.onSizeChanged(w, h, oldw, oldh)
-        post { updateBounds() }
-    }
-
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        post { updateBounds() }
-    }
-
-    override fun onDetachedFromWindow() {
-        AaaPreviewHelper.clearBounds()
-        AaaPreviewHelper.stop()
-        super.onDetachedFromWindow()
-    }
-
-    private fun updateBounds() {
-        if (width <= 0 || height <= 0) {
-            AaaPreviewHelper.clearBounds()
-            return
-        }
-        val loc = IntArray(2)
-        getLocationInWindow(loc)
-        val mc = Minecraft.getInstance()
-        val guiScale = mc.window.guiScale.toFloat().coerceAtLeast(1f)
-
-        val x0 = (loc[0] / guiScale).toInt()
-        val y0 = (loc[1] / guiScale).toInt()
-        val x1 = ((loc[0] + width) / guiScale).toInt()
-        val y1 = ((loc[1] + height) / guiScale).toInt()
-
-        val padTop = (PanelUi.dp(context, 28) / guiScale).toInt().coerceAtLeast(12)
-        val padBottom = (PanelUi.dp(context, 22) / guiScale).toInt().coerceAtLeast(10)
-
-        val px0 = x0 + 4
-        val py0 = y0 + padTop
-        val px1 = x1 - 4
-        val py1 = y1 - padBottom
-        if (px1 - px0 < 24 || py1 - py0 < 24) {
-            AaaPreviewHelper.clearBounds()
-            return
-        }
-        AaaPreviewHelper.setBounds(px0, py0, px1, py1)
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                dragging = true
-                moved = false
-                lastX = event.x
-                lastY = event.y
-                downX = event.x
-                downY = event.y
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (dragging) {
-                    val dx = event.x - lastX
-                    val dy = event.y - lastY
-                    if (abs(event.x - downX) > 4f || abs(event.y - downY) > 4f) moved = true
-                    if (moved) AaaPreviewHelper.drag(dx, dy)
-                    lastX = event.x
-                    lastY = event.y
-                    return true
-                }
-            }
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                dragging = false
-                moved = false
-                return true
-            }
-        }
-        return super.onTouchEvent(event)
-    }
-
-    companion object {
-        private const val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
-        private const val WRAP = LinearLayout.LayoutParams.WRAP_CONTENT
-    }
+    fun setScale(s: Float) { /* не актуально в этом варианте */ }
+    fun play() { /* спавн делает ParticlesPage через AaaParticleBridge */ }
+    fun stop() { }
 }
