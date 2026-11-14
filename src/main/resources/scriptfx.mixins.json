@@ -1,17 +1,15 @@
 {
 	"required": true,
-	"package" : "net.foxmediax.scriptfx",
+	"package": "net.foxmediax.scriptfx.mixin",
 	"compatibilityLevel": "JAVA_25",
 	"mixins": [
+	],
+	"client": [
 	],
 	"injectors": {
 		"defaultRequire": 1
 	},
 	"overwrites": {
 		"requireAnnotations": true
-	},
-	"client": [
-		"client.ChatComponentMixin",
-		"client.ChatComponentAccessor"
-	]
+	}
 }
