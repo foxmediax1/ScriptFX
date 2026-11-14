@@ -1,9 +1,9 @@
 package net.foxmediax.scriptfx.client.chat
 
 import net.foxmediax.scriptfx.client.ScriptFXChat
-import net.foxmediax.scriptfx.client.ChatComponentAccessor
 import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.client.Minecraft
+import net.foxmediax.scriptfx.mixin.client.ChatComponentAccessor
 
 object ChatCleaner {
 
