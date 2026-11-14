@@ -8,11 +8,10 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Превью AAA Particles для UI (Minecraft 26.1).
+ * World-space превью AAA Particles.
  *
- * FBO/старый RenderTarget API в 26.1 убран (GpuTexture + RenderPass).
- * Поэтому превью = спавн эффекта в мире перед камерой через AaaParticleBridge.
- * Orbit/zoom влияют на точку спавна относительно взгляда игрока.
+ * UI-превью живёт в отдельном AaaUiPreview — здесь только спавн в мире
+ * перед камерой игрока (кнопка «▶ Спавн в мире»).
  */
 object AaaPreviewHelper {
 
@@ -34,15 +33,12 @@ object AaaPreviewHelper {
     @Volatile var playing: Boolean = false
         private set
 
-    /** Угол вокруг точки превью (горизонталь), градусы */
     var yaw: Float = 0f
         private set
 
-    /** Наклон, градусы */
     var pitch: Float = 0f
         private set
 
-    /** Дистанция от игрока до точки эффекта */
     var distance: Float = 3.5f
         private set
 
@@ -50,22 +46,16 @@ object AaaPreviewHelper {
         private set
 
     var looping: Boolean = true
-
-    /** Интервал перезапуска one-shot (сек) */
     var loopSeconds: Float = 3.5f
 
     private var loopAccum = 0f
     private var lastTickNs = 0L
 
-    // ------------------------------------------------------------------ UI API
-
     fun setBounds(x0: Int, y0: Int, x1: Int, y1: Int) {
         bounds = if (x1 - x0 < 16 || y1 - y0 < 16) null else Bounds(x0, y0, x1, y1)
     }
 
-    fun clearBounds() {
-        bounds = null
-    }
+    fun clearBounds() { bounds = null }
 
     fun drag(dx: Float, dy: Float) {
         yaw += dx * 0.45f
@@ -112,8 +102,6 @@ object AaaPreviewHelper {
     fun stop() {
         playing = false
         loopAccum = 0f
-        // Мировые эмиттеры AAA гасятся только через их native stop / выход из мира.
-        // Повторный play пересоздаёт эмиттер.
         ScriptFXLog.info("AaaPreview: stopped")
     }
 
@@ -127,8 +115,16 @@ object AaaPreviewHelper {
     }
 
     /**
-     * Вызывать каждый клиентский тик (из ScriptFXClient) — loop restart.
+     * HUD-хук, вызывается из ScriptFXClient каждый кадр.
+     *
+     * В 26.1 нет FBO-превью в HUD: world-space эффекты рисует сам AAA Particles
+     * в мировом проходе, а UI-превью — AaaUiPreview в CustomDrawable.
+     * Поэтому здесь ничего не делаем, но метод нужен для совместимости.
      */
+    fun render() {
+        // no-op
+    }
+
     fun clientTick() {
         if (!playing) return
         val id = effectId ?: return
@@ -151,15 +147,6 @@ object AaaPreviewHelper {
             spawnOnce()
         }
     }
-
-    /**
-     * HUD-хук. В 26.1 без FBO ничего не рисуем — эффект виден в мире.
-     */
-    fun render() {
-        // no-op: world-space preview
-    }
-
-    // ------------------------------------------------------------------ spawn
 
     private fun spawnOnce() {
         val id = effectId ?: return
@@ -185,16 +172,7 @@ object AaaPreviewHelper {
         }
     }
 
-    /**
-     * Точка перед игроком + offset от orbit (yaw/pitch UI).
-     */
     private fun previewWorldPos(playerPos: Vec3, playerYaw: Float, playerPitch: Float): Vec3 {
-        val totalYaw = playerYaw + yaw
-        val totalPitch = (playerPitch + pitch).coerceIn(-89f, 89f)
-        val yawRad = Math.toRadians(-totalYaw.toDouble() - 180.0) // MC look
-        val pitchRad = Math.toRadians(-totalPitch.toDouble())
-
-        // Minecraft look vector
         val look = playerLook(playerYaw, playerPitch)
         val base = playerPos.add(
             look.x * distance,
@@ -202,16 +180,11 @@ object AaaPreviewHelper {
             look.z * distance
         )
 
-        // лёгкий orbit offset в плоскости «вокруг» точки
         val orbitYaw = Math.toRadians(yaw.toDouble())
         val orbitPitch = Math.toRadians(pitch.toDouble())
         val ox = sin(orbitYaw) * 0.35
         val oy = sin(orbitPitch) * 0.25
         val oz = cos(orbitYaw) * 0.35 - 0.35
-
-        // подавляем unused warning
-        @Suppress("UNUSED_EXPRESSION")
-        yawRad; pitchRad
 
         return base.add(ox, oy, oz)
     }
