@@ -9,6 +9,7 @@
     "MouseHandlerMixin",
     "WindowAccessor",
     "ChatComponentAccessor",
+    "ChatComponentMixin",
     "ChatComponentHudMixin",
     "MinecraftSetScreenMixin",
     "KeyboardInputMixin"
