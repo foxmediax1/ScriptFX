@@ -1,8 +1,6 @@
 package net.foxmediax.scriptfx.client
 
-import net.foxmediax.scriptfx.mixin.client.ChatComponentAccessor
 import net.minecraft.client.Minecraft
-import net.minecraft.client.multiplayer.chat.GuiMessageSource
 import net.minecraft.client.multiplayer.chat.GuiMessageTag
 import net.minecraft.network.chat.Component
 
@@ -21,6 +19,5 @@ object ScriptChatHistory {
     fun add(component: Component) {
         val chat = Minecraft.getInstance().gui.chat
         ((chat as Any) as ChatComponentAccessor)
-            .`scriptfx$addMessage`(component, null, GuiMessageSource.SYSTEM_CLIENT, TAG)
     }
 }
