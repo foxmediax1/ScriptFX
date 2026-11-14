@@ -46,10 +46,10 @@ class UiVideoPlayerOverlay(
     private var closed = false
 
     private var audioKey: String? = null
+    private var audioFile: java.io.File? = null
     private var audioPlaying = false
     private var currentVolume: Float = 0.8f
 
-    // UI auto-hide
     private var uiVisible = true
     private var hideRunnable: Runnable? = null
     private val hideDelayMs = 2500L
@@ -83,8 +83,10 @@ class UiVideoPlayerOverlay(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
-        loadingBox.addView(LoadingSpinnerView(context),
-            LinearLayout.LayoutParams(dp(context, 64), dp(context, 64)))
+        loadingBox.addView(
+            LoadingSpinnerView(context),
+            LinearLayout.LayoutParams(dp(context, 64), dp(context, 64))
+        )
         loadingBox.addView(TextView(context).apply {
             text = "Загрузка видео…"
             textSize = 15f
@@ -92,7 +94,10 @@ class UiVideoPlayerOverlay(
             gravity = Gravity.CENTER
             setPadding(0, dp(context, 16), 0, 0)
         })
-        addView(loadingBox, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER))
+        addView(
+            loadingBox,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER)
+        )
 
         surface = UiVideoSurfaceView(context).apply { visibility = View.GONE }
         addView(surface, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -104,23 +109,38 @@ class UiVideoPlayerOverlay(
             visibility = View.GONE
             setPadding(dp(context, 24), dp(context, 24), dp(context, 24), dp(context, 24))
         }
-        addView(errorView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        addView(
+            errorView,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        )
 
         closeBtn = TextView(context).apply {
-            text = "✕"; textSize = 22f; setTextColor(COL_TEXT); gravity = Gravity.CENTER
+            text = "✕"
+            textSize = 22f
+            setTextColor(COL_TEXT)
+            gravity = Gravity.CENTER
             background = ColorDrawable(0x66000000)
             isClickable = true
             setPadding(dp(context, 12), dp(context, 6), dp(context, 12), dp(context, 6))
             setOnClickListener { dismiss() }
         }
-        addView(closeBtn, LayoutParams(dp(context, 44), dp(context, 44), Gravity.TOP or Gravity.RIGHT).apply {
-            topMargin = dp(context, 16); rightMargin = dp(context, 16)
-        })
+        addView(
+            closeBtn,
+            LayoutParams(dp(context, 44), dp(context, 44), Gravity.TOP or Gravity.RIGHT).apply {
+                topMargin = dp(context, 16)
+                rightMargin = dp(context, 16)
+            }
+        )
 
         controls = buildControls(context)
-        addView(controls, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
-            bottomMargin = dp(context, 24); leftMargin = dp(context, 24); rightMargin = dp(context, 24)
-        })
+        addView(
+            controls,
+            LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.BOTTOM).apply {
+                bottomMargin = dp(context, 24)
+                leftMargin = dp(context, 24)
+                rightMargin = dp(context, 24)
+            }
+        )
 
         loadVideo()
     }
@@ -169,13 +189,18 @@ class UiVideoPlayerOverlay(
             background = ColorDrawable(0xAA000000.toInt())
             setPadding(dp(ctx, 16), dp(ctx, 12), dp(ctx, 16), dp(ctx, 12))
         }
-        panel.addView(TextView(ctx).apply {
-            text = videoId.substringAfterLast('/').substringAfterLast('\\')
-            textSize = 13f; setTextColor(COL_MUTED); setSingleLine(true)
-        }, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ))
+        panel.addView(
+            TextView(ctx).apply {
+                text = videoId.substringAfterLast('/').substringAfterLast('\\')
+                textSize = 13f
+                setTextColor(COL_MUTED)
+                setSingleLine(true)
+            },
+            LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        )
 
         val row = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -183,29 +208,54 @@ class UiVideoPlayerOverlay(
             setPadding(0, dp(ctx, 8), 0, 0)
         }
         playPauseBtn = TextView(ctx).apply {
-            text = "▶"; textSize = 20f; setTextColor(COL_TEXT); gravity = Gravity.CENTER
-            background = ColorDrawable(COL_BTN); isClickable = true
+            text = "▶"
+            textSize = 20f
+            setTextColor(COL_TEXT)
+            gravity = Gravity.CENTER
+            background = ColorDrawable(COL_BTN)
+            isClickable = true
             setPadding(dp(ctx, 12), dp(ctx, 6), dp(ctx, 12), dp(ctx, 6))
             setOnClickListener { if (playing) pause() else play() }
         }
         row.addView(playPauseBtn, LinearLayout.LayoutParams(dp(ctx, 44), dp(ctx, 40)))
 
         timeView = TextView(ctx).apply {
-            text = "00:00 / 00:00"; textSize = 12f; setTextColor(COL_MUTED)
+            text = "00:00 / 00:00"
+            textSize = 12f
+            setTextColor(COL_MUTED)
             setPadding(dp(ctx, 12), 0, dp(ctx, 12), 0)
         }
         row.addView(timeView)
 
         seekBar = SeekBarView(ctx).apply {
-            onSeek = { f -> seekTo((durationMs() * f).toLong()) }
+            // Во время drag: только кадр + таймер, БЕЗ перезапуска аудио
+            onScrub = { f ->
+                val ms = (durationMs() * f).toLong()
+                basePositionMs = ms.coerceAtLeast(0)
+                startMs = System.currentTimeMillis()
+                val idx = ((ms / 1000f) * fps).toInt()
+                    .coerceIn(0, frameFiles.lastIndex.coerceAtLeast(0))
+                if (frameFiles.isNotEmpty()) surface.showFrame(idx)
+                updateSeekUi(ms)
+            }
+            // Один раз при отпускании: stop + play с offset
+            onSeekCommit = { f ->
+                val ms = (durationMs() * f).toLong()
+                seekTo(ms)
+            }
         }
         row.addView(seekBar, LinearLayout.LayoutParams(0, dp(ctx, 32), 1f))
 
         volumeBar = SeekBarView(ctx).apply {
             initialFraction = currentVolume
-            onSeek = { f ->
-                currentVolume = f
-                applyVolume(f)
+            // Громкость можно менять на каждый move — дублирования нет
+            onScrub = { f ->
+                currentVolume = f.coerceIn(0f, 1f)
+                applyVolume(currentVolume)
+            }
+            onSeekCommit = { f ->
+                currentVolume = f.coerceIn(0f, 1f)
+                applyVolume(currentVolume)
             }
         }
         row.addView(volumeBar, LinearLayout.LayoutParams(dp(ctx, 100), dp(ctx, 32)))
@@ -242,7 +292,10 @@ class UiVideoPlayerOverlay(
         this.meta = meta
         this.frameFiles = meta.frames
         this.fps = if (meta.fps > 0f) meta.fps else 24f
-        if (frameFiles.isEmpty()) { showError("Нет кадров"); return }
+        if (frameFiles.isEmpty()) {
+            showError("Нет кадров")
+            return
+        }
 
         loadingBox.visibility = View.GONE
         surface.visibility = View.VISIBLE
@@ -250,35 +303,66 @@ class UiVideoPlayerOverlay(
         closeBtn.visibility = View.VISIBLE
         surface.setFrames(frameFiles)
 
-        audioKey = meta.soundId
-        ScriptFXLog.info("UiVideoPlayerOverlay.onDecoded: frames=${frameFiles.size} fps=$fps soundId=${meta.soundId}")
+        // Аудио: soundId из meta или audio.ogg рядом с кадрами
+        audioKey = meta.soundId ?: "_ui_video_${meta.project}_${meta.id}"
+        audioFile = when {
+            meta.soundId != null -> MediaRegistry.sound(meta.soundId)?.file
+            else -> java.io.File(meta.dir, "audio.ogg").takeIf { it.isFile && it.length() > 0L }
+        }
+        if (audioFile == null) {
+            // fallback: cache / registry
+            meta.soundId?.let { sid ->
+                audioFile = MediaRegistry.sound(sid)?.file
+            }
+        }
+
+        ScriptFXLog.info(
+            "UiVideoPlayerOverlay.onDecoded: frames=${frameFiles.size} fps=$fps " +
+                    "soundId=${meta.soundId} audioFile=${audioFile?.absolutePath}"
+        )
 
         play()
     }
 
     // ─── AUDIO ────────────────────────────────────────────────────────
 
-    private fun startAudio() {
-        val sid = audioKey ?: return
-        if (audioPlaying) return
-        val entry = MediaRegistry.sound(sid) ?: run {
-            ScriptFXLog.warn("UiVideoPlayerOverlay: sound entry '$sid' not found")
+    /**
+     * Запуск аудио с позиции [fromMs].
+     * Всегда stop → play с offset, чтобы pause/seek были синхронны с видео.
+     */
+    private fun startAudio(fromMs: Long = 0L) {
+        val key = audioKey ?: return
+        val file = audioFile ?: run {
+            ScriptFXLog.warn("UiVideoPlayerOverlay: no audio file for key=$key")
             return
         }
         try {
-            MediaClient.playFile(sid, entry.file, currentVolume, 1f, false, false)
+            MediaClient.playFile(
+                key = key,
+                file = file,
+                volume = currentVolume,
+                pitch = 1f,
+                loop = false,
+                videoSlider = false,
+                startOffsetMs = fromMs.coerceAtLeast(0L),
+            )
             audioPlaying = true
-            ScriptFXLog.info("UiVideoPlayerOverlay: audio start key=$sid vol=$currentVolume")
+            ScriptFXLog.info(
+                "UiVideoPlayerOverlay: audio start key=$key vol=$currentVolume offsetMs=$fromMs"
+            )
         } catch (t: Throwable) {
+            audioPlaying = false
             ScriptFXLog.warn("UiVideoPlayerOverlay: audio start failed: ${t.message}")
         }
     }
 
     private fun stopAudio() {
-        val sid = audioKey ?: return
-        if (!audioPlaying) return
+        val key = audioKey ?: return
+        if (!audioPlaying && MediaClient.isSoundPaused(key).not()) {
+            // всё равно stop — на случай, если флаг рассинхронизировался
+        }
         try {
-            MediaClient.stopSound(sid)
+            MediaClient.stopSound(key)
             audioPlaying = false
             ScriptFXLog.info("UiVideoPlayerOverlay: audio stop")
         } catch (t: Throwable) {
@@ -287,10 +371,12 @@ class UiVideoPlayerOverlay(
     }
 
     private fun applyVolume(volume: Float) {
-        val sid = audioKey ?: return
-        ScriptFXLog.info("UiVideoPlayerOverlay.applyVolume: $volume (audioPlaying=$audioPlaying)")
+        val key = audioKey ?: return
+        val v = volume.coerceIn(0f, 1f)
+        currentVolume = v
+        ScriptFXLog.info("UiVideoPlayerOverlay.applyVolume: $v (audioPlaying=$audioPlaying)")
         if (!audioPlaying) return
-        MediaClient.setVolume(sid, volume)
+        MediaClient.setVolume(key, v)
     }
 
     // ─── Управление ──────────────────────────────────────────────────
@@ -301,12 +387,8 @@ class UiVideoPlayerOverlay(
         playing = true
         startMs = System.currentTimeMillis()
 
-        val sid = audioKey
-        if (sid != null && audioPlaying) {
-            MediaClient.resumeSound(sid, currentVolume)
-        } else {
-            startAudio()
-        }
+        // Всегда перезапуск с текущей позиции — и pause, и seek синхронны
+        startAudio(fromMs = basePositionMs)
 
         post(ticker)
         updatePlayPause()
@@ -316,11 +398,13 @@ class UiVideoPlayerOverlay(
     private fun pause() {
         if (!playing) return
         playing = false
-        // Сохраняем текущую позицию — иначе play() сбросит на 0.
         basePositionMs += System.currentTimeMillis() - startMs
         ScriptFXLog.info("UiVideoPlayerOverlay.pause: pos=${basePositionMs}ms")
         removeCallbacks(ticker)
-        audioKey?.let { MediaClient.pauseSound(it) }
+
+        // Полный stop, а не mute — иначе звук «уезжает» вперёд
+        stopAudio()
+
         updatePlayPause()
         showUi()
     }
@@ -328,19 +412,28 @@ class UiVideoPlayerOverlay(
     private fun seekTo(ms: Long) {
         basePositionMs = ms.coerceAtLeast(0)
         startMs = System.currentTimeMillis()
-        ScriptFXLog.info("UiVideoPlayerOverlay.seekTo: pos=${basePositionMs}ms")
-        if (audioPlaying) {
-            stopAudio()
-            if (playing) startAudio()
+        ScriptFXLog.info("UiVideoPlayerOverlay.seekTo: pos=${basePositionMs}ms playing=$playing")
+
+        val idx = ((basePositionMs / 1000f) * fps).toInt()
+            .coerceIn(0, frameFiles.lastIndex.coerceAtLeast(0))
+        if (frameFiles.isNotEmpty()) surface.showFrame(idx)
+        updateSeekUi(basePositionMs)
+
+        // Аудио: один stop + один start с offset (не на каждый MOVE)
+        stopAudio()
+        if (playing) {
+            startAudio(fromMs = basePositionMs)
+            removeCallbacks(ticker)
+            post(ticker)
         }
-        if (playing) { removeCallbacks(ticker); post(ticker) }
     }
 
-    private fun durationMs(): Long = (frameFiles.size / fps * 1000).toLong().coerceAtLeast(1)
+    private fun durationMs(): Long =
+        (frameFiles.size / fps * 1000).toLong().coerceAtLeast(1)
 
     private fun updateSeekUi(posMs: Long) {
         val dur = durationMs()
-        seekBar.fraction = posMs.toFloat() / dur
+        seekBar.fraction = (posMs.toFloat() / dur).coerceIn(0f, 1f)
         timeView.text = "${fmt(posMs)} / ${fmt(dur)}"
     }
 
@@ -364,7 +457,10 @@ class UiVideoPlayerOverlay(
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
-        if (keyCode == 111) { dismiss(); return true }
+        if (keyCode == 111) {
+            dismiss()
+            return true
+        }
         return super.onKeyDown(keyCode, event)
     }
 
@@ -374,7 +470,10 @@ class UiVideoPlayerOverlay(
         hideRunnable?.let { removeCallbacks(it) }
         removeCallbacks(ticker)
         stopAudio()
-        try { surface.release() } catch (_: Throwable) {}
+        try {
+            surface.release()
+        } catch (_: Throwable) {
+        }
         onClose(this)
     }
 }
