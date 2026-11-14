@@ -1,6 +1,7 @@
 package net.foxmediax.scriptfx.client
 
 import net.fabricmc.loader.api.FabricLoader
+import net.foxmediax.scriptfx.client.particles.EfkefcPathPatcher
 import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.minecraft.client.Minecraft
 import java.nio.file.Files
@@ -95,6 +96,7 @@ object AaaEffectsPack {
     /**
      * Копирует всё из config/scriptfx/aaa_effects
      * в resourcepacks/scriptfx_aaa_effects/assets/scriptfx/effeks/
+     * и патчит .efkefc-файлы (заменяет абсолютные пути на относительные).
      */
     fun syncFromSource() {
         Files.createDirectories(effeksDir)
@@ -111,6 +113,7 @@ object AaaEffectsPack {
         }
 
         var count = 0
+        var patched = 0
         Files.walk(sourceDir).use { stream ->
             stream.asSequence()
                 .filter { it.isRegularFile() }
@@ -120,10 +123,16 @@ object AaaEffectsPack {
                     val dest = effeksDir.resolve(rel.toString())
                     Files.createDirectories(dest.parent)
                     Files.copy(src, dest, StandardCopyOption.REPLACE_EXISTING)
+
+                    if (dest.fileName.toString().endsWith(".efkefc")) {
+                        if (EfkefcPathPatcher.patch(dest)) patched++
+                    }
                     count++
                 }
         }
-        ScriptFXLog.info("AaaEffectsPack: synced $count file(s) → ${effeksDir.toAbsolutePath()}")
+        ScriptFXLog.info(
+            "AaaEffectsPack: synced $count file(s), patched $patched .efkefc → ${effeksDir.toAbsolutePath()}"
+        )
     }
 
     private fun writePackMcmeta() {
@@ -143,7 +152,7 @@ object AaaEffectsPack {
     }
 
     fun tryEnableResourcePack(forceReload: Boolean = false) {
-        val mc = Minecraft.getInstance() ?: return
+        val mc = Minecraft.getInstance()
         // options ещё null на самом раннем init — как у LocalNpcAssets
         if (mc.options == null) {
             ScriptFXLog.info("AaaEffectsPack: options still null, skip enable (will retry on join)")
