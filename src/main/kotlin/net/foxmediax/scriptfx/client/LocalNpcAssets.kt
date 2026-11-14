@@ -147,7 +147,14 @@ object LocalNpcAssets {
      * Без этого GeckoLib не находит `customs:*.geo.json`.
      */
     fun tryEnableResourcePack(forceReload: Boolean = false) {
-        val mc = Minecraft.getInstance() ?: return
+        val mc = Minecraft.getInstance()
+
+        // На самом раннем этапе init'а options ещё null — выходим без NPE.
+        if (mc.options == null) {
+            ScriptFXLog.info("LocalNpcAssets: options still null, skip enable (will retry on join)")
+            return
+        }
+
         try {
             writePackMcmeta()
 
@@ -190,7 +197,7 @@ object LocalNpcAssets {
 
     private fun registerDynamicTexture(key: String, file: java.io.File): Identifier? {
         return try {
-            val mc = Minecraft.getInstance() ?: return null
+            val mc = Minecraft.getInstance()
             val safe = key.lowercase().replace(Regex("[^a-z0-9_/.-]"), "_")
             val id = Identifier.fromNamespaceAndPath("scriptfx", "dyn_npc/$safe")
             file.inputStream().use { ins ->
