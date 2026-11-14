@@ -33,6 +33,10 @@ import net.foxmediax.scriptfx.scriptengine.ScriptManager
 import net.minecraft.client.Minecraft
 import java.io.File
 import icyllis.modernui.core.Core
+import icyllis.modernui.graphics.Bitmap
+import icyllis.modernui.graphics.BitmapFactory
+import icyllis.modernui.graphics.Image
+import icyllis.modernui.widget.ImageView
 
 /**
  * Экран «Сценарии»:
@@ -50,7 +54,13 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     // center
     private lateinit var tabTitle: TextView
     private lateinit var edit: EditText
+    private lateinit var editorScroll: ScrollView
+    private lateinit var imageView: ImageView
+    private lateinit var contentHost: FrameLayout
     private lateinit var consoleBox: LinearLayout
+
+    private var previewImage: Image? = null
+    private var viewingImage = false
 
     // right
     private lateinit var propName: TextView
@@ -103,6 +113,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     override fun onDestroy() {
+        clearImagePreview()
         if (this::overlays.isInitialized) overlays.clear()
     }
 
@@ -189,7 +200,11 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         }
 
         for (entry in browser.entries) {
-            val label = if (entry.isDirectory) "📁 ${entry.name}" else "📄 ${entry.name}"
+            val label = when {
+                entry.isDirectory -> "📁 ${entry.name}"
+                isImageFile(entry.file) -> "🖼 ${entry.name}"
+                else -> "📄 ${entry.name}"
+            }
             val selected = file != null && entry.file.absolutePath == file!!.absolutePath
             treeBox.addView(
                 treeRow(
@@ -261,6 +276,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             background = ColorDrawable(COL_CONTENT)
         }
 
+        // --- вкладка ---
         val tabs = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -289,6 +305,11 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         col.addView(tabs, lp(MATCH, WRAP))
         col.addView(dividerH(ctx), lp(MATCH, px1(ctx)))
 
+        // --- область контента: текст ИЛИ картинка ---
+        contentHost = FrameLayout(ctx).apply {
+            background = ColorDrawable(COL_CONTENT)
+        }
+
         edit = EditText(ctx).apply {
             textSize = 13f
             setTextColor(COL_TEXT)
@@ -314,12 +335,23 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             })
         }
 
-        val editorScroll = ScrollView(ctx)
+        // edit добавляется ТОЛЬКО сюда, один раз
+        editorScroll = ScrollView(ctx)
         editorScroll.addView(edit, lp(MATCH, WRAP))
-        col.addView(editorScroll, LinearLayout.LayoutParams(MATCH, 0, 1f))
+        contentHost.addView(editorScroll, FrameLayout.LayoutParams(MATCH, MATCH))
 
+        imageView = ImageView(ctx).apply {
+            visibility = View.GONE
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(ctx, 12), dp(ctx, 12), dp(ctx, 12), dp(ctx, 12))
+            background = ColorDrawable(0xFF0A0A12.toInt())
+        }
+        contentHost.addView(imageView, FrameLayout.LayoutParams(MATCH, MATCH))
+
+        col.addView(contentHost, LinearLayout.LayoutParams(MATCH, 0, 1f))
         col.addView(dividerH(ctx), lp(MATCH, px1(ctx)))
 
+        // --- консоль ---
         val consoleHeader = TextView(ctx).apply {
             text = "Консоль"
             textSize = 12f
@@ -343,6 +375,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     private fun showEmptyEditor() {
+        clearImagePreview()
         suppress = true
         edit.setText("")
         edit.isEnabled = false
@@ -356,6 +389,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     private fun openEditor(f: File) {
+        clearImagePreview()
         val text = try {
             f.readText()
         } catch (e: Exception) {
@@ -395,6 +429,10 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     private fun save() {
+        if (viewingImage) {
+            logConsole("[WARN] Для изображения сохранение/запуск недоступны")
+            return
+        }
         val f = file ?: return
         try {
             f.writeText(edit.text?.toString() ?: "")
@@ -410,6 +448,10 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     private fun runScript() {
+        if (viewingImage) {
+            logConsole("[WARN] Для изображения сохранение/запуск недоступны")
+            return
+        }
         val f = file ?: run {
             logConsole("[WARN] Нет открытого файла")
             return
@@ -561,7 +603,11 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             refreshTree()
             return
         }
-        openEditor(entry.file)
+        if (isImageFile(entry.file)) {
+            openImagePreview(entry.file)
+        } else {
+            openEditor(entry.file)
+        }
     }
 
     private fun openRowMenu(entry: FileEntry) {
@@ -643,4 +689,71 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
 
     private fun dividerH(ctx: Context) =
         View(ctx).apply { background = ColorDrawable(COL_DIVIDER) }
+
+    private fun isImageFile(f: File): Boolean {
+        val n = f.name.lowercase()
+        return n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg")
+                || n.endsWith(".gif") || n.endsWith(".bmp") || n.endsWith(".webp")
+    }
+
+    private fun clearImagePreview() {
+        imageView.setImage(null as Image?)
+        imageView.visibility = View.GONE
+        editorScroll.visibility = View.VISIBLE
+        previewImage?.close()
+        previewImage = null
+        viewingImage = false
+    }
+
+    private fun openImagePreview(f: File) {
+        if (file != null && isDirty()) {
+            overlays.confirm(
+                "Сохранить изменения перед открытием картинки?",
+                "Сохранить",
+                "Не сохранять",
+                onYes = {
+                    save()
+                    doOpenImage(f)
+                },
+                onNo = { doOpenImage(f) }
+            )
+        } else {
+            doOpenImage(f)
+        }
+    }
+
+    private fun doOpenImage(f: File) {
+        clearImagePreview()
+        try {
+            val bmp: Bitmap = BitmapFactory.decodeFile(f)
+            val img = Image.createTextureFromBitmap(bmp)
+            bmp.close()
+            if (img == null) {
+                logConsole("[ERROR] Не удалось создать GPU-изображение: ${f.name}")
+                return
+            }
+            previewImage = img
+            imageView.setImage(img)
+            imageView.visibility = View.VISIBLE
+            editorScroll.visibility = View.GONE
+
+            suppress = true
+            edit.setText("")
+            edit.isEnabled = false
+            suppress = false
+
+            file = f
+            original = ""
+            last = ""
+            dirty = false
+            viewingImage = true
+            tabTitle.text = "🖼 ${f.name}"
+            updateProps()
+            refreshTree()
+            logConsole("[INFO] Превью: ${f.name} (${img.width}×${img.height})")
+        } catch (e: Exception) {
+            logConsole("[ERROR] Не удалось открыть изображение: ${e.message}")
+            clearImagePreview()
+        }
+    }
 }
