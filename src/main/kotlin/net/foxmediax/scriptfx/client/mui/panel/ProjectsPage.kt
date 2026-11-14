@@ -35,6 +35,7 @@ import net.foxmediax.scriptfx.gui.FileBrowser
 import net.foxmediax.scriptfx.gui.FileEntry
 import net.foxmediax.scriptfx.nodes.NodeCanvasView
 import net.foxmediax.scriptfx.nodes.NodeGraph
+import net.foxmediax.scriptfx.nodes.NodeKind
 import net.foxmediax.scriptfx.nodes.NodePalette
 import net.foxmediax.scriptfx.nodes.ScriptNodeSync
 import net.foxmediax.scriptfx.scriptengine.ScriptContext
@@ -42,6 +43,7 @@ import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 import net.foxmediax.scriptfx.scriptengine.ScriptManager
 import net.minecraft.client.Minecraft
 import java.io.File
+import net.foxmediax.scriptfx.nodes.GraphNode
 
 /**
  * Экран «Сценарии»:
@@ -91,6 +93,12 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     private var syncing = false
     private var nodeIdSeq = 1
 
+    private lateinit var nodeTitleView: TextView
+    private lateinit var nodeParamEdit: EditText
+    private var selectedNodeId: String? = null
+
+    private lateinit var nodeParamsBox: LinearLayout
+
     @Volatile
     private var dirty = false
 
@@ -125,9 +133,15 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         root.addView(body, FrameLayout.LayoutParams(MATCH, MATCH))
         root.addView(overlayLayer, FrameLayout.LayoutParams(MATCH, MATCH))
 
+        nodeCanvas.onSelectionChanged = { node ->
+            selectedNodeId = node?.id
+            showNodeProps(node)
+        }
+
         refreshTree()
         refreshPalette("")
         showEmptyEditor()
+        applyEditorVisibility()
         return root
     }
 
@@ -369,6 +383,13 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             }
         )
 
+        nodeCanvas.onSelectionChanged = { node ->
+            selectedNodeId = node?.id
+            showNodeProps(node)
+        }
+
+
+
         // тот же modeBtn поверх текстового режима — через общий слой
         val editorStack = FrameLayout(ctx)
         editorStack.addView(textEditorWrap, FrameLayout.LayoutParams(MATCH, MATCH))
@@ -419,6 +440,71 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         return col
     }
 
+    private fun showNodeProps(node: GraphNode?) {
+        if (!this::nodeTitleView.isInitialized || !this::nodeParamsBox.isInitialized) return
+        nodeParamsBox.removeAllViews()
+        if (node == null) {
+            nodeTitleView.text = "—"
+            nodeParamsBox.visibility = View.GONE
+            return
+        }
+        nodeTitleView.text = "${node.title} (${node.kind})"
+        nodeParamsBox.visibility = View.VISIBLE
+
+        val editable = node.kind != NodeKind.START && node.kind != NodeKind.END
+        val keys = when (node.kind) {
+            NodeKind.COMMAND -> listOf("cmd", "args").filter { node.params.containsKey(it) }
+                .ifEmpty { node.params.keys.toList() }
+            NodeKind.WAIT, NodeKind.DELAY -> listOf("duration")
+            NodeKind.SCRIPT -> listOf("script")
+            NodeKind.QUEST_START, NodeKind.QUEST_COMPLETE, NodeKind.QUEST_FAIL -> listOf("quest")
+            NodeKind.BRANCH -> listOf("var", "op", "value")
+            NodeKind.CUTSCENE_SET -> listOf("x", "y", "z", "yaw", "pitch")
+            NodeKind.CUTSCENE_MOVE -> listOf("x", "y", "z", "yaw", "pitch", "duration")
+            NodeKind.CUTSCENE_START -> listOf("mode")
+            else -> node.params.keys.toList()
+        }.ifEmpty { node.params.keys.toList() }
+
+        for (key in keys) {
+            val label = TextView(ctx).apply {
+                text = key
+                textSize = 11f
+                setTextColor(COL_MUTED)
+                setPadding(0, dp(ctx, 6), 0, dp(ctx, 2))
+            }
+            nodeParamsBox.addView(label, lp(MATCH, WRAP))
+
+            val field = EditText(ctx).apply {
+                textSize = 12f
+                setTextColor(COL_TEXT)
+                setHintTextColor(COL_MUTED)
+                hint = key
+                background = ColorDrawable(COL_CARD)
+                setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
+                isEnabled = editable
+                setText(node.params[key].orEmpty())
+                tag = key
+                addTextChangedListener(object : TextWatcher {
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                    override fun afterTextChanged(s: Editable?) {
+                        if (suppressNodeParam) return
+                        val k = tag as? String ?: return
+                        val id = selectedNodeId ?: return
+                        val n = graph.node(id) ?: return
+                        val v = s?.toString().orEmpty()
+                        if (n.params[k] == v) return
+                        n.params[k] = v
+                        dirty = true
+                        if (this@ProjectsPage::nodeCanvas.isInitialized) nodeCanvas.invalidate()
+                        updateProps()
+                    }
+                })
+            }
+            nodeParamsBox.addView(field, lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 4) })
+        }
+    }
+
     private fun toggleEditorMode() {
         if (viewingImage || file == null || !isScriptFile(file!!)) return
         if (nodeMode) {
@@ -441,20 +527,26 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     private fun applyEditorVisibility() {
+        if (!this::nodeEditorWrap.isInitialized || !this::textEditorWrap.isInitialized) return
+
         if (viewingImage) {
             nodeEditorWrap.visibility = View.GONE
             textEditorWrap.visibility = View.GONE
+            if (this::paletteSection.isInitialized) paletteSection.visibility = View.GONE
             return
         }
-        if (file != null && isScriptFile(file!!) && nodeMode) {
+
+        val scriptOpen = file != null && isScriptFile(file!!)
+        if (scriptOpen && nodeMode) {
             nodeEditorWrap.visibility = View.VISIBLE
             textEditorWrap.visibility = View.GONE
-            paletteSection.visibility = View.VISIBLE
+            if (this::paletteSection.isInitialized) paletteSection.visibility = View.VISIBLE
         } else {
             nodeEditorWrap.visibility = View.GONE
             textEditorWrap.visibility = View.VISIBLE
-            paletteSection.visibility =
-                if (file != null && isScriptFile(file!!)) View.VISIBLE else View.GONE
+            if (this::paletteSection.isInitialized) {
+                paletteSection.visibility = if (scriptOpen) View.VISIBLE else View.GONE
+            }
         }
     }
 
@@ -578,6 +670,11 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         } catch (e: Exception) {
             logConsole("[ERROR] Сохранение не удалось: ${e.message}")
         }
+        if (nodeMode && isScriptFile(file!!)) {
+            ScriptNodeSync.graphToText(graph, includeConnectMeta = true)
+        } else {
+            edit.text?.toString().orEmpty()
+        }
     }
 
     private fun runScript() {
@@ -688,6 +785,36 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 12) }
         )
 
+        // --- выбранная нода ---
+        val nodePropsTitle = TextView(ctx).apply {
+            text = "Нода"
+            textSize = 12f
+            setTextColor(COL_ACCENT)
+            setPadding(0, dp(ctx, 12), 0, dp(ctx, 4))
+        }
+        col.addView(nodePropsTitle, lp(MATCH, WRAP))
+
+        nodeTitleView = TextView(ctx).apply {
+            text = "—"
+            textSize = 13f
+            setTextColor(COL_TEXT)
+        }
+        col.addView(nodeTitleView, lp(MATCH, WRAP))
+
+        nodeParamsBox = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        col.addView(nodeParamsBox, lp(MATCH, WRAP).apply { topMargin = dp(ctx, 6) })
+
+        nodeParamEdit.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: Editable?) {
+                if (suppressNodeParam) return
+            }
+        })
+
         // --- палитра нод ---
         paletteSection = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -729,6 +856,8 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         col.addView(paletteSection, LinearLayout.LayoutParams(MATCH, 0, 1f))
         return col
     }
+
+    private var suppressNodeParam = false
 
     private fun refreshPalette(query: String) {
         if (!this::paletteBox.isInitialized) return
