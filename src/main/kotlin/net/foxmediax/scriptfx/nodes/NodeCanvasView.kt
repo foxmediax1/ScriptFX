@@ -4,16 +4,18 @@ import icyllis.modernui.core.Context
 import icyllis.modernui.graphics.Canvas
 import icyllis.modernui.graphics.Paint
 import icyllis.modernui.graphics.drawable.ColorDrawable
+import icyllis.modernui.graphics.text.FontPaint
+import icyllis.modernui.text.Typeface
 import icyllis.modernui.view.KeyEvent
 import icyllis.modernui.view.MotionEvent
 import icyllis.modernui.view.View
 import org.lwjgl.glfw.GLFW
+import java.util.Locale
 import kotlin.math.hypot
 import kotlin.math.min
 
 /**
- * Холст нод: pan (СКМ/ПКМ), zoom (колесо), drag, связи, Delete.
- * API ModernUI: Paint.style — Int (FILL/STROKE), без setBackgroundColor.
+ * Холст нод: pan (СКМ/ПКМ), zoom (колесо), drag, связи, Delete ребра/ноды.
  */
 class NodeCanvasView(ctx: Context) : View(ctx) {
 
@@ -21,16 +23,20 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
         set(value) {
             field = value
             selectedId = null
+            selectedEdgeIndex = null
+            onSelectionChanged?.invoke(null)
             invalidate()
         }
 
     var onGraphChanged: (() -> Unit)? = null
+    var onSelectionChanged: ((GraphNode?) -> Unit)? = null
 
     private var panX = 0f
     private var panY = 0f
     private var scale = 1f
 
     private var selectedId: String? = null
+    private var selectedEdgeIndex: Int? = null
     private var dragNodeId: String? = null
     private var dragOffX = 0f
     private var dragOffY = 0f
@@ -48,8 +54,12 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
     private val portR = 7f
 
     private val paint = Paint()
+    private val fontPaint = FontPaint().apply {
+        setFont(Typeface.SANS_SERIF)
+        setFontSize(13f)
+        setLocale(Locale.getDefault())
+    }
 
-    // ModernUI: int style constants (как Android ArcStyle)
     private companion object {
         const val STYLE_FILL = 0
         const val STYLE_STROKE = 1
@@ -89,16 +99,18 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
 
         // рёбра
         paint.style = STYLE_STROKE
-        paint.strokeWidth = 2.5f / scale
-        paint.color = 0xFF8B7EC8.toInt()
-        for (e in graph.edges) {
+        for ((i, e) in graph.edges.withIndex()) {
             val a = graph.node(e.from) ?: continue
             val b = graph.node(e.to) ?: continue
             val (ax, ay) = outPort(a)
             val (bx, by) = inPort(b)
+            val selected = selectedEdgeIndex == i
+            paint.color = if (selected) 0xFFFFCC66.toInt() else 0xFF8B7EC8.toInt()
+            paint.strokeWidth = (if (selected) 3.5f else 2.5f) / scale
             drawBezier(canvas, ax, ay, bx, by)
         }
 
+        // временная связь
         linkingFrom?.let { id ->
             val a = graph.node(id) ?: return@let
             val (ax, ay) = outPort(a)
@@ -136,7 +148,7 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
     private fun drawNode(canvas: Canvas, n: GraphNode, selected: Boolean) {
         val x = n.x
         val y = n.y
-        val rx = 8f // Int — радиус угла
+        val rx = 8f
 
         paint.style = STYLE_FILL
         paint.color = when (n.kind) {
@@ -145,18 +157,35 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
             NodeKind.WAIT, NodeKind.DELAY -> 0xFF2A2A18.toInt()
             else -> 0xFF1E1E28.toInt()
         }
-        canvas.drawRoundRect(x, y, x + nodeW, y + nodeH, rx, rx, paint)
+        canvas.drawRoundRect(x, y, x + nodeW, y + nodeH, rx, paint)
 
         paint.style = STYLE_STROKE
         paint.strokeWidth = (if (selected) 2.5f else 1.2f) / scale
         paint.color = if (selected) 0xFFC8B4FF.toInt() else 0xFF3A3A4A.toInt()
-        canvas.drawRoundRect(x, y, x + nodeW, y + nodeH, rx, rx, paint)
+        canvas.drawRoundRect(x, y, x + nodeW, y + nodeH, rx, paint)
 
-        // полоска «заголовок»
         paint.style = STYLE_FILL
         paint.color = 0xFFC8B4FF.toInt()
-        val barW = min(nodeW - 16f, 12f * n.title.length.coerceAtMost(14))
-        canvas.drawRect(x + 8f, y + 10f, x + 8f + barW, y + 14f, paint)
+        canvas.drawRect(x + 6f, y + 6f, x + nodeW - 6f, y + 10f, paint)
+
+        val label = n.title.ifBlank { n.kind.name }
+        paint.color = 0xFFE8E8F0.toInt()
+        fontPaint.setFontSize(13f / scale.coerceAtLeast(0.5f))
+        canvas.drawTextRun(
+            label, 0, label.length, 0, label.length,
+            x + 12f, y + 34f, false, paint, fontPaint
+        )
+
+        val cmd = n.params["cmd"] ?: n.params["args"]
+        if (!cmd.isNullOrBlank() && n.kind != NodeKind.START && n.kind != NodeKind.END) {
+            val sub = cmd.take(22)
+            paint.color = 0xFF8888A0.toInt()
+            fontPaint.setFontSize(11f / scale.coerceAtLeast(0.5f))
+            canvas.drawTextRun(
+                sub, 0, sub.length, 0, sub.length,
+                x + 12f, y + 48f, false, paint, fontPaint
+            )
+        }
 
         val (ox, oy) = outPort(n)
         val (ix, iy) = inPort(n)
@@ -166,58 +195,109 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
         canvas.drawCircle(ox, oy, portR, paint)
     }
 
-    private fun inPort(n: GraphNode): Pair<Float, Float> = n.x to (n.y + nodeH / 2f)
-    private fun outPort(n: GraphNode): Pair<Float, Float> = (n.x + nodeW) to (n.y + nodeH / 2f)
+    private fun inPort(n: GraphNode): Pair<Float, Float> =
+        n.x to (n.y + nodeH / 2f)
 
-    private fun screenToWorld(sx: Float, sy: Float): Pair<Float, Float> =
-        ((sx - panX) / scale) to ((sy - panY) / scale)
+    private fun outPort(n: GraphNode): Pair<Float, Float> =
+        (n.x + nodeW) to (n.y + nodeH / 2f)
+
+    private fun worldX(sx: Float) = (sx - panX) / scale
+    private fun worldY(sy: Float) = (sy - panY) / scale
+
+    private fun hitNode(wx: Float, wy: Float): GraphNode? =
+        graph.nodes.asReversed().firstOrNull { n ->
+            wx >= n.x && wx <= n.x + nodeW && wy >= n.y && wy <= n.y + nodeH
+        }
+
+    private fun hitOutPort(wx: Float, wy: Float): GraphNode? =
+        graph.nodes.firstOrNull { n ->
+            val (ox, oy) = outPort(n)
+            hypot(wx - ox, wy - oy) <= portR * 2.2f
+        }
+
+    private fun hitEdge(wx: Float, wy: Float): Int? {
+        val threshold = 12f / scale
+        graph.edges.forEachIndexed { i, e ->
+            val a = graph.node(e.from) ?: return@forEachIndexed
+            val b = graph.node(e.to) ?: return@forEachIndexed
+            val (ax, ay) = outPort(a)
+            val (bx, by) = inPort(b)
+            val mx = (ax + bx) * 0.5f
+            val my = (ay + by) * 0.5f
+            if (hypot(wx - mx, wy - my) <= threshold * 3f) return i
+            for (s in 1..7) {
+                val t = s / 8f
+                val x = ax + (bx - ax) * t
+                val y = ay + (by - ay) * t
+                if (hypot(wx - x, wy - y) <= threshold) return i
+            }
+        }
+        return null
+    }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val x = event.x
-        val y = event.y
+        val wx = worldX(event.x)
+        val wy = worldY(event.y)
+
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 requestFocus()
-                val (wx, wy) = screenToWorld(x, y)
-                if ((event.buttonState and MotionEvent.BUTTON_SECONDARY) != 0 ||
-                    (event.buttonState and MotionEvent.BUTTON_TERTIARY) != 0
+
+                if (event.buttonState and MotionEvent.BUTTON_SECONDARY != 0 ||
+                    event.buttonState and MotionEvent.BUTTON_TERTIARY != 0
                 ) {
                     panning = true
-                    panLastX = x
-                    panLastY = y
+                    panLastX = event.x
+                    panLastY = event.y
                     return true
                 }
-                for (n in graph.nodes.asReversed()) {
-                    val (ox, oy) = outPort(n)
-                    if (hypot(wx - ox, wy - oy) <= portR * 2) {
-                        linkingFrom = n.id
-                        linkX = wx
-                        linkY = wy
-                        return true
-                    }
-                }
-                val hit = graph.nodes.asReversed().firstOrNull { n ->
-                    wx in n.x..(n.x + nodeW) && wy in n.y..(n.y + nodeH)
-                }
-                selectedId = hit?.id
-                if (hit != null) {
-                    dragNodeId = hit.id
-                    dragOffX = wx - hit.x
-                    dragOffY = wy - hit.y
-                }
-                invalidate()
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                if (panning) {
-                    panX += x - panLastX
-                    panY += y - panLastY
-                    panLastX = x
-                    panLastY = y
+
+                hitOutPort(wx, wy)?.let { n ->
+                    linkingFrom = n.id
+                    linkX = wx
+                    linkY = wy
+                    selectedId = n.id
+                    selectedEdgeIndex = null
+                    onSelectionChanged?.invoke(n)
                     invalidate()
                     return true
                 }
-                val (wx, wy) = screenToWorld(x, y)
+
+                hitEdge(wx, wy)?.let { idx ->
+                    selectedEdgeIndex = idx
+                    selectedId = null
+                    onSelectionChanged?.invoke(null)
+                    invalidate()
+                    return true
+                }
+
+                hitNode(wx, wy)?.let { n ->
+                    selectedId = n.id
+                    selectedEdgeIndex = null
+                    dragNodeId = n.id
+                    dragOffX = wx - n.x
+                    dragOffY = wy - n.y
+                    onSelectionChanged?.invoke(n)
+                    invalidate()
+                    return true
+                }
+
+                selectedId = null
+                selectedEdgeIndex = null
+                onSelectionChanged?.invoke(null)
+                invalidate()
+                return true
+            }
+
+            MotionEvent.ACTION_MOVE -> {
+                if (panning) {
+                    panX += event.x - panLastX
+                    panY += event.y - panLastY
+                    panLastX = event.x
+                    panLastY = event.y
+                    invalidate()
+                    return true
+                }
                 linkingFrom?.let {
                     linkX = wx
                     linkY = wy
@@ -234,12 +314,12 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
                     return true
                 }
             }
+
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 if (panning) {
                     panning = false
                     return true
                 }
-                val (wx, wy) = screenToWorld(x, y)
                 linkingFrom?.let { fromId ->
                     val target = graph.nodes.firstOrNull { n ->
                         n.id != fromId &&
@@ -279,12 +359,22 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         if (keyCode == GLFW.GLFW_KEY_DELETE || keyCode == GLFW.GLFW_KEY_BACKSPACE) {
+            selectedEdgeIndex?.let { idx ->
+                if (idx in graph.edges.indices) {
+                    graph.edges.removeAt(idx)
+                    selectedEdgeIndex = null
+                    onGraphChanged?.invoke()
+                    invalidate()
+                    return true
+                }
+            }
             val id = selectedId ?: return true
             val n = graph.node(id) ?: return true
             if (n.kind == NodeKind.START || n.kind == NodeKind.END) return true
             graph.edges.removeAll { it.from == id || it.to == id }
             graph.nodes.removeAll { it.id == id }
             selectedId = null
+            onSelectionChanged?.invoke(null)
             onGraphChanged?.invoke()
             invalidate()
             return true
@@ -300,12 +390,14 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
             i++
         }
         node.id = id
-        if (node.x == 0f && node.y == 0f) {
-            node.x = (-panX + width * 0.4f) / scale
-            node.y = (-panY + height * 0.4f) / scale
+        if (node.x == 0f && node.y == 0f && width > 0 && height > 0) {
+            node.x = (-panX + width * 0.5f) / scale - nodeW * 0.5f
+            node.y = (-panY + height * 0.5f) / scale - nodeH * 0.5f
         }
         graph.nodes.add(node)
         selectedId = node.id
+        selectedEdgeIndex = null
+        onSelectionChanged?.invoke(node)
         onGraphChanged?.invoke()
         invalidate()
     }
