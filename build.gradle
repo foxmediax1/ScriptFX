@@ -7,6 +7,7 @@ plugins {
 }
 
 repositories {
+	mavenLocal()
 	mavenCentral()
 	maven { url = "https://maven.fabricmc.net/" } // Fabric API и Language Kotlin
 
@@ -70,21 +71,49 @@ dependencies {
 	implementation "icyllis.modernui:ModernUI-Fabric:26.1.2-3.13.0.4"
 	include "icyllis.modernui:ModernUI-Fabric:26.1.2-3.13.0.4"
 
+	implementation "curse.maven:modern-ui-352491:8206272"
+	include "curse.maven:modern-ui-352491:8206272"
+
 	// VFX Weaver
 	implementation "maven.modrinth:HBhB8m4j:oDBgLRw2"
 	include "maven.modrinth:HBhB8m4j:oDBgLRw2"
 
 	// AAA Particles
-	include "maven.modrinth:aaa-particles:2.2.3+26.1.2"
-	implementation "curse.maven:aaa-particles-979809:9239381"
+	implementation "curse.maven:aaa-particles-979809:8402887"
+	include "curse.maven:aaa-particles-979809:8402887"
 
-	// AAA Particles: World
-	include "maven.modrinth:aaa-particles-world:2.0.0+26.1.2-fabric"
-	implementation "curse.maven:aaa-particles-world-1157870:8279365"
+	// AAA Particles: World (локально)
+	implementation "com.local:aaa-particles-world:2.0.0"
+	include "com.local:aaa-particles-world:2.0.0"
 
 	// Fabric Language Kotlin
 	implementation "net.fabricmc:fabric-language-kotlin:${project.kotlin_loader_version}"
 	include "net.fabricmc:fabric-language-kotlin:${project.kotlin_loader_version}"
+
+	// JUnit 5 для тестов
+	testImplementation "org.junit.jupiter:junit-jupiter:5.10.2"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+
+	// Kotlin test (для assertIs, assertNull и т.д.)
+	testImplementation "org.jetbrains.kotlin:kotlin-test-junit5"
+
+	testImplementation "org.mockito:mockito-core:5.11.0"
+
+	// Arc3D — обязательная зависимость Modern UI
+	implementation "icyllis.arc3d:arc3d-core:2026.1.0"
+	include "icyllis.arc3d:arc3d-core:2026.1.0"
+
+	implementation "icyllis.arc3d:arc3d-core:2026.1.0"
+	include "icyllis.arc3d:arc3d-core:2026.1.0"
+
+	implementation "icyllis.arc3d:arc3d-compiler:2026.1.0"
+	include "icyllis.arc3d:arc3d-compiler:2026.1.0"
+
+	implementation "icyllis.arc3d:arc3d-engine:2026.1.0"
+	include "icyllis.arc3d:arc3d-engine:2026.1.0"
+
+	implementation "icyllis.arc3d:arc3d-opengl:2026.1.0"
+	include "icyllis.arc3d:arc3d-opengl:2026.1.0"
 }
 
 tasks.withType(Test).configureEach {
@@ -95,10 +124,12 @@ tasks.withType(Test).configureEach {
 	}
 }
 
+def modVersion = project.version.toString()
+
 processResources {
-	inputs.property "version", project.version
+	inputs.property "version", modVersion
 	filesMatching("fabric.mod.json") {
-		expand "version": inputs.properties.version
+		expand "version": modVersion
 	}
 }
 
@@ -117,10 +148,11 @@ java {
 	targetCompatibility = JavaVersion.VERSION_25
 }
 
+def archivesBaseName = project.base.archivesName.get()
 
 jar {
 	from("LICENSE") {
-		rename { "${it}_${project.base.archivesName.get()}" }
+		rename { "${it}_${archivesBaseName}" }
 	}
 }
 
