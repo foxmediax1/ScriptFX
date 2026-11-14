@@ -37,6 +37,7 @@ import icyllis.modernui.graphics.Bitmap
 import icyllis.modernui.graphics.BitmapFactory
 import icyllis.modernui.graphics.Image
 import icyllis.modernui.widget.ImageView
+import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
 
 /**
  * Экран «Сценарии»:
@@ -61,6 +62,8 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
 
     private var previewImage: Image? = null
     private var viewingImage = false
+
+    private var videoOverlayOpen = false
 
     // right
     private lateinit var propName: TextView
@@ -115,6 +118,30 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     override fun onDestroy() {
         clearImagePreview()
         if (this::overlays.isInitialized) overlays.clear()
+    }
+
+    private fun openVideoPreview(videoId: String) {
+        ScriptFXLog.info("ProjectsPage.openVideoPreview: start for '$videoId'")
+
+        // 1. Сначала проверяем, не открыт ли уже плеер, чтобы не дублировать.
+        if (videoOverlayOpen) {
+            ScriptFXLog.info("ProjectsPage.openVideoPreview: overlay already open, skip")
+            return
+        }
+        videoOverlayOpen = true
+
+        // 2. Показываем оверлей СРАЗУ (без обращения к реестру), чтобы UI не подвис.
+        try {
+            ScriptFXLog.info("ProjectsPage.openVideoPreview: calling overlays.showVideo")
+            overlays.showVideo(videoId) {
+                ScriptFXLog.info("ProjectsPage.openVideoPreview: overlay closed")
+                videoOverlayOpen = false
+            }
+            ScriptFXLog.info("ProjectsPage.openVideoPreview: showVideo returned")
+        } catch (t: Throwable) {
+            videoOverlayOpen = false
+            ScriptFXLog.warn("ProjectsPage.openVideoPreview: showVideo failed: ${t.message}")
+        }
     }
 
     override fun goUp(): Boolean {
@@ -202,6 +229,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         for (entry in browser.entries) {
             val label = when {
                 entry.isDirectory -> "📁 ${entry.name}"
+                isVideoFile(entry.file) -> "🎬 ${entry.name}"
                 isImageFile(entry.file) -> "🖼 ${entry.name}"
                 else -> "📄 ${entry.name}"
             }
@@ -603,6 +631,10 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             refreshTree()
             return
         }
+        if (isVideoFile(entry.file)) {
+            openVideoPreview(entry.file.nameWithoutExtension)
+            return
+        }
         if (isImageFile(entry.file)) {
             openImagePreview(entry.file)
         } else {
@@ -694,6 +726,16 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         val n = f.name.lowercase()
         return n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg")
                 || n.endsWith(".gif") || n.endsWith(".bmp") || n.endsWith(".webp")
+    }
+
+    private fun isVideoFile(f: File): Boolean {
+        val n = f.name.lowercase()
+        return n.endsWith(".mp4")
+                || n.endsWith(".webm")
+                || n.endsWith(".mkv")
+                || n.endsWith(".mov")
+                || n.endsWith(".avi")
+                || n.endsWith(".m4v")
     }
 
     private fun clearImagePreview() {
