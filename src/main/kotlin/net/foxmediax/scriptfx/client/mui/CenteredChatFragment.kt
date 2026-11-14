@@ -19,7 +19,7 @@ import icyllis.modernui.widget.FrameLayout
 import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
 import icyllis.modernui.widget.TextView
-import net.foxmediax.scriptfx.mixin.client.ChatComponentAccessor
+import net.foxmediax.scriptfx.client.ChatComponentAccessor
 import net.minecraft.client.Minecraft
 import net.minecraft.client.multiplayer.chat.GuiMessage
 import org.lwjgl.glfw.GLFW
@@ -296,7 +296,7 @@ class CenteredChatFragment : Fragment() {
 
     private fun chronological(): List<GuiMessage> {
         val chat = Minecraft.getInstance().gui.chat
-        val all = (chat as ChatComponentAccessor).`scriptfx$getAllMessages`()
+        val all = (chat as ChatComponentAccessor).scriptfxGetAllMessages()
         if (all.isEmpty()) return emptyList()
 
         val copy = ArrayList(all)
