@@ -1,8 +1,10 @@
 package net.foxmediax.scriptfx.client.media
 
+import com.mojang.authlib.minecraft.client.MinecraftClient
 import net.fabricmc.fabric.api.client.sound.v1.FabricSoundInstance
 import net.foxmediax.scriptfx.config.ScriptFXConfig
 import net.foxmediax.scriptfx.scriptengine.ScriptFXLog
+import net.minecraft.client.Minecraft
 import net.minecraft.client.resources.sounds.AbstractSoundInstance
 import net.minecraft.client.resources.sounds.SoundInstance
 import net.minecraft.client.sounds.AudioStream
@@ -28,7 +30,7 @@ class FileSoundInstance(
     SoundInstance.createUnseededRandom()
 ), FabricSoundInstance {
 
-    private val requestVolume = volume.coerceIn(0f, 2f)
+    private var requestVolume = volume.coerceIn(0f, 2f)
     private var mutedByPause = false
 
     init {
@@ -37,6 +39,17 @@ class FileSoundInstance(
         this.looping = shouldLoop
         this.relative = true
         this.attenuation = SoundInstance.Attenuation.NONE
+    }
+
+    fun setExternalVolume(v: Float) {
+        requestVolume = v.coerceIn(0f, 2f)
+        refreshVolume()
+        syncChannelVolume()
+    }
+
+    fun refreshFromConfig() {
+        refreshVolume()
+        syncChannelVolume()
     }
 
     fun refreshVolume() {
@@ -49,14 +62,24 @@ class FileSoundInstance(
         } else {
             1f
         }
-        // Master уже учитывается движком для SoundSource.MASTER;
-        // наш slider — дополнительный множитель только для видео.
         this.volume = (requestVolume * slider).coerceIn(0f, 2f)
     }
 
     fun setPaused(paused: Boolean) {
         mutedByPause = paused
         refreshVolume()
+        syncChannelVolume()
+    }
+
+    /**
+     * Пушит текущее this.volume в уже играющий Channel:
+     * updateSourceVolume() перечитывает sound.getVolume() у всех звуков
+     * данного SoundSource и обновляет громкость их каналов.
+     */
+    private fun syncChannelVolume() {
+        val client = Minecraft.getInstance() ?: return
+        val master = client.options.getSoundSourceVolume(SoundSource.MASTER)
+        client.soundManager.refreshCategoryVolume(SoundSource.MASTER)
     }
 
     override fun getAudioStream(
