@@ -20,6 +20,7 @@ object CommandRegistry {
         HudCommands.install { name, handler -> register(name, handler) }
         VfxCommands.install { name, handler -> register(name, handler) }
         NodeCommands.install { name, handler -> register(name, handler) }
+        VarCommands.install { name, handler -> register(name, handler) }
     }
 
     fun register(name: String, handler: CommandHandler) {
@@ -27,6 +28,15 @@ object CommandRegistry {
     }
 
     fun isKnown(name: String): Boolean = handlers.containsKey(name)
+
+    fun commandNames(): List<String> =
+        handlers.keys.sorted()
+
+    fun suggestions(prefix: String, limit: Int = 12): List<String> {
+        val p = prefix.trim().lowercase()
+        if (p.isEmpty()) return commandNames().take(limit)
+        return commandNames().filter { it.startsWith(p) }.take(limit)
+    }
 
     fun execute(command: ScriptCommand, context: ScriptContext): CommandResult {
         val handler = handlers[command.name] ?: run {
