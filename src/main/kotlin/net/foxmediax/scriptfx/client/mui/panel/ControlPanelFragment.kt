@@ -30,6 +30,8 @@ import net.foxmediax.scriptfx.client.mui.panel.PanelUi.px1
 import net.foxmediax.scriptfx.gui.FileBrowser
 import net.foxmediax.scriptfx.gui.PanelSection
 import net.minecraft.client.Minecraft
+import net.foxmediax.scriptfx.client.StudioGameMode
+import net.foxmediax.scriptfx.security.StudioSecurity
 
 class ControlPanelFragment : Fragment() {
 
@@ -66,6 +68,8 @@ class ControlPanelFragment : Fragment() {
         override fun refreshBreadcrumb() = updateStatus()
 
         override fun closePanel() = requestLeave {
+            StudioGameMode.leaveStudio()
+            StudioSecurity.lockSession()
             val mc = Minecraft.getInstance()
             mc.execute { mc.setScreen(null) }
         }
@@ -123,11 +127,14 @@ class ControlPanelFragment : Fragment() {
         )
 
         rootView = root
+        StudioGameMode.enterStudio()
         show(lastSection)
         return root
     }
 
     override fun onDestroyView() {
+        StudioGameMode.leaveStudio()
+        StudioSecurity.lockSession()
         rootView = null
         page?.onDestroy()
         page = null
@@ -176,10 +183,11 @@ class ControlPanelFragment : Fragment() {
         PanelSection.NPC_EDITOR -> NpcEditorPage(host)
         PanelSection.QUESTS -> QuestsPage(host)
         PanelSection.TRIGGERS -> TriggersPage(host)
+        PanelSection.CUTSCENES -> CutscenesPage(host)
         PanelSection.HUD -> HudPage(host)
         PanelSection.PARTICLES -> ParticlesPage(host)
         PanelSection.LOGS -> LogsPage(host)
-        PanelSection.SETTINGS -> PlaceholderPage(host, "Настройки")
+        PanelSection.SETTINGS -> SettingsPage(host)
         else -> HomePage(host)
     }
 
