@@ -8,7 +8,6 @@ import icyllis.modernui.widget.FrameLayout
 import icyllis.modernui.widget.LinearLayout
 import icyllis.modernui.widget.ScrollView
 import icyllis.modernui.widget.TextView
-import net.foxmediax.scriptfx.client.mui.panel.PanelUi.COL_ACCENT
 import net.foxmediax.scriptfx.client.mui.panel.PanelUi.COL_BTN
 import net.foxmediax.scriptfx.client.mui.panel.PanelUi.COL_BTN_SELECTED
 import net.foxmediax.scriptfx.client.mui.panel.PanelUi.COL_CONTENT
@@ -38,28 +37,24 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
     private lateinit var ctx: Context
     private lateinit var overlays: OverlayHost
     private lateinit var listBox: LinearLayout
-    private lateinit var previewTitle: TextView
-    private lateinit var previewHint: TextView
+    private lateinit var statusHint: TextView
     private lateinit var propsHost: LinearLayout
     private lateinit var tabMain: TextView
     private lateinit var tabVisual: TextView
     private lateinit var tabParams: TextView
-    private lateinit var aaaPreview: AaaPreviewView
     private lateinit var modeBtnSfx: TextView
     private lateinit var modeBtnAaa: TextView
 
     private var project: String? = null
     private var selected: ParticleEffect? = null
     private var selectedAaa: AaaEffectCatalog.Entry? = null
-    private var listMode = 0
+    private var listMode = 0 // 0 = ScriptFX, 1 = AAA
     private var currentTab = 0
-
-    private var uiSize = 1.5f
-    private var uiDuration = 3.0f
+    private var uiSize = 1f
+    private var uiDuration = 2f
     private var uiAaaScale = 1f
 
     override fun onDestroy() {
-        if (this::aaaPreview.isInitialized) aaaPreview.stop()
         AaaPreviewHelper.clear()
         if (this::overlays.isInitialized) overlays.clear()
     }
@@ -74,11 +69,9 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         overlays = OverlayHost(ctx, overlayLayer)
 
         val body = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        body.addView(buildList(ctx), lp(dp(ctx, 240), MATCH))
+        body.addView(buildList(ctx), lp(dp(ctx, 300), MATCH))
         body.addView(vLine(ctx), lp(px1(ctx), MATCH))
-        body.addView(buildPreview(ctx), LinearLayout.LayoutParams(0, MATCH, 1.2f))
-        body.addView(vLine(ctx), lp(px1(ctx), MATCH))
-        body.addView(buildProps(ctx), lp(dp(ctx, 300), MATCH))
+        body.addView(buildProps(ctx), LinearLayout.LayoutParams(0, MATCH, 1f))
 
         root.addView(body, FrameLayout.LayoutParams(MATCH, MATCH))
         root.addView(overlayLayer, FrameLayout.LayoutParams(MATCH, MATCH))
@@ -96,11 +89,9 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         val projects = ParticleRegistry.listProjects()
         project = projects.firstOrNull()
         if (project == null) {
-            val root = ParticleRegistry.projectsRoot()
-            val def = File(root, "default")
-            def.mkdirs()
-            File(def, "particles").mkdirs()
-            ParticleRegistry.reload()
+            val rootDir = ParticleRegistry.projectsRoot()
+            val def = File(rootDir, "default")
+            if (!def.exists()) def.mkdirs()
             project = "default"
         }
     }
@@ -109,20 +100,12 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         val col = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             background = ColorDrawable(COL_SIDEBAR)
-            setPadding(dp(ctx, 12), dp(ctx, 12), dp(ctx, 12), dp(ctx, 12))
+            setPadding(dp(ctx, 10), dp(ctx, 10), dp(ctx, 10), dp(ctx, 10))
         }
-
         col.addView(TextView(ctx).apply {
             text = "Эффекты"
             textSize = 13f
-            setTextColor(COL_ACCENT)
-        }, lp(MATCH, WRAP))
-
-        col.addView(TextView(ctx).apply {
-            text = "Проект: ${project ?: "—"}"
-            textSize = 11f
-            setTextColor(COL_MUTED)
-            setPadding(0, dp(ctx, 4), 0, dp(ctx, 8))
+            setTextColor(PanelUi.COL_ACCENT)
         }, lp(MATCH, WRAP))
 
         val modeRow = LinearLayout(ctx).apply {
@@ -151,10 +134,37 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         modeRow.addView(modeBtnAaa, lp(WRAP, WRAP))
         col.addView(modeRow, lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) })
 
+        val playRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        playRow.addView(
+            PanelUi.flatButton(ctx, "▶ Play") { playSelected() },
+            lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 6) }
+        )
+        playRow.addView(
+            PanelUi.flatButton(ctx, "■ Stop") {
+                ParticleRuntime.handlePayload(
+                    ParticlePayload(ParticlePayload.STOP_ALL, "", "", 0.0, 0.0, 0.0)
+                )
+                statusHint.text = "Остановлено"
+            },
+            lp(WRAP, WRAP)
+        )
+        col.addView(playRow, lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 6) })
+
+        statusHint = TextView(ctx).apply {
+            text = "ScriptFX → spawn у игрока"
+            textSize = 11f
+            setTextColor(COL_MUTED)
+            setPadding(0, 0, 0, dp(ctx, 8))
+        }
+        col.addView(statusHint, lp(MATCH, WRAP))
+
         col.addView(
             PanelUi.accentButton(ctx, "+ Создать эффект") {
                 if (listMode == 0) createEffectDialog()
-                else previewHint.text = "AAA: положи .efkefc в config/scriptfx/aaa_effects/"
+                else statusHint.text = "AAA: положи .efkefc в config/scriptfx/aaa_effects/"
             },
             lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) }
         )
@@ -162,16 +172,7 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
             PanelUi.flatButton(ctx, "Обновить") {
                 ParticleRegistry.reload()
                 refreshList()
-            },
-            lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) }
-        )
-        col.addView(
-            PanelUi.flatButton(ctx, "Стоп все") {
-                ParticleRuntime.handlePayload(
-                    ParticlePayload(ParticlePayload.STOP_ALL, "", "", 0.0, 0.0, 0.0)
-                )
-                if (this::aaaPreview.isInitialized) aaaPreview.stop()
-                previewHint.text = "Все остановлено"
+                statusHint.text = "Обновлено"
             },
             lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 10) }
         )
@@ -187,13 +188,13 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         listMode = mode
         selected = null
         selectedAaa = null
-        if (this::aaaPreview.isInitialized) aaaPreview.setEffect(null)
         modeBtnSfx.background = ColorDrawable(if (listMode == 0) COL_BTN_SELECTED else COL_BTN)
         modeBtnAaa.background = ColorDrawable(if (listMode == 1) COL_BTN_SELECTED else COL_BTN)
         refreshList()
         showEmptyProps()
-        previewTitle.text = "Превью"
-        previewHint.text = if (mode == 0) "ScriptFX → у игрока" else "AAA → FBO-превью"
+        if (this::statusHint.isInitialized) {
+            statusHint.text = if (mode == 0) "ScriptFX → spawn у игрока" else "AAA → spawn в мире"
+        }
     }
 
     private fun refreshList() {
@@ -271,63 +272,6 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         }
     }
 
-    private fun buildPreview(ctx: Context): View {
-        val col = LinearLayout(ctx).apply {
-            orientation = LinearLayout.VERTICAL
-            background = ColorDrawable(COL_CONTENT)
-        }
-        val bar = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            background = ColorDrawable(COL_SIDEBAR)
-            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
-        }
-        previewTitle = TextView(ctx).apply {
-            text = "Превью"
-            textSize = 13f
-            setTextColor(COL_TEXT)
-        }
-        bar.addView(previewTitle, LinearLayout.LayoutParams(0, WRAP, 1f))
-        bar.addView(
-            PanelUi.flatButton(ctx, "▶ Play") { playSelected() },
-            lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 6) }
-        )
-        bar.addView(
-            PanelUi.flatButton(ctx, "■ Stop") {
-                ParticleRuntime.handlePayload(
-                    ParticlePayload(ParticlePayload.STOP_ALL, "", "", 0.0, 0.0, 0.0)
-                )
-                aaaPreview.stop()
-                previewHint.text = "Остановлено"
-            },
-            lp(WRAP, WRAP)
-        )
-        col.addView(bar, lp(MATCH, WRAP))
-
-        // ═══ 3D-превью: заполняет доступное пространство, содержимое
-        // центрируется внутри самого AaaPreviewView (через onDraw/viewMatrix).
-        // Если хочется фиксированный квадрат по центру — замените на:
-        //   LinearLayout.LayoutParams(dp(ctx, 320), dp(ctx, 320)).apply {
-        //       gravity = Gravity.CENTER_HORIZONTAL
-        //   }
-        aaaPreview = AaaPreviewView(ctx)
-        col.addView(
-            aaaPreview,
-            LinearLayout.LayoutParams(MATCH, 0, 1f)
-        )
-
-        previewHint = TextView(ctx).apply {
-            text = "ScriptFX → у игрока · AAA → FBO"
-            textSize = 11f
-            gravity = Gravity.CENTER
-            setTextColor(COL_MUTED)
-            setPadding(dp(ctx, 8), dp(ctx, 6), dp(ctx, 8), dp(ctx, 6))
-            background = ColorDrawable(COL_SIDEBAR)
-        }
-        col.addView(previewHint, lp(MATCH, WRAP))
-        return col
-    }
-
     private fun buildProps(ctx: Context): View {
         val col = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
@@ -359,7 +303,7 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
             textSize = 12f
             setTextColor(COL_TEXT)
             background = ColorDrawable(if (currentTab == index) COL_BTN_SELECTED else COL_BTN)
-            setPadding(dp(ctx, 10), dp(ctx, 8), dp(ctx, 10), dp(ctx, 8))
+            setPadding(dp(ctx, 10), dp(ctx, 6), dp(ctx, 10), dp(ctx, 6))
             isClickable = true
             setOnClickListener {
                 currentTab = index
@@ -369,8 +313,8 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         }
 
     private fun refreshTabs() {
-        fun style(tv: TextView, idx: Int) {
-            tv.background = ColorDrawable(if (currentTab == idx) COL_BTN_SELECTED else COL_BTN)
+        fun style(v: TextView, i: Int) {
+            v.background = ColorDrawable(if (currentTab == i) COL_BTN_SELECTED else COL_BTN)
         }
         if (this::tabMain.isInitialized) {
             style(tabMain, 0)
@@ -381,12 +325,10 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
 
     private fun select(fx: ParticleEffect) {
         selectedAaa = null
-        if (this::aaaPreview.isInitialized) aaaPreview.setEffect(null)
         selected = fx
-        uiSize = ((fx.sizeX + fx.sizeY) * 0.5f).coerceIn(0.1f, 5f)
+        uiSize = fx.sizeX.coerceIn(0.1f, 5f)
         uiDuration = fx.activeTime.coerceIn(0.1f, 30f)
-        previewTitle.text = fx.identifier.substringAfterLast(':')
-        previewHint.text = "Готов: ${fx.identifier}"
+        statusHint.text = "Готов: ${fx.identifier}"
         refreshList()
         currentTab = 0
         refreshTabs()
@@ -397,13 +339,11 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         selected = null
         selectedAaa = e
         uiAaaScale = AaaPreviewHelper.scale
-        previewTitle.text = e.label
-        previewHint.text = "AAA: ${e.id}"
+        statusHint.text = "AAA: ${e.id}"
         refreshList()
         currentTab = 0
         refreshTabs()
         renderProps()
-        aaaPreview.setEffect(e.id.toString())
     }
 
     private fun showEmptyProps() {
@@ -437,11 +377,8 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
         propsHost.addView(value(e.id.toString()), fieldLp())
         propsHost.addView(label("Источник"), lp(MATCH, WRAP))
         propsHost.addView(value(e.source.name), fieldLp())
-        propsHost.addView(label("Scale превью"), lp(MATCH, WRAP))
-        propsHost.addView(sliderRow(uiAaaScale, 0.1f, 5f) {
-            uiAaaScale = it
-            aaaPreview.setScale(it)
-        }, fieldLp())
+        propsHost.addView(label("Scale"), lp(MATCH, WRAP))
+        propsHost.addView(sliderRow(uiAaaScale, 0.1f, 5f) { uiAaaScale = it }, fieldLp())
         propsHost.addView(
             PanelUi.flatButton(ctx, if (AaaPreviewHelper.looping) "Loop: ON" else "Loop: OFF") {
                 AaaPreviewHelper.looping = !AaaPreviewHelper.looping
@@ -450,14 +387,14 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
             lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) }
         )
         propsHost.addView(
-            PanelUi.accentButton(ctx, "▶ Проиграть в превью") { aaaPreview.play() },
+            PanelUi.accentButton(ctx, "▶ Проиграть у игрока") { playSelected() },
             lp(MATCH, WRAP)
         )
         propsHost.addView(
-            PanelUi.flatButton(ctx, "Спавн в мире у игрока") {
+            PanelUi.flatButton(ctx, "World spawn") {
                 val p = Minecraft.getInstance().player ?: return@flatButton
                 AaaParticleBridge.play(e.id.toString(), p.x, p.y + 1.0, p.z, uiAaaScale)
-                previewHint.text = "World spawn: ${e.id}"
+                statusHint.text = "World spawn: ${e.id}"
             },
             lp(MATCH, WRAP).apply { topMargin = dp(ctx, 6) }
         )
@@ -510,35 +447,22 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
             value("x=%.1f y=%.1f w=%.1f h=%.1f".format(fx.uvX, fx.uvY, fx.uvW, fx.uvH)),
             fieldLp()
         )
-        fx.flipbook?.let {
-            propsHost.addView(label("Flipbook frames"), lp(MATCH, WRAP))
-            propsHost.addView(value(it.maxFrame.toString()), fieldLp())
-        }
     }
 
     private fun renderParams(fx: ParticleEffect) {
+        propsHost.addView(label("Rate mode"), lp(MATCH, WRAP))
+        propsHost.addView(value(fx.rateMode.name), fieldLp())
+        propsHost.addView(label("Active time"), lp(MATCH, WRAP))
+        propsHost.addView(value(fx.activeTime.toString()), fieldLp())
         propsHost.addView(label("Spawn rate"), lp(MATCH, WRAP))
         propsHost.addView(value(fx.spawnRate.toString()), fieldLp())
         propsHost.addView(label("Max particles"), lp(MATCH, WRAP))
         propsHost.addView(value(fx.maxParticles.toString()), fieldLp())
-        propsHost.addView(label("Active time"), lp(MATCH, WRAP))
-        propsHost.addView(value("${fx.activeTime}s"), fieldLp())
-        propsHost.addView(label("Particle lifetime"), lp(MATCH, WRAP))
-        propsHost.addView(value("${fx.particleLifetime}s"), fieldLp())
-        propsHost.addView(label("Initial speed"), lp(MATCH, WRAP))
-        propsHost.addView(value(fx.initialSpeed.toString()), fieldLp())
-        propsHost.addView(label("Acceleration"), lp(MATCH, WRAP))
-        propsHost.addView(
-            value("%.2f / %.2f / %.2f".format(fx.accelX, fx.accelY, fx.accelZ)),
-            fieldLp()
-        )
-        propsHost.addView(label("Shape"), lp(MATCH, WRAP))
-        propsHost.addView(value(fx.shape::class.simpleName ?: "—"), fieldLp())
     }
 
     private fun createEffectDialog() {
-        val p = project ?: return
-        overlays.input("Имя эффекта (без пробелов)", "magic_burst") { raw ->
+        val p = project ?: "default"
+        overlays.input("Имя эффекта", "my_effect") { raw ->
             val name = raw.trim()
             if (name.isEmpty()) return@input
             overlays.actions(
@@ -559,12 +483,12 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
 
     private fun afterCreate(id: String?) {
         if (id == null) {
-            previewHint.text = "Не удалось создать (уже есть?)"
+            statusHint.text = "Не удалось создать (уже есть?)"
             return
         }
         refreshList()
         ParticleRegistry.get(id)?.let { select(it) }
-        previewHint.text = "Создан: $id"
+        statusHint.text = "Создан: $id"
     }
 
     private fun deleteSelected() {
@@ -578,8 +502,7 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
                 selected = null
                 refreshList()
                 showEmptyProps()
-                previewTitle.text = "Превью"
-                previewHint.text = "Удалён"
+                statusHint.text = "Удалён"
                 Unit
             }
         )
@@ -587,10 +510,9 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
 
     private fun playSelected() {
         selectedAaa?.let {
-            // Спавним в мире перед игроком.
             val player = Minecraft.getInstance().player
             if (player == null) {
-                previewHint.text = "Нужен мир / игрок"
+                statusHint.text = "Нужен мир / игрок"
                 return
             }
             AaaParticleBridge.play(
@@ -600,15 +522,15 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
                 player.z,
                 uiAaaScale
             )
-            previewHint.text = "▶ ${it.id} заспавнен в мире"
+            statusHint.text = "▶ ${it.id} заспавнен в мире"
             return
         }
         val fx = selected ?: run {
-            previewHint.text = "Сначала выбери эффект"
+            statusHint.text = "Сначала выбери эффект"
             return
         }
         val player = Minecraft.getInstance().player ?: run {
-            previewHint.text = "Нужен мир / игрок"
+            statusHint.text = "Нужен мир / игрок"
             return
         }
         ParticleRuntime.handlePayload(
@@ -621,7 +543,7 @@ class ParticlesPage(host: PanelHost) : PanelPage(host) {
                 player.z
             )
         )
-        previewHint.text = "Play: ${fx.identifier}\nsize≈$uiSize  duration≈$uiDuration"
+        statusHint.text = "Play: ${fx.identifier}  size≈$uiSize  duration≈$uiDuration"
     }
 
     private fun label(t: String) = PanelUi.mutedText(ctx, t, 11f)
