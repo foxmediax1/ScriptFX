@@ -170,6 +170,41 @@ object CutsceneCommands {
             }
             if (dur > 0) CommandResult.Wait(dur.toLong()) else CommandResult.Continue
         }
+        // cutscene_play <name>  — запускает scripts/cutscenes/<name>.sfxs или cutscene_<name>.sfxs
+        register("cutscene_play") { context, args ->
+            val name = args.getOrNull(0)
+                ?.removeSurrounding("\"")
+                ?.removeSuffix(".sfxs")
+                ?.removeSuffix(".cutsfx")
+                ?.trim()
+                .orEmpty()
+            if (name.isEmpty()) {
+                ScriptFXLog.warn("cutscene_play: нужно имя файла")
+                return@register CommandResult.Continue
+            }
+            // сначала пробуем как обычный скрипт
+            val candidates = listOf(
+                name,
+                "cutscene_$name",
+                "cutscenes/$name",
+                "cutscenes/cutscene_$name"
+            )
+            var started = false
+            for (id in candidates) {
+                try {
+                    ScriptManager.startScript(id, context)
+                    started = true
+                    ScriptFXLog.info("cutscene_play: $id")
+                    break
+                } catch (_: Throwable) {
+                    // следующий кандидат
+                }
+            }
+            if (!started) {
+                ScriptFXLog.warn("cutscene_play: скрипт '$name' не найден")
+            }
+            CommandResult.Continue
+        }
     }
 
     /** Кому применять команды камеры: только тем, кто сейчас в катсцене */
