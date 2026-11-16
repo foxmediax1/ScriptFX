@@ -95,6 +95,13 @@ object QuestManager {
             return false
         }
 
+        if (!canProgress(player, questId, objectiveId)) {
+            ScriptFXLog.info(
+                "quest_progress: '$objectiveId' закрыта (нужны предыдущие цели по графу)"
+            )
+            return false
+        }
+
         val target = max(1, obj.target)
         val old = quest.progress[objectiveId] ?: 0
         val now = (old + amount).coerceIn(0, target)
@@ -170,5 +177,22 @@ object QuestManager {
 
     private fun toast(player: ServerPlayer, kind: String, title: String, text: String) {
         ServerPlayNetworking.send(player, QuestToastPayload(kind, title, text))
+    }
+
+    fun canProgress(player: ServerPlayer, questId: String, objectiveId: String): Boolean {
+        val def = definition(questId) ?: return false
+        val quest = stateOf(player)[questId] ?: return false
+        if (quest.status != "active") return false
+
+        val parents = def.edges
+            .filter { it.to == objectiveId }
+            .map { it.from }
+        if (parents.isEmpty()) return true
+
+        return parents.all { parentId ->
+            val parentObj = def.objectives.find { it.id == parentId }
+            val need = max(1, parentObj?.target ?: 1)
+            (quest.progress[parentId] ?: 0) >= need
+        }
     }
 }
