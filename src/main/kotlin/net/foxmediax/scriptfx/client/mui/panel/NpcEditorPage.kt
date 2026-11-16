@@ -26,6 +26,9 @@ import net.foxmediax.scriptfx.client.mui.panel.PanelUi.px1
 import net.foxmediax.scriptfx.npc.NpcDefinition
 import net.foxmediax.scriptfx.npc.NpcModelPreset
 import net.foxmediax.scriptfx.npc.NpcRegistry
+import net.foxmediax.scriptfx.npc.NpcAnimationCatalog
+import java.io.File
+import net.foxmediax.scriptfx.gui.PanelSection
 
 /**
  * Раздел NPC в стиле студии:
@@ -317,6 +320,27 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         modelEdit = edit(def?.model ?: NpcModelPreset.MALE.model)
         formHost.addView(modelEdit, fieldLp())
 
+        formHost.addView(label("Пресет модели"), lp(MATCH, WRAP))
+        val presetRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        for (preset in NpcModelPreset.entries) {
+            presetRow.addView(
+                PanelUi.flatButton(ctx, preset.label) {
+                    modelEdit.setText(preset.model)
+                    textureEdit.setText(preset.texture)
+                    animationEdit.setText(preset.animation)
+                    // defaultAnim обычно idle
+                    if (this@NpcEditorPage::defaultAnimEdit.isInitialized) {
+                        defaultAnimEdit.setText("idle")
+                    }
+                },
+                lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 6) }
+            )
+        }
+        formHost.addView(presetRow, lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 10) })
+
         formHost.addView(label("Текстура"), lp(MATCH, WRAP))
         textureEdit = edit(def?.texture ?: NpcModelPreset.MALE.texture)
         formHost.addView(textureEdit, fieldLp())
@@ -329,8 +353,44 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
         defaultAnimEdit = edit(def?.defaultAnim ?: "idle")
         formHost.addView(defaultAnimEdit, fieldLp())
 
+        formHost.addView(
+            PanelUi.flatButton(ctx, "Выбрать анимацию из файла…") {
+                val fileId = textOr(animationEdit, def?.animation ?: "")
+                val names = NpcAnimationCatalog.listNames(fileId)
+                if (names.isEmpty()) {
+                    overlays.actions(
+                        "Нет анимаций",
+                        listOf("ОК" to {})
+                    )
+                    return@flatButton
+                }
+                overlays.actions(
+                    "Анимация",
+                    names.map { full ->
+                        val short = NpcAnimationCatalog.shortLabel(full)
+                        short to {
+                            defaultAnimEdit.setText(full)
+                            Unit
+                        }
+                    }
+                )
+            },
+            lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) }
+        )
+
         formHost.addView(label("Режим (dialog/traiding/interact)"), lp(MATCH, WRAP))
         modeEdit = edit(def?.defaultMode ?: "interact")
+        formHost.addView(label("Режим (быстрый выбор)"), lp(MATCH, WRAP))
+        val modeRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+        listOf("interact", "dialog", "traiding").forEach { m ->
+            modeRow.addView(
+                PanelUi.flatButton(ctx, m) { modeEdit.setText(m) },
+                lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 6) }
+            )
+        }
+        formHost.addView(modeRow, lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 10) })
         formHost.addView(modeEdit, fieldLp())
 
         formHost.addView(
@@ -345,50 +405,288 @@ class NpcEditorPage(host: PanelHost) : PanelPage(host) {
 
     private fun renderDialogsForm() {
         val def = selected
+
         formHost.addView(label("Скрипт при взаимодействии"), lp(MATCH, WRAP))
         interactScriptEdit = edit(def?.onInteractScript ?: "")
         formHost.addView(interactScriptEdit, fieldLp())
+
+        formHost.addView(
+            PanelUi.flatButton(ctx, "Выбрать .sfxs из проекта…") {
+                val p = project ?: return@flatButton
+                val root = File(net.foxmediax.scriptfx.npc.NpcRegistry.projectsRoot(), p)
+                if (!root.isDirectory) {
+                    overlays.actions("Папка проекта не найдена", listOf("ОК" to {}))
+                    return@flatButton
+                }
+                val scripts = root.walkTopDown()
+                    .filter { it.isFile && it.extension.equals("sfxs", true) }
+                    .map { it.relativeTo(root).path.replace('\\', '/').removeSuffix(".sfxs") }
+                    .sorted()
+                    .toList()
+                if (scripts.isEmpty()) {
+                    overlays.actions(
+                        "В проекте нет .sfxs\nСоздай скрипт в разделе «Сценарии»",
+                        listOf("ОК" to {})
+                    )
+                    return@flatButton
+                }
+                overlays.actions(
+                    "Скрипт NPC",
+                    scripts.map { path ->
+                        path to {
+                            interactScriptEdit.setText(path.substringAfterLast('/'))
+                            Unit
+                        }
+                    }
+                )
+            },
+            lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) }
+        )
 
         formHost.addView(label("Клавиша взаимодействия"), lp(MATCH, WRAP))
         interactKeyEdit = edit(def?.interactKey ?: "X")
         formHost.addView(interactKeyEdit, fieldLp())
 
+        val keyRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        for (k in listOf("X", "G", "F", "C", "V")) {
+            keyRow.addView(
+                PanelUi.flatButton(ctx, k) { interactKeyEdit.setText(k) },
+                lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 6) }
+            )
+        }
+        formHost.addView(keyRow, lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 12) })
+
+        formHost.addView(label("Шаблоны"), lp(MATCH, WRAP))
         formHost.addView(
-            PanelUi.accentButton(ctx, "Сохранить диалог") { saveSelected() },
-            lp(MATCH, WRAP).apply { topMargin = dp(ctx, 8) }
+            PanelUi.flatButton(ctx, "Шаблон: приветствие") {
+                interactScriptEdit.setText("npc_hello")
+                overlays.actions(
+                    "Пример npc_hello.sfxs:\n\nprint \"Привет, путник!\"\nticktime 1.sec\nstopscript",
+                    listOf("ОК" to {})
+                )
+            },
+            lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 6) }
         )
         formHost.addView(
-            PanelUi.mutedText(ctx, "Полноценный редактор реплик — следующим этапом."),
+            PanelUi.flatButton(ctx, "Шаблон: квест") {
+                interactScriptEdit.setText("npc_quest")
+                overlays.actions(
+                    "Пример npc_quest.sfxs:\n\nquest_start \"tutorial\"\nprint \"Новый квест!\"\nstopscript",
+                    listOf("ОК" to {})
+                )
+            },
+            lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) }
+        )
+
+        formHost.addView(
+            PanelUi.accentButton(ctx, "Создать .sfxs и привязать") {
+                val p = project ?: return@accentButton
+                val name = textOr(interactScriptEdit, "npc_hello")
+                    .substringAfterLast('/')
+                    .removeSuffix(".sfxs")
+                    .ifBlank { "npc_hello" }
+                    .lowercase()
+                    .replace(Regex("[^a-z0-9_]+"), "_")
+
+                val dir = File(net.foxmediax.scriptfx.npc.NpcRegistry.projectsRoot(), "$p/scripts")
+                if (!dir.exists()) dir.mkdirs()
+                val file = File(dir, "$name.sfxs")
+                if (!file.exists()) {
+                    file.writeText(
+                        "print \"Привет! Я $name.\"\n" +
+                                "ticktime 1.sec\n" +
+                                "stopscript\n"
+                    )
+                }
+                interactScriptEdit.setText(name)
+                saveSelected()
+                overlays.actions(
+                    "Скрипт: ${file.absolutePath}\nПривязан как «$name»",
+                    listOf(
+                        "Открыть Сценарии" to {
+                            host.navigate(net.foxmediax.scriptfx.gui.PanelSection.PROJECTS)
+                            Unit
+                        },
+                        "ОК" to {}
+                    )
+                )
+            },
+            lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) }
+        )
+
+        formHost.addView(
+            PanelUi.accentButton(ctx, "Сохранить диалог") { saveSelected() },
+            lp(MATCH, WRAP)
+        )
+        formHost.addView(
+            PanelUi.mutedText(
+                ctx,
+                "onInteractScript — имя без .sfxs. Режим NPC: dialog / interact."
+            ),
             lp(MATCH, WRAP).apply { topMargin = dp(ctx, 10) }
         )
     }
 
     private fun renderBehaviorForm() {
-        val def = selected
-        formHost.addView(PanelUi.bodyText(ctx, "Поведение берётся из .fxnpc:"), lp(MATCH, WRAP))
-        formHost.addView(PanelUi.spacer(ctx, 8))
-        formHost.addView(PanelUi.mutedText(ctx, "lookAtPlayer = ${def?.lookAtPlayer ?: true}"), lp(MATCH, WRAP))
-        formHost.addView(PanelUi.mutedText(ctx, "invulnerable = ${def?.invulnerable ?: false}"), lp(MATCH, WRAP))
-        formHost.addView(PanelUi.mutedText(ctx, "gravity = ${def?.gravity ?: true}"), lp(MATCH, WRAP))
-        formHost.addView(PanelUi.mutedText(ctx, "collide = ${def?.collide ?: true}"), lp(MATCH, WRAP))
-        formHost.addView(PanelUi.mutedText(ctx, "speed = ${def?.speed ?: 0.25f}"), lp(MATCH, WRAP))
-        formHost.addView(PanelUi.mutedText(ctx, "maxHealth = ${def?.maxHealth ?: 20f}"), lp(MATCH, WRAP))
+        val def = selected ?: run {
+            formHost.addView(PanelUi.mutedText(ctx, "NPC не выбран"), lp(MATCH, WRAP))
+            return
+        }
+
+        fun toggle(label: String, value: Boolean, set: (Boolean) -> Unit): View {
+            var on = value
+            return PanelUi.flatButton(ctx, "${if (on) "☑" else "☐"} $label") {
+                on = !on
+                set(on)
+                renderForm() // перерисует с актуальным selected после save; проще save ниже
+            }.also {
+                // храним через side-effect set
+            }
+        }
+
+        // Проще: кнопки сразу пишут в selected через copy+select
+        fun flagButton(title: String, current: Boolean, apply: (NpcDefinition) -> NpcDefinition) {
+            formHost.addView(
+                PanelUi.flatButton(ctx, "${if (current) "☑" else "☐"} $title") {
+                    val p = project ?: return@flatButton
+                    val updated = apply(def)
+                    if (NpcRegistry.save(p, updated)) {
+                        selected = updated
+                        NpcPreviewHelper.setDefinition(updated)
+                        renderForm()
+                    }
+                },
+                lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 6) }
+            )
+        }
+
+        flagButton("Смотреть на игрока", def.lookAtPlayer) { it.copy(lookAtPlayer = !it.lookAtPlayer) }
+        flagButton("Бессмертный", def.invulnerable) { it.copy(invulnerable = !it.invulnerable) }
+        flagButton("Гравитация", def.gravity) { it.copy(gravity = !it.gravity) }
+        flagButton("Коллизия", def.collide) { it.copy(collide = !it.collide) }
+        flagButton("Ник над головой", def.nametag) { it.copy(nametag = !it.nametag) }
+        flagButton("Без звука", def.silent) { it.copy(silent = !it.silent) }
+
+        formHost.addView(label("Скорость"), lp(MATCH, WRAP).apply { topMargin = dp(ctx, 8) })
+        val speedEdit = edit(def.speed.toString())
+        formHost.addView(speedEdit, fieldLp())
+
+        formHost.addView(label("Max HP"), lp(MATCH, WRAP))
+        val hpEdit = edit(def.maxHealth.toString())
+        formHost.addView(hpEdit, fieldLp())
+
         formHost.addView(
-            PanelUi.mutedText(ctx, "Расширенный редактор поведения — следующим этапом."),
-            lp(MATCH, WRAP).apply { topMargin = dp(ctx, 12) }
+            PanelUi.accentButton(ctx, "Сохранить поведение") {
+                val p = project ?: return@accentButton
+                val updated = def.copy(
+                    speed = speedEdit.text?.toString()?.toFloatOrNull() ?: def.speed,
+                    maxHealth = hpEdit.text?.toString()?.toFloatOrNull() ?: def.maxHealth
+                )
+                if (NpcRegistry.save(p, updated)) {
+                    selected = updated
+                    NpcPreviewHelper.setDefinition(updated)
+                    renderForm()
+                }
+            },
+            lp(MATCH, WRAP).apply { topMargin = dp(ctx, 8) }
         )
     }
 
     private fun renderAnimsForm() {
-        formHost.addView(label("Файл анимаций"), lp(MATCH, WRAP))
-        animationEdit = edit(selected?.animation ?: "")
+        val def = selected
+        formHost.addView(label("Файл анимаций (GeckoLib)"), lp(MATCH, WRAP))
+        animationEdit = edit(def?.animation ?: NpcModelPreset.MALE.animation)
         formHost.addView(animationEdit, fieldLp())
-        formHost.addView(label("Default anim"), lp(MATCH, WRAP))
-        defaultAnimEdit = edit(selected?.defaultAnim ?: "idle")
+
+        formHost.addView(
+            PanelUi.flatButton(ctx, "Обновить список из файла") {
+                renderForm()
+            },
+            lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) }
+        )
+
+        formHost.addView(label("Анимация по умолчанию"), lp(MATCH, WRAP))
+        defaultAnimEdit = edit(def?.defaultAnim ?: "idle")
+        formHost.addView(
+            PanelUi.flatButton(ctx, "Выбрать idle-анимацию из файла…") {
+                val fileId = textOr(animationEdit, def?.animation ?: "")
+                val names = try {
+                    net.foxmediax.scriptfx.npc.NpcAnimationCatalog.listNames(fileId)
+                } catch (_: Throwable) {
+                    emptyList()
+                }
+                if (names.isEmpty()) {
+                    overlays.actions(
+                        "Анимации не найдены для «$fileId»\n" +
+                                "Нужен .animation.json в assets или config/scriptfx/animations/",
+                        listOf("ОК" to {})
+                    )
+                    return@flatButton
+                }
+                overlays.actions(
+                    "Анимация",
+                    names.map { full ->
+                        val short = try {
+                            net.foxmediax.scriptfx.npc.NpcAnimationCatalog.shortLabel(full)
+                        } catch (_: Throwable) {
+                            full.substringAfterLast('.')
+                        }
+                        short to {
+                            defaultAnimEdit.setText(full)
+                            Unit
+                        }
+                    }
+                )
+            },
+            lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) }
+        )
         formHost.addView(defaultAnimEdit, fieldLp())
+
+        val fileId = textOr(animationEdit, def?.animation ?: "")
+        val names = NpcAnimationCatalog.listNames(fileId)
+
+        formHost.addView(label("Выбор из файла"), lp(MATCH, WRAP))
+        if (names.isEmpty()) {
+            formHost.addView(
+                PanelUi.mutedText(
+                    ctx,
+                    "Анимации не найдены.\n" +
+                            "Ожидается assets/<ns>/animations/<path>.animation.json\n" +
+                            "или config/scriptfx/animations/<path>.animation.json"
+                ),
+                lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 8) }
+            )
+        } else {
+            formHost.addView(
+                PanelUi.mutedText(ctx, "Найдено: ${names.size}"),
+                lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 6) }
+            )
+            for (name in names) {
+                val labelText = NpcAnimationCatalog.shortLabel(name)
+                val selectedNow = textOr(defaultAnimEdit, "") == name ||
+                        textOr(defaultAnimEdit, "") == labelText
+                formHost.addView(
+                    PanelUi.flatButton(
+                        ctx,
+                        if (selectedNow) "✓ $labelText" else labelText
+                    ) {
+                        defaultAnimEdit.setText(name)
+                        // если в игре ждут короткое имя — можно:
+                        // defaultAnimEdit.setText(NpcAnimationCatalog.shortLabel(name))
+                        saveSelected()
+                        renderForm()
+                    },
+                    lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 4) }
+                )
+            }
+        }
+
         formHost.addView(
             PanelUi.accentButton(ctx, "Сохранить анимации") { saveSelected() },
-            lp(MATCH, WRAP).apply { topMargin = dp(ctx, 8) }
+            lp(MATCH, WRAP).apply { topMargin = dp(ctx, 10) }
         )
     }
 
