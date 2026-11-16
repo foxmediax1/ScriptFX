@@ -8,14 +8,24 @@ import java.io.File
 data class QuestObjective(
     var id: String = "",
     var text: String = "",
-    var target: Int = 1          // сколько нужно выполнить (1 = простая галочка)
+    var target: Int = 1,
+    /** позиция на графе (студия) */
+    var x: Float = 40f,
+    var y: Float = 40f
 )
 
 data class QuestDefinition(
     var id: String = "",
     var title: String = "",
     var description: String = "",
-    var objectives: MutableList<QuestObjective> = mutableListOf()
+    var objectives: MutableList<QuestObjective> = mutableListOf(),
+    /** рёбра графа: from objective id → to objective id */
+    var edges: MutableList<QuestEdge> = mutableListOf()
+)
+
+data class QuestEdge(
+    var from: String = "",
+    var to: String = ""
 )
 
 /** Квесты проектов: config/scriptfx/projects/<проект>/quests/<id>.fxquest (JSON). */
