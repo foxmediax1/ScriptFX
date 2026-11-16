@@ -176,9 +176,8 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
             x + 12f, y + 34f, false, paint, fontPaint
         )
 
-        val cmd = n.params["cmd"] ?: n.params["args"]
-        if (!cmd.isNullOrBlank() && n.kind != NodeKind.START && n.kind != NodeKind.END) {
-            val sub = cmd.take(22)
+        val sub = NodeScriptPreview.fromNode(n)
+        if (sub.isNotBlank() && n.kind != NodeKind.START && n.kind != NodeKind.END) {
             paint.color = 0xFF8888A0.toInt()
             fontPaint.setFontSize(11f / scale.coerceAtLeast(0.5f))
             canvas.drawTextRun(
@@ -290,6 +289,10 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
             }
 
             MotionEvent.ACTION_MOVE -> {
+                if (NodePaletteDrag.template != null) {
+                    NodePaletteDrag.markMoved()
+                }
+
                 if (panning) {
                     panX += event.x - panLastX
                     panY += event.y - panLastY
@@ -316,6 +319,17 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (NodePaletteDrag.dragging || NodePaletteDrag.template != null) {
+                    val t = NodePaletteDrag.consume()
+                    if (t != null && event.actionMasked == MotionEvent.ACTION_DOWN) {
+                        val id = "n${System.currentTimeMillis() % 100000}"
+                        val node = NodePalette.spawn(t, id, wx - nodeW, wy - nodeH * 0.5f)
+
+                        addNode(node)
+                        return true
+                    }
+                    return true
+                }
                 if (panning) {
                     panning = false
                     return true
@@ -400,5 +414,16 @@ class NodeCanvasView(ctx: Context) : View(ctx) {
         onSelectionChanged?.invoke(node)
         onGraphChanged?.invoke()
         invalidate()
+    }
+
+    fun tryDropPaletteAt(localX: Float = -1f, localY: Float = -1f): Boolean {
+        val t = NodePaletteDrag.consume() ?: return false
+        val sx = if (localX >= 0f) localX else width * 0.5f
+        val sy = if (localY >= 0f) localY else height * 0.5f
+        val wx = worldX(sx) - nodeW * 0.5f
+        val wy = worldY(sy) - nodeH * 0.5f
+        val id = "n${System.currentTimeMillis() % 100000}"
+        addNode(NodePalette.spawn(t, id, wx, wy))
+        return true
     }
 }
