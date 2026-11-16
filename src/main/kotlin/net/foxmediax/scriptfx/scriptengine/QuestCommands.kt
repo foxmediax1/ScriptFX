@@ -42,6 +42,18 @@ object QuestCommands {
             if (p != null && id.isNotEmpty()) ctx.vars["quest_status"] = QuestManager.statusOf(p, id)
             CommandResult.Continue
         }
+
+        register("quest_can") { ctx, args ->
+            val id = clean(args.getOrNull(0))
+            val obj = clean(args.getOrNull(1))
+            val p = playerOf(ctx)
+            val ok = if (p != null && id.isNotEmpty() && obj.isNotEmpty()) {
+                QuestManager.canProgress(p, id, obj)
+            } else false
+            ctx.vars["quest_can"] = ok.toString()
+            ScriptMessenger.send(ctx, "quest_can[$id/$obj] = $ok")
+            CommandResult.Continue
+        }
     }
 
     private fun withQuest(
