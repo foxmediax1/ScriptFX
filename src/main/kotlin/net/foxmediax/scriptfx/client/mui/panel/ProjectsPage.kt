@@ -44,6 +44,8 @@ import net.foxmediax.scriptfx.scriptengine.ScriptManager
 import net.minecraft.client.Minecraft
 import java.io.File
 import net.foxmediax.scriptfx.nodes.GraphNode
+import net.foxmediax.scriptfx.nodes.NodePaletteDrag
+import net.foxmediax.scriptfx.scriptengine.CommandRegistry
 
 /**
  * Экран «Сценарии»:
@@ -97,6 +99,10 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     private var selectedNodeId: String? = null
 
     private lateinit var nodeParamsBox: LinearLayout
+
+    private lateinit var suggestBox: LinearLayout
+
+    private var suggestPass = 0
 
     @Volatile
     private var dirty = false
@@ -326,6 +332,10 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         tabs.addView(tabTitle, LinearLayout.LayoutParams(0, WRAP, 1f))
         tabs.addView(PanelUi.flatButton(ctx, "▶") { runScript() }, lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 4) })
         tabs.addView(PanelUi.flatButton(ctx, "💾") { save() }, lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 4) })
+        tabs.addView(
+            PanelUi.flatButton(ctx, "✓") { validateScript() },
+            lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 4) }
+        )
         tabs.addView(PanelUi.flatButton(ctx, "✕") { closeFile() }, lp(WRAP, WRAP))
         col.addView(tabs, lp(MATCH, WRAP))
         col.addView(dividerH(ctx), lp(MATCH, px1(ctx)))
@@ -333,6 +343,19 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         contentHost = FrameLayout(ctx).apply {
             background = ColorDrawable(COL_CONTENT)
         }
+
+        suggestBox = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = ColorDrawable(COL_SIDEBAR)
+            setPadding(dp(ctx, 8), dp(ctx, 4), dp(ctx, 8), dp(ctx, 4))
+            visibility = View.GONE
+        }
+        val suggestScroll = ScrollView(ctx).apply {
+            // горизонтальный скролл, если API есть; иначе просто LinearLayout
+        }
+            // без горизонтального ScrollView — просто ряд кнопок:
+        col.addView(suggestBox, lp(MATCH, WRAP))
 
         // --- TEXT ---
         edit = EditText(ctx).apply {
@@ -487,6 +510,11 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
                     override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
                     override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                     override fun afterTextChanged(s: Editable?) {
+                        val errs = findCommandErrors(currentEditorText())
+                        if (errs.isNotEmpty()) {
+                            logConsole("[WARN] ${errs.size} неизвестных команд: " +
+                                    errs.take(5).joinToString { "L${it.line}:${it.cmd}" })
+                        }
                         if (suppressNodeParam) return
                         val k = tag as? String ?: return
                         val id = selectedNodeId ?: return
@@ -495,6 +523,8 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
                         if (n.params[k] == v) return
                         n.params[k] = v
                         dirty = true
+                        updateCommandSuggestions(s?.toString().orEmpty())
+                        scheduleHighlight(edit.text?.toString().orEmpty())
                         if (this@ProjectsPage::nodeCanvas.isInitialized) nodeCanvas.invalidate()
                         updateProps()
                     }
@@ -677,6 +707,10 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
     }
 
     private fun runScript() {
+        val errs = findCommandErrors(currentEditorText())
+        if (errs.isNotEmpty()) {
+            logConsole("[WARN] Запуск с ${errs.size} неизвестными командами (✓ — список)")
+        }
         if (viewingImage) {
             logConsole("[WARN] Для изображения сохранение/запуск недоступны")
             return
@@ -739,7 +773,7 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
 
         col.addView(
             TextView(ctx).apply {
-                text = "Свойства сценария"
+                text = "Каталог нодов"
                 textSize = 13f
                 setTextColor(COL_ACCENT)
             },
@@ -854,23 +888,74 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
         if (!this::paletteBox.isInitialized) return
         paletteBox.removeAllViews()
         for (t in NodePalette.search(query)) {
-            paletteBox.addView(
-                PanelUi.flatButton(ctx, t.title) {
-                    if (file == null || !isScriptFile(file!!) || viewingImage) {
-                        logConsole("[WARN] Открой .sfxs, чтобы добавить ноду")
-                        return@flatButton
+            val preview = try {
+                t.scriptPreview()
+            } catch (_: Throwable) {
+                t.category
+            }.ifBlank { t.category }
+            val label = if (preview.isNotBlank()) "${t.title}\n$preview" else t.title
+
+            val btn = PanelUi.flatButton(ctx, label) {
+                if (NodePaletteDrag.dragging) {
+                    NodePaletteDrag.clear()
+                    return@flatButton
+                }
+                NodePaletteDrag.clear()
+                if (file == null || !isScriptFile(file!!) || viewingImage) {
+                    logConsole("[WARN] Открой .sfxs, чтобы добавить ноду")
+                    return@flatButton
+                }
+                if (!nodeMode) {
+                    logConsole("[WARN] Переключись в режим нод (>_)")
+                    return@flatButton
+                }
+                val id = "n${nodeIdSeq++}"
+                nodeCanvas.addNode(NodePalette.spawn(t, id, 0f, 0f))
+                dirty = true
+                updateProps()
+            }
+
+            var downX = 0f
+            var downY = 0f
+            btn.setOnTouchListener { _, e ->
+                when (e.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        downX = e.x
+                        downY = e.y
+                        NodePaletteDrag.begin(t)
+                        false
                     }
-                    if (!nodeMode) {
-                        logConsole("[WARN] Переключись в режим нод (>_)")
-                        return@flatButton
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = e.x - downX
+                        val dy = e.y - downY
+                        if (dx * dx + dy * dy > 12f * 12f) {
+                            NodePaletteDrag.markMoved()
+                        }
+                        false
                     }
-                    val id = "n${nodeIdSeq++}"
-                    nodeCanvas.addNode(NodePalette.spawn(t, id, 0f, 0f))
-                    dirty = true
-                    updateProps()
-                },
-                lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 4) }
-            )
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        if (NodePaletteDrag.dragging) {
+                            if (nodeMode && file != null && isScriptFile(file!!) && !viewingImage) {
+                                if (!nodeCanvas.tryDropPaletteAt()) {
+                                    nodeCanvas.addNode(
+                                        NodePalette.spawn(t, "n${nodeIdSeq++}", 0f, 0f)
+                                    )
+                                }
+                                dirty = true
+                                updateProps()
+                            } else {
+                                NodePaletteDrag.clear()
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    else -> false
+                }
+            }
+
+            paletteBox.addView(btn, lp(MATCH, WRAP).apply { bottomMargin = dp(ctx, 4) })
         }
     }
 
@@ -1085,5 +1170,212 @@ class ProjectsPage(host: PanelHost, private val browser: FileBrowser) : PanelPag
             logConsole("[ERROR] Не удалось открыть изображение: ${e.message}")
             clearImagePreview()
         }
+    }
+
+    private fun updateCommandSuggestions(fullText: String) {
+        if (!this::suggestBox.isInitialized) return
+        if (nodeMode || viewingImage || file == null || !isScriptFile(file!!)) {
+            suggestBox.visibility = View.GONE
+            suggestBox.removeAllViews()
+            return
+        }
+
+        val line = currentLine(fullText)
+        val token = line.trimStart().substringBefore(' ').lowercase()
+        // подсказки только если курсор в начале команды (нет полного совпадения или печать префикса)
+        if (token.isEmpty() || line.trimStart().contains(' ') && CommandRegistry.isKnown(token)) {
+            // если уже полное имя + пробел — можно скрыть или показать args-hint
+            if (line.trimStart().contains(' ')) {
+                suggestBox.visibility = View.GONE
+                return
+            }
+        }
+
+        val list = CommandRegistry.suggestions(token, 10)
+        suggestBox.removeAllViews()
+        if (list.isEmpty()) {
+            suggestBox.visibility = View.GONE
+            return
+        }
+        suggestBox.visibility = View.VISIBLE
+        for (name in list) {
+            suggestBox.addView(
+                PanelUi.flatButton(ctx, name) {
+                    applySuggestion(name)
+                },
+                lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 4) }
+            )
+        }
+    }
+
+    private fun currentLine(text: String): String {
+        // без Selection API ModernUI: берём последнюю строку как приближение
+        // если есть edit.selectionStart — используй его
+        val pos = try {
+            // некоторые сборки MUI:
+            edit.text?.length ?: 0
+        } catch (_: Throwable) {
+            text.length
+        }
+        val safe = pos.coerceIn(0, text.length)
+        val before = text.substring(0, safe)
+        return before.substringAfterLast('\n')
+    }
+
+    private fun applySuggestion(name: String) {
+        val text = edit.text?.toString().orEmpty()
+        val pos = text.length // идеально: caret
+        val lineStart = text.lastIndexOf('\n', (pos - 1).coerceAtLeast(0)).let {
+            if (it < 0) 0 else it + 1
+        }
+        val line = text.substring(lineStart, pos)
+        val leading = line.takeWhile { it.isWhitespace() }
+        val restAfterCmd = line.trimStart().substringAfter(' ', missingDelimiterValue = "")
+        val newLine = if (restAfterCmd.isEmpty()) {
+            "$leading$name "
+        } else {
+            "$leading$name $restAfterCmd"
+        }
+        val newText = text.substring(0, lineStart) + newLine + text.substring(pos)
+        suppress = true
+        edit.setText(newText)
+        last = newText
+        suppress = false
+        dirty = newText != original
+        updateProps()
+        updateCommandSuggestions(newText)
+    }
+
+    private fun scheduleHighlight(text: String) {
+        val pass = ++suggestPass
+        // без Handler — сразу; при лагах можно postDelayed
+        if (pass != suggestPass) return
+        highlightUnknownCommands(text)
+    }
+
+    private fun highlightUnknownCommands(text: String) {
+        if (nodeMode || viewingImage || file == null || !isScriptFile(file!!)) return
+        if (suppress || syncing) return
+
+        val errors = findCommandErrors(text)
+        // лог в консоль не чаще чем нужно — только счётчик в props / suggest
+        if (errors.isNotEmpty()) {
+            // лёгкий маркер в статус, без спама консоли на каждый символ
+            if (this::propStatus.isInitialized && !dirty) {
+                // ignore
+            }
+        }
+
+        // Modern UI: пробуем Spannable; если API нет — только список в suggestBox
+        tryApplyErrorSpans(text, errors)
+        showErrorChips(errors)
+    }
+
+    private data class CmdError(val line: Int, val cmd: String, val start: Int, val end: Int)
+
+    private fun findCommandErrors(text: String): List<CmdError> {
+        val out = ArrayList<CmdError>()
+        var offset = 0
+        text.lineSequence().forEachIndexed { index, raw ->
+            val line = raw.trimEnd()
+            val trimmed = line.trimStart()
+            val lineStart = offset + (line.length - line.trimStart().length)
+            when {
+                trimmed.isEmpty() -> {}
+                trimmed.startsWith("//") || trimmed.startsWith("#") -> {}
+                trimmed.startsWith("}") || trimmed.startsWith("{") -> {}
+                else -> {
+                    val cmd = trimmed.substringBefore(' ').substringBefore('\t')
+                    val known = cmd.equals("node", true) || // meta
+                            cmd.startsWith("#") ||
+                            CommandRegistry.isKnown(cmd.lowercase()) ||
+                            // node connect meta из graph sync
+                            trimmed.lowercase().startsWith("node connect")
+                    if (cmd.isNotEmpty() && !known) {
+                        val start = lineStart
+                        val end = start + cmd.length
+                        out += CmdError(index + 1, cmd, start, end)
+                    }
+                }
+            }
+            offset += raw.length + 1 // + \n
+        }
+        return out
+    }
+
+    private fun showErrorChips(errors: List<CmdError>) {
+        if (!this::suggestBox.isInitialized) return
+        if (errors.isEmpty()) return
+        // не затирать autocomplete, если пользователь печатает префикс
+        val full = edit.text?.toString().orEmpty()
+        val line = currentLine(full).trimStart()
+        if (line.isNotEmpty() && !line.contains(' ') &&
+            CommandRegistry.suggestions(line, 1).isNotEmpty()
+        ) return
+
+        suggestBox.removeAllViews()
+        suggestBox.visibility = View.VISIBLE
+        suggestBox.addView(
+            TextView(ctx).apply {
+                text = "⚠ ${errors.size} неизв. команд"
+                textSize = 11f
+                setTextColor(PanelUi.COL_ERROR)
+                setPadding(dp(ctx, 6), dp(ctx, 4), dp(ctx, 6), dp(ctx, 4))
+            },
+            lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 8) }
+        )
+        for (e in errors.take(5)) {
+            suggestBox.addView(
+                PanelUi.flatButton(ctx, "L${e.line}:${e.cmd}") {
+                    logConsole("[WARN] Строка ${e.line}: неизвестная команда '${e.cmd}'")
+                },
+                lp(WRAP, WRAP).apply { rightMargin = dp(ctx, 4) }
+            )
+        }
+    }
+
+    private fun tryApplyErrorSpans(text: String, errors: List<CmdError>) {
+        // Опционально: если в classpath есть android.text.SpannableString /
+        // icyllis.modernui.text.Spannable — можно раскрасить.
+        // Иначе пропускаем, чипы достаточно.
+        try {
+            val clazz = Class.forName("icyllis.modernui.text.SpannableString")
+            val span = clazz.getConstructor(CharSequence::class.java).newInstance(text)
+            val colorClazz = Class.forName("icyllis.modernui.text.style.ForegroundColorSpan")
+            val colorCtor = colorClazz.getConstructor(Int::class.javaPrimitiveType)
+            val setSpan = clazz.methods.firstOrNull { it.name == "setSpan" } ?: return
+            for (e in errors) {
+                val colorSpan = colorCtor.newInstance(PanelUi.COL_ERROR)
+                setSpan.invoke(span, colorSpan, e.start, e.end, 33) // SPAN_EXCLUSIVE_EXCLUSIVE ≈ 33
+            }
+            if (suppress || syncing) return
+            suppress = true
+            // edit.setText(span as CharSequence) — только если setText принимает Spannable
+            // Иначе не трогаем буфер, чтобы не ломать каретку
+            suppress = false
+        } catch (_: Throwable) {
+            // нет Spannable API — только чипы
+        }
+    }
+
+    private fun validateScript() {
+        if (viewingImage || file == null || !isScriptFile(file!!)) {
+            logConsole("[WARN] Открой .sfxs для проверки")
+            return
+        }
+        val text = currentEditorText()
+        val errors = findCommandErrors(text)
+        if (errors.isEmpty()) {
+            logConsole("[INFO] Проверка OK — неизвестных команд нет")
+            return
+        }
+        logConsole("[WARN] Найдено проблем: ${errors.size}")
+        for (e in errors.take(20)) {
+            logConsole("[WARN]  строка ${e.line}: «${e.cmd}»")
+        }
+        if (errors.size > 20) {
+            logConsole("[WARN]  … и ещё ${errors.size - 20}")
+        }
+        showErrorChips(errors)
     }
 }
