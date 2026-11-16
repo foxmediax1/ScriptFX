@@ -67,22 +67,20 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
         DocNode("quickstart", "Быстрый старт", "Введение", custom = { quickStart() }),
         DocNode("install", "Установка", "Введение", custom = { installPage() }),
         DocNode("first_script", "Первый сценарий", "Введение", custom = { firstScript() }),
-
-        DocNode("api_vars", "Переменные", "API", "Скрипты", "Переменные"),
         DocNode("api_global", "Глобальные", "API", "Скрипты", "Глобальные переменные"),
         DocNode("api_story", "Сюжет", "API", "Скрипты", "Для сюжета"),
         DocNode("api_camera", "Камера", "API", "Скрипты", "Для камеры"),
-        DocNode("api_cut", "Катсцены", "API", "Скрипты", "Катсцены"),
         DocNode("api_npc", "NPC", "API", "Скрипты", "NPC"),
         DocNode("api_custom", "Кастомные модели", "API", "Скрипты", "Кастомные модели NPC"),
         DocNode("api_particles", "Частицы", "API", "Скрипты", "Частицы"),
         DocNode("api_media", "Звук и видео", "API", "Скрипты", "Звук и видео"),
         DocNode("api_quests", "Квесты", "API", "Скрипты", "Квесты"),
-
         DocNode("triggers", "Триггеры", "API", "Триггеры", ""),
         DocNode("examples", "Примеры", "API", "Примеры скриптов", ""),
         DocNode("messages", "Чат и сообщения", "API", "Чат и сообщения", ""),
-        DocNode("panel", "Панель управления", "API", "Панель управления", "")
+        DocNode("panel", "Панель управления", "API", "Панель управления", ""),
+        DocNode("api_vars", "Переменные", "API", custom = { varsPage() }),
+        DocNode("api_cut", "Катсцены", "API", custom = { cutscenesDocPage() }),
     )
 
     override fun createView(ctx: Context): View {
@@ -450,6 +448,91 @@ class DocsPage(host: PanelHost) : PanelPage(host) {
         Block.Body("Подробности — в API → Переменные и Триггеры.")
     )
 
+
+
     private fun vLine(ctx: Context) =
         View(ctx).apply { background = ColorDrawable(COL_DIVIDER) }
+
+    private fun varsPage(): List<Block> = listOf(
+        Block.Title("Переменные"),
+        Block.Body(
+            "Единые команды var_* (scopes как в Mappet). " +
+                    "Старые state_* и player_state_* тоже работают."
+        ),
+        Block.Divider,
+        Block.Subtitle("Scopes"),
+        Block.Body(
+            "global (g) — сервер, config/scriptfx/states/global.json\n" +
+                    "player (p) — данные игрока\n" +
+                    "temp (t, local) — только текущий запуск скрипта\n" +
+                    "quest (q) — player-state с префиксом quest."
+        ),
+        Block.Subtitle("Команды"),
+        Block.Code(
+            """
+        var_set global story_flag 1
+        var_set player reputation 10
+        var_add player reputation 5
+        var_set temp step intro
+        var_set quest chapter1_done true
+
+        var_get player reputation
+        var_has temp step
+        var_remove temp step
+
+        var_if player reputation >= 15
+        print "Достаточно репутации"
+        }
+        """.trimIndent()
+        ),
+        Block.Body("Операторы var_if: ==  !=  >  >=  <  <=  contains"),
+        Block.Divider,
+        Block.Subtitle("Пример с квестом"),
+        Block.Code(
+            """
+        var_set player coins 0
+        var_add player coins 3
+        var_if player coins >= 3
+        print "Награда доступна"
+        quest_complete "tutorial"
+        }
+        """.trimIndent()
+        )
+    )
+
+    private fun cutscenesDocPage(): List<Block> = listOf(
+        Block.Title("Катсцены и камера"),
+        Block.Body(
+            "Раздел студии «Катсцены» создаёт шаблон .sfxs. " +
+                    "Команды выполняет CutsceneCommands / CameraCommands."
+        ),
+        Block.Divider,
+        Block.Subtitle("Каркас"),
+        Block.Code(
+            """
+        cutscene_start player
+        camera_set 0 70 0 0 20
+        ticktime 0.5.sec
+        print "Начало сцены..."
+        camera_move 10 72 10 -45 15 2.sec
+        ticktime 2.sec
+        cutscene_end
+        stopscript
+        """.trimIndent()
+        ),
+        Block.Subtitle("Путь камеры"),
+        Block.Code(
+            """
+        camera_path_start
+        camera_path_point 10 72 10 -45 15 1.sec
+        camera_path_point 20 74 0 90 10 2.sec
+        camera_path_end wait
+        """.trimIndent()
+        ),
+        Block.Body(
+            "cutscene_start [player|all]\n" +
+                    "camera_set / camera_move / camera_fov / camera_lookat\n" +
+                    "Файлы: cutscenes/*.sfxs или cutscene_*.sfxs в проекте."
+        )
+    )
 }
