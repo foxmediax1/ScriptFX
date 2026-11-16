@@ -341,31 +341,32 @@ class TriggersPage(host: PanelHost) : PanelPage(host) {
     }
 
     private fun createTriggerDialog() {
+        val types = listOf(
+            Triple(TriggerKind.ZONE, "Вход в зону", "zone_trigger"),
+            Triple(TriggerKind.INTERACT, "Взаимодействие (предмет)", "interact_trigger"),
+            Triple(TriggerKind.WORLD_START, "Вход в мир / старт", "world_start"),
+            Triple(TriggerKind.TIMER, "По таймеру", "timer_trigger")
+        )
         overlays.actions(
             "Тип триггера",
-            listOf(
-                "Вход в зону" to {
-                    create(TriggerKind.ZONE, "При входе в зону", "zone_trigger")
-                    Unit
-                },
-                "Взаимодействие" to {
-                    create(TriggerKind.INTERACT, "При взаимодействии", "interact_trigger")
-                    Unit
-                },
-                "Старт мира" to {
-                    create(TriggerKind.WORLD_START, "При входе в мир", "world_start")
-                    Unit
-                },
-                "По таймеру (скоро)" to {
-                    create(TriggerKind.TIMER, "По таймеру", "timer_trigger")
+            types.map { (kind, title, baseId) ->
+                title to {
+                    overlays.input("Название триггера", title) { raw ->
+                        val name = raw.trim().ifEmpty { title }
+                        create(kind, name, baseId)
+                    }
                     Unit
                 }
-            )
+            }
         )
     }
 
     private fun create(kind: TriggerKind, title: String, baseId: String) {
         var id = baseId
+            .lowercase()
+            .replace(Regex("[^a-z0-9_]+"), "_")
+            .trim('_')
+            .ifEmpty { "trigger" }
         var n = 2
         while (TriggerRegistry.get(id) != null) {
             id = "${baseId}_$n"
