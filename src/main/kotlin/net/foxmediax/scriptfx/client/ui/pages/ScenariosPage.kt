@@ -16,7 +16,10 @@ import net.foxmediax.scriptfx.nodes.NodeKind
 import net.foxmediax.scriptfx.nodes.NodePalette
 import net.foxmediax.scriptfx.nodes.NodeTemplate
 import net.foxmediax.scriptfx.nodes.ScriptNodeSync
+import net.foxmediax.scriptfx.scriptengine.CommandRegistry
+import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
+import net.minecraft.network.chat.Component
 import java.io.File
 
 class ScenariosPage : StudioPage {
@@ -36,31 +39,42 @@ class ScenariosPage : StudioPage {
 
     private val pathLabel = UiLabel("", UiTheme.TEXT_MUTED)
     private val statusLabel = UiLabel("", UiTheme.TEXT_MUTED)
+    private val suggestLabel = UiLabel("", UiTheme.TEXT_MUTED)
+    private val consoleTitle = UiLabel("Консоль", UiTheme.ACCENT)
+
+    private val consoleLines = ArrayDeque<String>()
+    private var consoleX = 0
+    private var consoleY = 0
+    private var consoleW = 0
+    private var consoleH = 0
 
     private val fileList = UiScrollList(onSelect = { idx, _ -> onEntryClick(idx) })
     private val editor = UiTextArea { text ->
         dirty = text != original
         refreshStatus()
+        updateSuggestions(text)
     }
     private val nodeCanvas = UiNodeCanvas()
     private val nameField = UiTextField(hint = "script.sfxs")
 
     private val btnUp = UiButton(".. вверх") { goUp() }
     private val btnSave = UiButton("Сохранить") { save() }
-    private val btnNewScript = UiButton("Новый .sfxs") { newScript() }
+    private val btnNewScript = UiButton("+ .sfxs") { newScript() }
     private val btnNewFolder = UiButton("Папка") { newFolder() }
     private val btnRefresh = UiButton("Обновить") { reloadTree() }
     private val btnMode = UiButton(">_") { toggleMode() }
+    private val btnValidate = UiButton("✓") { validateScript() }
+    private val btnClearLog = UiButton("clr") { clearConsole() }
 
     private val paletteList = UiScrollList(onSelect = { idx, _ -> spawnFromPalette(idx) })
     private val nodeTitle = UiLabel("Нода не выбрана", UiTheme.TEXT_MUTED)
     private val paramsPanel = UiPanel(UiTheme.BG_CARD)
 
     init {
-        nodeCanvas.onGraphChanged = {
-            dirty = true
-            refreshStatus()
-        }
+        btnSave.style = UiButton.Style.PRIMARY
+        btnValidate.style = UiButton.Style.PRIMARY
+        btnNewScript.style = UiButton.Style.PRIMARY
+        nodeCanvas.onGraphChanged = { dirty = true; refreshStatus() }
         nodeCanvas.onSelectionChanged = { node ->
             selectedNode = node
             showNodeProps(node)
@@ -68,8 +82,7 @@ class ScenariosPage : StudioPage {
     }
 
     override fun onShow() {
-        val proj = StudioSession.selectedProject
-        if (proj != null) browser.goTo(proj)
+        StudioSession.selectedProject?.let { browser.goTo(it) }
         reloadTree()
         refreshStatus()
     }
@@ -77,114 +90,95 @@ class ScenariosPage : StudioPage {
     override fun layout(x: Int, y: Int, w: Int, h: Int) {
         root.clearChildren()
         root.setBounds(x, y, w, h)
-
         val pad = UiTheme.PAD
-        val leftW = (w * 0.22f).toInt().coerceIn(160, 260)
-        val rightW = 200
+        val leftW = (w * 0.20f).toInt().coerceIn(150, 220)
+        val rightW = (w * 0.24f).toInt().coerceIn(180, 260)
         val centerX = x + leftW + pad
-        val centerW = (w - leftW - rightW - pad * 3).coerceAtLeast(200)
+        val centerW = (w - leftW - rightW - pad * 3).coerceAtLeast(280)
         val rightX = x + w - rightW - pad
+        val topBar = 52
+        val editorH = (h - topBar - 72 - 8).coerceAtLeast(120)
 
-        pathLabel.setBounds(x + pad, y + 8, w - pad * 2, 14)
-        root.add(pathLabel)
-
-        btnUp.setBounds(x + pad, y + 28, 70, 22)
-        btnRefresh.setBounds(x + pad + 76, y + 28, 70, 22)
-        btnNewScript.setBounds(x + pad + 152, y + 28, 90, 22)
-        btnNewFolder.setBounds(x + pad + 248, y + 28, 60, 22)
-        btnSave.setBounds(x + pad + 314, y + 28, 80, 22)
+        root.add(UiLabel("Проект", UiTheme.ACCENT).also {
+            it.setBounds(x + pad, y + 10, leftW - pad, 14)
+        })
+        btnUp.setBounds(x + pad, y + 28, leftW - pad, 22)
         root.add(btnUp)
-        root.add(btnRefresh)
-        root.add(btnNewScript)
-        root.add(btnNewFolder)
-        root.add(btnSave)
-
-        nameField.setBounds(x + pad + 400, y + 28, 140, 22)
-        root.add(nameField)
-
-        fileList.setBounds(x + pad, y + 56, leftW - pad, h - 80)
+        fileList.setBounds(x + pad, y + 54, leftW - pad, h - 70)
         root.add(fileList)
 
-        editor.setBounds(centerX, y + 56, centerW, h - 80)
-        root.add(editor)
-
-        nodeCanvas.setBounds(centerX, y + 56, centerW, h - 80)
-        root.add(nodeCanvas)
-
-        btnMode.setBounds(centerX + centerW - 36, y + 56 + (h - 80) - 36, 28, 28)
-        root.add(btnMode)
-
-        // правая колонка
-        val palTitle = UiLabel("Палитра нод", UiTheme.ACCENT)
-        palTitle.setBounds(rightX, y + 56, rightW, 14)
-        root.add(palTitle)
-
-        paletteItems = NodePalette.all.filter {
-            it.kind != NodeKind.START && it.kind != NodeKind.END
-        }
-        paletteList.items = paletteItems.map { it.title }
-        val palH = (h * 0.35f).toInt().coerceAtLeast(100)
-        paletteList.setBounds(rightX, y + 74, rightW, palH)
-        root.add(paletteList)
-
-        val propsTitle = UiLabel("Свойства", UiTheme.ACCENT)
-        propsTitle.setBounds(rightX, paletteList.bottom + 10, rightW, 14)
-        root.add(propsTitle)
-
-        nodeTitle.setBounds(rightX, paletteList.bottom + 28, rightW, 14)
-        root.add(nodeTitle)
-
-        paramsPanel.setBounds(
-            rightX,
-            paletteList.bottom + 48,
-            rightW,
-            (y + h - 24) - (paletteList.bottom + 48)
-        )
-        root.add(paramsPanel)
-
-        statusLabel.setBounds(x + pad, y + h - 20, w - pad * 2, 14)
+        root.add(UiLabel("Сценарии", UiTheme.ACCENT).also {
+            it.setBounds(centerX, y + 10, 100, 14)
+        })
+        statusLabel.setBounds(centerX + 100, y + 10, centerW - 100, 14)
         root.add(statusLabel)
 
-        reloadTree()
+        btnNewScript.setBounds(centerX, y + 28, 70, 22)
+        btnNewFolder.setBounds(centerX + 74, y + 28, 56, 22)
+        btnRefresh.setBounds(centerX + 134, y + 28, 70, 22)
+        btnSave.setBounds(centerX + 208, y + 28, 80, 22)
+        btnValidate.setBounds(centerX + 292, y + 28, 28, 22)
+        root.add(btnNewScript); root.add(btnNewFolder); root.add(btnRefresh)
+        root.add(btnSave); root.add(btnValidate)
+        nameField.setBounds(centerX + 326, y + 28, (centerW - 326).coerceAtLeast(60), 22)
+        root.add(nameField)
+
+        editor.setBounds(centerX, y + topBar, centerW, editorH)
+        root.add(editor)
+        nodeCanvas.setBounds(centerX, y + topBar, centerW, editorH)
+        root.add(nodeCanvas)
+        btnMode.setBounds(centerX + centerW - 36, y + topBar + editorH - 36, 28, 28)
+        root.add(btnMode)
+
+        suggestLabel.setBounds(centerX, y + topBar + editorH + 2, centerW - 44, 12)
+        root.add(suggestLabel)
+        btnClearLog.setBounds(centerX + centerW - 40, y + topBar + editorH + 1, 36, 14)
+        root.add(btnClearLog)
+        consoleTitle.setBounds(centerX, y + topBar + editorH + 16, 80, 12)
+        root.add(consoleTitle)
+        consoleX = centerX
+        consoleY = y + topBar + editorH + 30
+        consoleW = centerW
+        consoleH = (y + h - pad) - consoleY
+
+        root.add(UiLabel("Свойства", UiTheme.ACCENT).also {
+            it.setBounds(rightX, y + 10, rightW, 14)
+        })
+        pathLabel.setBounds(rightX, y + 28, rightW, 32)
+        root.add(pathLabel)
+        nodeTitle.setBounds(rightX, y + 64, rightW, 14)
+        root.add(nodeTitle)
+        root.add(UiLabel("Палитра нод", UiTheme.ACCENT).also {
+            it.setBounds(rightX, y + 86, rightW, 14)
+        })
+        paletteItems = NodePalette.all.filter { it.kind != NodeKind.START && it.kind != NodeKind.END }
+        paletteList.items = paletteItems.map { it.title }
+        paletteList.setBounds(rightX, y + 104, rightW, (h * 0.32f).toInt().coerceAtLeast(90))
+        root.add(paletteList)
+        paramsPanel.setBounds(rightX, paletteList.bottom + 8, rightW, (y + h - pad) - (paletteList.bottom + 8))
+        root.add(paramsPanel)
+
         applyModeVisibility()
         showNodeProps(selectedNode)
         refreshStatus()
     }
 
     private fun reloadTree() {
-        val proj = StudioSession.selectedProject
-        if (proj == null) {
-            pathLabel.text = "Сначала выберите проект на Главной"
-            entries = emptyList()
-            fileList.items = emptyList()
-            editor.setText("")
-            editor.enabled = false
-            nodeCanvas.visible = false
-            return
-        }
         browser.refresh()
-        pathLabel.text = "/${browser.breadcrumbPath()}"
         entries = browser.entries
-        fileList.items = entries.map { e ->
-            when {
-                e.isDirectory -> "📁 ${e.name}"
-                e.name.endsWith(".sfxs", true) -> "📜 ${e.name}"
-                e.name.endsWith(".png", true) || e.name.endsWith(".jpg", true) -> "🖼 ${e.name}"
-                else -> e.name
-            }
-        }
-        editor.enabled = true
+        fileList.items = entries.map { e -> if (e.isDirectory) "📁 ${e.name}" else "📄 ${e.name}" }
+        val p = browser.currentDir.path.replace('\\', '/')
+        val name = StudioSession.selectedProject?.name
+        pathLabel.text = if (name != null && p.contains(name)) "…/" + p.substringAfter(name).trimStart('/')
+        else p.takeLast(40)
     }
 
     private fun onEntryClick(idx: Int) {
-        if (idx !in entries.indices) return
-        val e = entries[idx]
+        val e = entries.getOrNull(idx) ?: return
         if (e.isDirectory) {
             browser.goInto(e)
             reloadTree()
-            return
-        }
-        openFile(e.file)
+        } else openFile(e.file)
     }
 
     private fun openFile(f: File) {
@@ -193,91 +187,78 @@ class ScenariosPage : StudioPage {
             openFile = f
             original = text
             dirty = false
-            editor.setText(text)
-
+            selectedNode = null
             if (f.name.endsWith(".sfxs", true)) {
                 nodeMode = true
-                nodeCanvas.graph = if (text.isBlank()) {
+                nodeCanvas.graph = if (text.isBlank())
                     ScriptNodeSync.defaultTemplateGraph(f.nameWithoutExtension)
-                } else {
-                    ScriptNodeSync.textToGraph(text, f.nameWithoutExtension)
-                }
+                else ScriptNodeSync.textToGraph(text, f.nameWithoutExtension)
+                editor.setText(text)
             } else {
                 nodeMode = false
+                editor.setText(text)
             }
-            selectedNode = null
-            showNodeProps(null)
             applyModeVisibility()
+            showNodeProps(null)
             refreshStatus()
+            logConsole("[INFO] Открыт: ${f.name}")
+            updateSuggestions(editor.value)
         } catch (ex: Exception) {
-            statusLabel.text = "Ошибка чтения: ${ex.message}"
-            statusLabel.color = UiTheme.DANGER
+            logConsole("[ERROR] ${ex.message}")
         }
     }
 
     fun save() {
         val f = openFile ?: return
         try {
-            val text = if (nodeMode && f.name.endsWith(".sfxs", true)) {
+            val text = if (nodeMode && f.name.endsWith(".sfxs", true))
                 ScriptNodeSync.graphToText(nodeCanvas.graph, includeConnectMeta = true)
-            } else {
-                editor.value
-            }
+            else editor.value
             f.writeText(text)
             original = text
             dirty = false
             if (!nodeMode) editor.setText(text)
             refreshStatus()
-            statusLabel.text = "Сохранено: ${f.name}"
-            statusLabel.color = UiTheme.SUCCESS
+            logConsole("[INFO] Сохранено: ${f.name}")
         } catch (ex: Exception) {
-            statusLabel.text = "Ошибка записи: ${ex.message}"
-            statusLabel.color = UiTheme.DANGER
+            logConsole("[ERROR] ${ex.message}")
         }
     }
 
     private fun toggleMode() {
         val f = openFile
         if (f == null || !f.name.endsWith(".sfxs", true)) {
-            statusLabel.text = "Ноды только для .sfxs"
-            statusLabel.color = UiTheme.WARNING
-            return
+            logConsole("[WARN] Только .sfxs"); return
         }
         if (nodeMode) {
-            val text = ScriptNodeSync.graphToText(nodeCanvas.graph, includeConnectMeta = true)
-            editor.setText(text)
-            dirty = text != original
+            editor.setText(ScriptNodeSync.graphToText(nodeCanvas.graph, includeConnectMeta = true))
             nodeMode = false
         } else {
             nodeCanvas.graph = ScriptNodeSync.textToGraph(editor.value, f.nameWithoutExtension)
             nodeMode = true
         }
-        selectedNode = null
-        showNodeProps(null)
+        dirty = true
         applyModeVisibility()
         refreshStatus()
+        updateSuggestions(editor.value)
     }
 
     private fun applyModeVisibility() {
         val script = openFile?.name?.endsWith(".sfxs", true) == true
         nodeCanvas.visible = nodeMode && script
         editor.visible = !nodeMode || !script
-        btnMode.visible = script
         paletteList.visible = script
-        paramsPanel.visible = script
-        nodeTitle.visible = script
+        btnMode.visible = script
+        btnValidate.visible = script
+        if (nodeMode) suggestLabel.text = ""
     }
 
     private fun spawnFromPalette(idx: Int) {
-        if (!nodeMode) {
-            statusLabel.text = "Включи режим нод (>_)"
-            statusLabel.color = UiTheme.WARNING
-            return
+        if (!nodeMode || openFile?.name?.endsWith(".sfxs", true) != true) {
+            logConsole("[WARN] Нужен .sfxs в режиме нод"); return
         }
         if (idx !in paletteItems.indices) return
-        val t = paletteItems[idx]
-        val id = "n${System.currentTimeMillis() % 100000}"
-        nodeCanvas.addNode(NodePalette.spawn(t, id, 0f, 0f))
+        nodeCanvas.addNode(NodePalette.spawn(paletteItems[idx], "n${System.currentTimeMillis() % 100000}", 0f, 0f))
         dirty = true
         refreshStatus()
     }
@@ -291,11 +272,9 @@ class ScenariosPage : StudioPage {
         }
         nodeTitle.text = node.title
         nodeTitle.color = UiTheme.TEXT
-
         val editable = node.kind != NodeKind.START && node.kind != NodeKind.END
         val keys = when (node.kind) {
-            NodeKind.COMMAND -> listOf("cmd", "args").filter { node.params.containsKey(it) }
-                .ifEmpty { node.params.keys.toList() }
+            NodeKind.COMMAND -> listOf("cmd", "args").filter { node.params.containsKey(it) }.ifEmpty { node.params.keys.toList() }
             NodeKind.WAIT -> listOf("duration")
             NodeKind.SCRIPT -> listOf("script")
             NodeKind.QUEST_START, NodeKind.QUEST_COMPLETE, NodeKind.QUEST_FAIL -> listOf("quest")
@@ -305,19 +284,14 @@ class ScenariosPage : StudioPage {
             NodeKind.CUTSCENE_START -> listOf("mode")
             else -> node.params.keys.toList()
         }.ifEmpty { node.params.keys.toList() }
-
         var py = paramsPanel.y + 4
         for (key in keys) {
-            val lab = UiLabel(key, UiTheme.TEXT_MUTED)
-            lab.setBounds(paramsPanel.x + 4, py, paramsPanel.w - 8, 12)
-            paramsPanel.add(lab)
+            paramsPanel.add(UiLabel(key, UiTheme.TEXT_MUTED).also {
+                it.setBounds(paramsPanel.x + 4, py, paramsPanel.w - 8, 12)
+            })
             py += 14
-
             val k = key
-            val field = UiTextField(
-                value = node.params[k].orEmpty(),
-                hint = k
-            ) { v ->
+            val field = UiTextField(value = node.params[k].orEmpty(), hint = k) { v ->
                 if (!editable) return@UiTextField
                 node.params[k] = v
                 dirty = true
@@ -335,9 +309,8 @@ class ScenariosPage : StudioPage {
         if (browser.canGoUp()) {
             browser.goUp()
             val proj = StudioSession.selectedProject
-            if (proj != null && !browser.currentDir.canonicalPath.startsWith(proj.canonicalPath)) {
+            if (proj != null && !browser.currentDir.canonicalPath.startsWith(proj.canonicalPath))
                 browser.goTo(proj)
-            }
             reloadTree()
         }
     }
@@ -348,8 +321,8 @@ class ScenariosPage : StudioPage {
         browser.createScriptFile(name)
         val f = File(browser.currentDir, name)
         if (f.exists() && f.length() == 0L) {
-            val graph = ScriptNodeSync.defaultTemplateGraph(f.nameWithoutExtension)
-            f.writeText(ScriptNodeSync.graphToText(graph, includeConnectMeta = true))
+            val g = ScriptNodeSync.defaultTemplateGraph(f.nameWithoutExtension)
+            f.writeText(ScriptNodeSync.graphToText(g, includeConnectMeta = true))
         }
         nameField.value = ""
         reloadTree()
@@ -357,8 +330,7 @@ class ScenariosPage : StudioPage {
     }
 
     private fun newFolder() {
-        val name = nameField.value.trim().ifEmpty { "folder" }
-        browser.createFolder(name)
+        browser.createFolder(nameField.value.trim().ifEmpty { "folder" })
         nameField.value = ""
         reloadTree()
     }
@@ -378,8 +350,85 @@ class ScenariosPage : StudioPage {
         btnSave.enabled = f != null && dirty
     }
 
-    override fun render(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, pt: Float) =
+    private fun logConsole(line: String) {
+        consoleLines.addLast(line)
+        while (consoleLines.size > 50) consoleLines.removeFirst()
+    }
+
+    private fun clearConsole() = consoleLines.clear()
+
+    private fun currentScriptText(): String {
+        val f = openFile ?: return ""
+        if (!f.name.endsWith(".sfxs", true)) return editor.value
+        return if (nodeMode) ScriptNodeSync.graphToText(nodeCanvas.graph, includeConnectMeta = false)
+        else editor.value
+    }
+
+    private fun updateSuggestions(text: String) {
+        if (nodeMode || openFile?.name?.endsWith(".sfxs", true) != true) {
+            suggestLabel.text = ""; return
+        }
+        val line = text.substringAfterLast('\n')
+        val token = line.trimStart().substringBefore(' ').lowercase()
+        if (token.isEmpty() || line.trimStart().contains(' ')) {
+            suggestLabel.text = ""; return
+        }
+        val names = try { CommandRegistry.suggestions(token, 8) } catch (_: Throwable) { emptyList() }
+        suggestLabel.text = if (names.isEmpty()) "" else "Подсказки: " + names.joinToString("  ")
+    }
+
+    private data class CmdError(val line: Int, val cmd: String)
+
+    private fun findCommandErrors(text: String): List<CmdError> {
+        val out = ArrayList<CmdError>()
+        text.lineSequence().forEachIndexed { index, raw ->
+            val t = raw.trim()
+            when {
+                t.isEmpty() || t.startsWith("//") || t.startsWith("#") -> {}
+                t.startsWith("}") || t.startsWith("{") -> {}
+                t.lowercase().startsWith("node connect") -> {}
+                else -> {
+                    val cmd = t.substringBefore(' ').substringBefore('\t')
+                    val known = try { CommandRegistry.isKnown(cmd.lowercase()) } catch (_: Throwable) { true }
+                    if (cmd.isNotEmpty() && !known) out += CmdError(index + 1, cmd)
+                }
+            }
+        }
+        return out
+    }
+
+    private fun validateScript() {
+        if (openFile?.name?.endsWith(".sfxs", true) != true) {
+            logConsole("[WARN] Открой .sfxs"); return
+        }
+        val errors = findCommandErrors(currentScriptText())
+        if (errors.isEmpty()) logConsole("[INFO] Проверка OK")
+        else {
+            logConsole("[WARN] Проблем: ${errors.size}")
+            errors.take(20).forEach { logConsole("[WARN]  стр.${it.line}: «${it.cmd}»") }
+        }
+    }
+
+    override fun render(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, pt: Float) {
         root.render(g, mouseX, mouseY, pt)
+        if (consoleW <= 0 || consoleH <= 0) return
+        g.fill(consoleX, consoleY, consoleX + consoleW, consoleY + consoleH, UiTheme.BG_CARD)
+        g.fill(consoleX, consoleY, consoleX + consoleW, consoleY + 1, UiTheme.BORDER)
+        val font = Minecraft.getInstance().font
+        val lineH = font.lineHeight + 1
+        val visible = ((consoleH - 6) / lineH).coerceAtLeast(1)
+        consoleLines.toList().takeLast(visible).forEachIndexed { i, line ->
+            val col = when {
+                line.contains("[ERROR]") -> UiTheme.DANGER
+                line.contains("[WARN]") -> UiTheme.WARNING
+                line.contains("[INFO]") -> UiTheme.SUCCESS
+                else -> UiTheme.TEXT_MUTED
+            }
+            var shown = line
+            while (shown.length > 4 && font.width(shown) > consoleW - 12) shown = shown.dropLast(1)
+            g.text(font, Component.literal(shown), consoleX + 6, consoleY + 4 + i * lineH, col, false)
+        }
+    }
 
     override fun mouseClicked(mx: Int, my: Int, button: Int) = root.mouseClicked(mx, my, button)
     override fun mouseReleased(mx: Int, my: Int, button: Int) = root.mouseReleased(mx, my, button)
