@@ -1,20 +1,21 @@
 package net.foxmediax.scriptfx.client.ui.pages
 
 import net.foxmediax.scriptfx.client.NpcPreviewHelper
+import net.foxmediax.scriptfx.client.ui.NpcBehGraphCodec
 import net.foxmediax.scriptfx.client.ui.StudioPage
 import net.foxmediax.scriptfx.client.ui.StudioSession
 import net.foxmediax.scriptfx.client.ui.UiButton
 import net.foxmediax.scriptfx.client.ui.UiLabel
+import net.foxmediax.scriptfx.client.ui.UiNpcBehaviorCanvas
 import net.foxmediax.scriptfx.client.ui.UiPanel
 import net.foxmediax.scriptfx.client.ui.UiScrollList
+import net.foxmediax.scriptfx.client.ui.UiTabBar
 import net.foxmediax.scriptfx.client.ui.UiTextField
 import net.foxmediax.scriptfx.client.ui.UiTheme
 import net.foxmediax.scriptfx.npc.NpcDefinition
 import net.foxmediax.scriptfx.npc.NpcModelPreset
 import net.foxmediax.scriptfx.npc.NpcRegistry
-import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
-import net.minecraft.network.chat.Component
 
 class NpcPage : StudioPage {
     override val title = "NPC"
@@ -23,16 +24,33 @@ class NpcPage : StudioPage {
 
     private var npcList: List<NpcDefinition> = emptyList()
     private var selected: NpcDefinition? = null
+    private var tabIndex = 0
 
     private val status = UiLabel("Выберите проект на Главной", UiTheme.TEXT_MUTED)
     private val list = UiScrollList(onSelect = { idx, _ -> selectNpc(idx) })
     private val nameField = UiTextField(hint = "npc_id")
+
+    private val displayField = UiTextField(hint = "Отображаемое имя")
+    private val modelField = UiTextField(hint = "model path")
+    private val animField = UiTextField(hint = "default anim")
+    private val interactField = UiTextField(hint = "onInteractScript")
+
+    private val tabBar = UiTabBar(
+        tabs = listOf("Поведение", "Диалоги", "Патруль", "События"),
+        selected = 0
+    ) { i, _ ->
+        tabIndex = i
+        bindTabContent()
+    }
+
+    private val tabContent = UiLabel("", UiTheme.TEXT_MUTED)
 
     private val btnCreateFemale = UiButton("Female") { createNpc(NpcModelPreset.FEMALE) }
     private val btnCreateMale = UiButton("Male") { createNpc(NpcModelPreset.MALE) }
     private val btnCreateSlim = UiButton("Slim") { createNpc(NpcModelPreset.MALE_SLIM) }
     private val btnDelete = UiButton("Удалить") { deleteSelected() }
     private val btnRefresh = UiButton("Обновить") { reloadList() }
+    private val btnSave = UiButton("Сохранить") { saveSelected() }
     private val btnAnim = UiButton("Anim ▶") {
         val name = NpcPreviewHelper.cycleAnim()
         status.text = "Анимация: $name"
@@ -50,6 +68,14 @@ class NpcPage : StudioPage {
     private var lastMx = 0
     private var lastMy = 0
 
+    private val behCanvas = UiNpcBehaviorCanvas()
+
+    init {
+        btnCreateFemale.style = UiButton.Style.PRIMARY
+        btnSave.style = UiButton.Style.PRIMARY
+        btnDelete.style = UiButton.Style.DANGER
+    }
+
     override fun onShow() {
         reloadList()
     }
@@ -65,53 +91,117 @@ class NpcPage : StudioPage {
         root.setBounds(x, y, w, h)
 
         val pad = UiTheme.PAD
-        val leftW = (w * 0.28f).toInt().coerceIn(180, 300)
+        val leftW = (w * 0.22f).toInt().coerceIn(150, 240)
+        val rightW = (w * 0.26f).toInt().coerceIn(180, 260)
+        val midX = x + leftW + pad
+        val midW = (w - leftW - rightW - pad * 3).coerceAtLeast(220)
+        val rightX = x + w - rightW - pad
 
-        val header = UiLabel("NPC проекта", UiTheme.ACCENT)
-        header.setBounds(x + pad, y + pad, leftW, 16)
-        root.add(header)
-
-        list.setBounds(x + pad, y + 36, leftW - pad, h - 170)
+        root.add(UiLabel("NPC", UiTheme.ACCENT).also {
+            it.setBounds(x + pad, y + pad, leftW - pad, 14)
+        })
+        list.setBounds(x + pad, y + 34, leftW - pad, h - 160)
         root.add(list)
 
-        nameField.setBounds(x + pad, y + h - 120, leftW - pad, 26)
+        nameField.setBounds(x + pad, y + h - 118, leftW - pad, 24)
         root.add(nameField)
 
-        btnCreateFemale.setBounds(x + pad, y + h - 86, 64, 24)
-        btnCreateMale.setBounds(x + pad + 70, y + h - 86, 54, 24)
-        btnCreateSlim.setBounds(x + pad + 130, y + h - 86, 54, 24)
+        btnCreateFemale.setBounds(x + pad, y + h - 88, 56, 24)
+        btnCreateMale.setBounds(x + pad + 60, y + h - 88, 48, 24)
+        btnCreateSlim.setBounds(x + pad + 112, y + h - 88, 48, 24)
         root.add(btnCreateFemale)
         root.add(btnCreateMale)
         root.add(btnCreateSlim)
 
-        btnRefresh.setBounds(x + pad, y + h - 54, 80, 24)
-        btnDelete.setBounds(x + pad + 88, y + h - 54, 80, 24)
+        btnRefresh.setBounds(x + pad, y + h - 56, 72, 24)
+        btnDelete.setBounds(x + pad + 78, y + h - 56, 72, 24)
         root.add(btnRefresh)
         root.add(btnDelete)
 
-        vpX = x + leftW + pad
-        vpY = y + 36
-        vpW = w - leftW - pad * 2
-        vpH = h - 90
+        behCanvas.setBounds(vpX, vpY, vpW, vpH)
+        root.add(behCanvas)
 
-        val prevTitle = UiLabel("Превью (ЛКМ — вращать)", UiTheme.ACCENT)
-        prevTitle.setBounds(vpX, y + pad, vpW, 16)
-        root.add(prevTitle)
+        root.add(UiLabel("Превью", UiTheme.ACCENT).also {
+            it.setBounds(midX, y + pad, midW, 14)
+        })
 
-        val frame = UiPanel(0xFF0A0A10.toInt())
-        frame.setBounds(vpX, vpY, vpW, vpH)
-        root.add(frame)
+        val tabH = 28
+        tabBar.selected = tabIndex
+        tabBar.setBounds(midX, y + 30, midW, tabH)
+        root.add(tabBar)
 
-        btnAnim.setBounds(vpX, y + h - 46, 90, 24)
-        btnResetCam.setBounds(vpX + 100, y + h - 46, 110, 24)
+        vpX = midX
+        vpY = y + 30 + tabH + 6
+        vpW = midW
+        vpH = (h - (vpY - y) - 56).coerceAtLeast(100)
+
+        root.add(UiPanel(0xFF0A0A10.toInt()).also {
+            it.setBounds(vpX, vpY, vpW, vpH)
+        })
+
+        tabContent.setBounds(vpX + 10, vpY + 10, vpW - 20, 40)
+        root.add(tabContent)
+
+        btnAnim.setBounds(midX, y + h - 42, 80, 26)
+        btnResetCam.setBounds(midX + 86, y + h - 42, 110, 26)
         root.add(btnAnim)
         root.add(btnResetCam)
 
-        status.setBounds(vpX + 220, y + h - 42, (w - leftW - 240).coerceAtLeast(80), 16)
+        root.add(UiLabel("Свойства NPC", UiTheme.ACCENT).also {
+            it.setBounds(rightX, y + pad, rightW, 14)
+        })
+
+        var py = y + 34
+        fun field(label: String, f: UiTextField) {
+            root.add(UiLabel(label, UiTheme.TEXT_MUTED).also {
+                it.setBounds(rightX, py, rightW, 12)
+            })
+            py += 14
+            f.setBounds(rightX, py, rightW, 24)
+            root.add(f)
+            py += 30
+        }
+        field("Имя", displayField)
+        field("Модель", modelField)
+        field("Анимация", animField)
+        field("onInteract", interactField)
+
+        btnSave.setBounds(rightX, py, rightW, 28)
+        root.add(btnSave)
+
+        status.setBounds(rightX, y + h - 28, rightW, 16)
         root.add(status)
 
         updatePreviewBounds()
         reloadList()
+        bindFields()
+        bindTabContent()
+    }
+
+    private fun bindTabContent() {
+        val name = selected?.displayName ?: "—"
+        tabContent.text = when (tabIndex) {
+            0 -> "Поведение · $name — lookAt / gravity / scripts (граф — позже)"
+            1 -> "Диалоги · $name — ветки реплик (позже)"
+            2 -> "Патруль · $name — точки пути (позже)"
+            else -> "События · $name — onInteract / onDeath (поля справа)"
+        }
+        tabContent.color = UiTheme.TEXT_MUTED
+    }
+
+    private fun bindFields() {
+        val d = selected
+        if (d == null) {
+            displayField.value = ""
+            modelField.value = ""
+            animField.value = ""
+            interactField.value = ""
+            return
+        }
+        displayField.value = d.displayName
+        modelField.value = d.model
+        animField.value = d.defaultAnim
+        interactField.value = d.onInteractScript
     }
 
     private fun projectName(): String? = StudioSession.selectedProject?.name
@@ -127,6 +217,8 @@ class NpcPage : StudioPage {
             status.color = UiTheme.WARNING
             NpcPreviewHelper.setDefinition(null)
             NpcPreviewHelper.clearBounds()
+            bindFields()
+            bindTabContent()
             return
         }
 
@@ -142,6 +234,8 @@ class NpcPage : StudioPage {
         } else {
             selected = null
             NpcPreviewHelper.setDefinition(null)
+            bindFields()
+            bindTabContent()
         }
 
         status.text = "Проект: $project · NPC: ${npcList.size}"
@@ -159,6 +253,9 @@ class NpcPage : StudioPage {
         updatePreviewBounds()
         status.text = "NPC: ${def.displayName} · ${def.model}"
         status.color = UiTheme.SUCCESS
+        bindFields()
+        bindTabContent()
+        behCanvas.graph = NpcBehGraphCodec.fromJson(def.behaviorJson)
     }
 
     private fun createNpc(preset: NpcModelPreset) {
@@ -195,6 +292,32 @@ class NpcPage : StudioPage {
         status.color = UiTheme.SUCCESS
     }
 
+    private fun saveSelected() {
+        val project = projectName() ?: return
+        val d = selected ?: run {
+            status.text = "Не выбран NPC"
+            status.color = UiTheme.WARNING
+            return
+        }
+        val updated = d.copy(
+            displayName = displayField.value.trim().ifEmpty { d.id },
+            model = modelField.value.trim().ifEmpty { d.model },
+            defaultAnim = animField.value.trim().ifEmpty { d.defaultAnim },
+            onInteractScript = interactField.value
+            behaviorJson = NpcBehGraphCodec.toJson(behCanvas.graph)
+        )
+        if (!NpcRegistry.save(project, updated)) {
+            status.text = "Ошибка сохранения"
+            status.color = UiTheme.DANGER
+            return
+        }
+        selected = updated
+        NpcPreviewHelper.setDefinition(updated)
+        reloadList()
+        status.text = "Сохранено: ${updated.id}"
+        status.color = UiTheme.SUCCESS
+    }
+
     private fun deleteSelected() {
         val project = projectName() ?: return
         val def = selected ?: run {
@@ -220,18 +343,6 @@ class NpcPage : StudioPage {
 
     override fun render(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, pt: Float) {
         root.render(g, mouseX, mouseY, pt)
-        // 3D: NpcPreviewHelper.renderInGui через ScreenEvents.afterExtract
-        val err = NpcPreviewHelper.loadError
-        if (!err.isNullOrBlank()) {
-            g.text(
-                Minecraft.getInstance().font,
-                Component.literal("Ошибка: $err"),
-                vpX + 12,
-                vpY + 12,
-                UiTheme.DANGER,
-                false
-            )
-        }
     }
 
     override fun mouseClicked(mx: Int, my: Int, button: Int): Boolean {
@@ -262,8 +373,13 @@ class NpcPage : StudioPage {
         return root.mouseReleased(mx, my, button)
     }
 
-    override fun mouseScrolled(mx: Double, my: Double, sx: Double, sy: Double): Boolean =
-        root.mouseScrolled(mx, my, sx, sy)
+    override fun mouseScrolled(mx: Double, my: Double, sx: Double, sy: Double): Boolean {
+        if (mx.toInt() in vpX until (vpX + vpW) && my.toInt() in vpY until (vpY + vpH)) {
+            NpcPreviewHelper.zoom(sy.toFloat())
+            return true
+        }
+        return root.mouseScrolled(mx, my, sx, sy)
+    }
 
     override fun keyPressed(key: Int, scan: Int, modifiers: Int): Boolean =
         root.keyPressed(key, scan, modifiers)
