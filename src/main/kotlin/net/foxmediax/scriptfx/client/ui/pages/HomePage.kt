@@ -12,6 +12,13 @@ import net.foxmediax.scriptfx.client.ui.UiTheme
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import java.io.File
 
+/**
+ * Главный экран студии (как в Modern UI home):
+ * — без sidebar секций / topbar
+ * — слева логотип и действия
+ * — справа список проектов
+ * — «Продолжить» активна только при выбранном проекте
+ */
 class HomePage(
     private val host: StudioHost
 ) : StudioPage {
@@ -23,22 +30,25 @@ class HomePage(
     private val list = UiScrollList(onSelect = { idx, _ ->
         if (idx in projectFiles.indices) {
             StudioSession.selectProject(projectFiles[idx])
-            refreshStatus()
+            refreshActions()
         }
     })
 
-    private val status = UiLabel("Проект не выбран", UiTheme.TEXT_MUTED)
+    private val status = UiLabel("", UiTheme.TEXT_MUTED)
     private val nameField = UiTextField(hint = "Имя нового проекта…")
-    private val btnCreate = UiButton("Создать проект") { createProject() }
+
     private val btnContinue = UiButton("Продолжить") {
         if (StudioSession.selectedProject == null) {
-            status.text = "Сначала выберите проект"
+            status.text = "Сначала выберите проект в списке"
             status.color = UiTheme.WARNING
             return@UiButton
         }
         host.openPage("Сценарии")
     }
-    private val btnDelete = UiButton("Удалить") { deleteSelected() }
+
+    private val btnCreate = UiButton("Создать проект") { createProject() }
+    private val btnDelete = UiButton("🗑") { deleteSelected() }
+    private val btnRefresh = UiButton("Обновить") { reloadProjects() }
 
     override fun onShow() {
         reloadProjects()
@@ -49,59 +59,86 @@ class HomePage(
         root.setBounds(x, y, w, h)
 
         val pad = UiTheme.PAD
-        val leftW = (w * 0.42f).toInt().coerceAtLeast(220)
+        // левая колонка ~42%, правая — список
+        val leftW = (w * 0.42f).toInt().coerceIn(260, 420)
         val rightX = x + leftW + pad
+        val rightW = w - leftW - pad * 2
 
-        val header = UiLabel("Проекты", UiTheme.ACCENT)
-        header.setBounds(x + pad, y + pad, leftW - pad, 16)
-        root.add(header)
+        // --- LEFT: brand + actions ---
+        val brand = UiLabel("ScriptFX", UiTheme.ACCENT)
+        brand.setBounds(x + pad * 2, y + 48, leftW - pad * 3, 22)
+        root.add(brand)
 
-        list.setBounds(x + pad, y + 36, leftW - pad, h - 48)
-        root.add(list)
+        val tagline = UiLabel("Студия сценариев", UiTheme.TEXT_MUTED)
+        tagline.setBounds(x + pad * 2, y + 74, leftW - pad * 3, 14)
+        root.add(tagline)
 
-        val infoTitle = UiLabel("Действия", UiTheme.ACCENT)
-        infoTitle.setBounds(rightX, y + pad, w - leftW - pad * 2, 16)
-        root.add(infoTitle)
+        val card = UiPanel(UiTheme.BG_CARD)
+        card.setBounds(x + pad * 2, y + 110, leftW - pad * 4, 200)
+        root.add(card)
 
-        status.setBounds(rightX, y + 36, w - leftW - pad * 2, 16)
+        val actionsTitle = UiLabel("Проект", UiTheme.ACCENT)
+        actionsTitle.setBounds(card.x + 14, card.y + 14, card.w - 28, 14)
+        root.add(actionsTitle)
+
+        status.setBounds(card.x + 14, card.y + 36, card.w - 28, 14)
         root.add(status)
 
-        nameField.setBounds(rightX, y + 64, (w - leftW - pad * 2).coerceAtMost(280), 28)
-        root.add(nameField)
-
-        btnCreate.setBounds(rightX, y + 100, 140, 26)
-        root.add(btnCreate)
-
-        btnContinue.setBounds(rightX, y + 134, 140, 26)
+        btnContinue.setBounds(card.x + 14, card.y + 60, card.w - 28, 30)
         root.add(btnContinue)
 
-        btnDelete.setBounds(rightX + 150, y + 134, 100, 26)
-        root.add(btnDelete)
+        nameField.setBounds(card.x + 14, card.y + 102, card.w - 28, 26)
+        root.add(nameField)
 
-        val pathHint = UiLabel("Папка: config/scriptfx/projects", UiTheme.TEXT_MUTED)
-        pathHint.setBounds(rightX, y + 180, w - leftW - pad * 2, 14)
+        btnCreate.setBounds(card.x + 14, card.y + 138, (card.w - 36) / 2, 28)
+        root.add(btnCreate)
+
+        btnRefresh.setBounds(card.x + 14 + (card.w - 36) / 2 + 8, card.y + 138, (card.w - 36) / 2, 28)
+        root.add(btnRefresh)
+
+        val pathHint = UiLabel("config/scriptfx/projects", UiTheme.TEXT_DIM)
+        pathHint.setBounds(x + pad * 2, y + h - 28, leftW - pad * 3, 12)
         root.add(pathHint)
 
+        // --- RIGHT: project list ---
+        val listTitle = UiLabel("Ваши проекты", UiTheme.ACCENT)
+        listTitle.setBounds(rightX, y + 48, rightW - 40, 16)
+        root.add(listTitle)
+
+        btnDelete.setBounds(rightX + rightW - 36, y + 42, 32, 28)
+        root.add(btnDelete)
+
+        val listFrame = UiPanel(UiTheme.BG_CARD)
+        listFrame.setBounds(rightX, y + 78, rightW, h - 110)
+        root.add(listFrame)
+
+        list.setBounds(rightX + 4, y + 82, rightW - 8, h - 118)
+        root.add(list)
+
+        val listHint = UiLabel("Выберите проект курсором, затем «Продолжить»", UiTheme.TEXT_DIM)
+        listHint.setBounds(rightX, y + h - 28, rightW, 12)
+        root.add(listHint)
+
         reloadProjects()
-        refreshStatus()
     }
 
     private fun reloadProjects() {
         projectFiles = StudioSession.listProjects()
         list.items = projectFiles.map { it.name }
+
         val sel = StudioSession.selectedProject
         list.selected = if (sel == null) -1
         else projectFiles.indexOfFirst { it.canonicalFile == sel.canonicalFile }
-        btnContinue.enabled = sel != null
-        btnDelete.enabled = sel != null
+
+        refreshActions()
     }
 
-    private fun refreshStatus() {
+    private fun refreshActions() {
         val sel = StudioSession.selectedProject
-        status.text = if (sel != null) "Выбран: ${sel.name}" else "Проект не выбран"
-        status.color = if (sel != null) UiTheme.SUCCESS else UiTheme.TEXT_MUTED
         btnContinue.enabled = sel != null
         btnDelete.enabled = sel != null
+        status.text = if (sel != null) "Выбран: ${sel.name}" else "Проект не выбран"
+        status.color = if (sel != null) UiTheme.SUCCESS else UiTheme.TEXT_MUTED
     }
 
     private fun createProject() {
@@ -115,7 +152,6 @@ class HomePage(
         if (dir != null) {
             nameField.value = ""
             reloadProjects()
-            refreshStatus()
             status.text = "Создан: ${dir.name}"
             status.color = UiTheme.SUCCESS
         } else {
@@ -128,13 +164,16 @@ class HomePage(
         val sel = StudioSession.selectedProject ?: return
         val ok = StudioSession.deleteProject(sel)
         reloadProjects()
-        refreshStatus()
         status.text = if (ok) "Удалён: ${sel.name}" else "Ошибка удаления"
         status.color = if (ok) UiTheme.WARNING else UiTheme.DANGER
     }
 
-    override fun render(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, pt: Float) =
+    override fun render(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, pt: Float) {
+        // лёгкий вертикальный акцент слева (как разделитель колонок)
+        val mid = root.x + (root.w * 0.42f).toInt()
+        g.fill(mid, root.y + 40, mid + 1, root.bottom - 24, UiTheme.BORDER)
         root.render(g, mouseX, mouseY, pt)
+    }
 
     override fun mouseClicked(mx: Int, my: Int, button: Int) = root.mouseClicked(mx, my, button)
     override fun mouseReleased(mx: Int, my: Int, button: Int) = root.mouseReleased(mx, my, button)
