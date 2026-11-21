@@ -13,11 +13,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor
 import java.io.File
 
 /**
- * Главный экран студии (как в Modern UI home):
- * — без sidebar секций / topbar
- * — слева логотип и действия
- * — справа список проектов
- * — «Продолжить» активна только при выбранном проекте
+ * Главный экран: бренд + карточка действий | список проектов.
  */
 class HomePage(
     private val host: StudioHost
@@ -50,6 +46,12 @@ class HomePage(
     private val btnDelete = UiButton("🗑") { deleteSelected() }
     private val btnRefresh = UiButton("Обновить") { reloadProjects() }
 
+    init {
+        btnContinue.style = UiButton.Style.PRIMARY
+        btnCreate.style = UiButton.Style.PRIMARY
+        btnDelete.style = UiButton.Style.DANGER
+    }
+
     override fun onShow() {
         reloadProjects()
     }
@@ -59,27 +61,24 @@ class HomePage(
         root.setBounds(x, y, w, h)
 
         val pad = UiTheme.PAD
-        // левая колонка ~42%, правая — список
         val leftW = (w * 0.42f).toInt().coerceIn(260, 420)
         val rightX = x + leftW + pad
         val rightW = w - leftW - pad * 2
 
-        // --- LEFT: brand + actions ---
-        val brand = UiLabel("ScriptFX", UiTheme.ACCENT)
-        brand.setBounds(x + pad * 2, y + 48, leftW - pad * 3, 22)
-        root.add(brand)
-
-        val tagline = UiLabel("Студия сценариев", UiTheme.TEXT_MUTED)
-        tagline.setBounds(x + pad * 2, y + 74, leftW - pad * 3, 14)
-        root.add(tagline)
+        root.add(UiLabel("ScriptFX", UiTheme.ACCENT).also {
+            it.setBounds(x + pad * 2, y + 48, leftW - pad * 3, 22)
+        })
+        root.add(UiLabel("Story Engine · Студия", UiTheme.TEXT_MUTED).also {
+            it.setBounds(x + pad * 2, y + 74, leftW - pad * 3, 14)
+        })
 
         val card = UiPanel(UiTheme.BG_CARD)
         card.setBounds(x + pad * 2, y + 110, leftW - pad * 4, 200)
         root.add(card)
 
-        val actionsTitle = UiLabel("Проект", UiTheme.ACCENT)
-        actionsTitle.setBounds(card.x + 14, card.y + 14, card.w - 28, 14)
-        root.add(actionsTitle)
+        root.add(UiLabel("Проект", UiTheme.ACCENT).also {
+            it.setBounds(card.x + 14, card.y + 14, card.w - 28, 14)
+        })
 
         status.setBounds(card.x + 14, card.y + 36, card.w - 28, 14)
         root.add(status)
@@ -96,28 +95,27 @@ class HomePage(
         btnRefresh.setBounds(card.x + 14 + (card.w - 36) / 2 + 8, card.y + 138, (card.w - 36) / 2, 28)
         root.add(btnRefresh)
 
-        val pathHint = UiLabel("config/scriptfx/projects", UiTheme.TEXT_DIM)
-        pathHint.setBounds(x + pad * 2, y + h - 28, leftW - pad * 3, 12)
-        root.add(pathHint)
+        root.add(UiLabel("config/scriptfx/projects", UiTheme.TEXT_DIM).also {
+            it.setBounds(x + pad * 2, y + h - 28, leftW - pad * 3, 12)
+        })
 
-        // --- RIGHT: project list ---
-        val listTitle = UiLabel("Ваши проекты", UiTheme.ACCENT)
-        listTitle.setBounds(rightX, y + 48, rightW - 40, 16)
-        root.add(listTitle)
+        root.add(UiLabel("Ваши проекты", UiTheme.ACCENT).also {
+            it.setBounds(rightX, y + 48, rightW - 40, 16)
+        })
 
         btnDelete.setBounds(rightX + rightW - 36, y + 42, 32, 28)
         root.add(btnDelete)
 
-        val listFrame = UiPanel(UiTheme.BG_CARD)
-        listFrame.setBounds(rightX, y + 78, rightW, h - 110)
-        root.add(listFrame)
+        root.add(UiPanel(UiTheme.BG_CARD).also {
+            it.setBounds(rightX, y + 78, rightW, h - 110)
+        })
 
         list.setBounds(rightX + 4, y + 82, rightW - 8, h - 118)
         root.add(list)
 
-        val listHint = UiLabel("Выберите проект курсором, затем «Продолжить»", UiTheme.TEXT_DIM)
-        listHint.setBounds(rightX, y + h - 28, rightW, 12)
-        root.add(listHint)
+        root.add(UiLabel("Выберите проект, затем «Продолжить»", UiTheme.TEXT_DIM).also {
+            it.setBounds(rightX, y + h - 28, rightW, 12)
+        })
 
         reloadProjects()
     }
@@ -169,7 +167,6 @@ class HomePage(
     }
 
     override fun render(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, pt: Float) {
-        // лёгкий вертикальный акцент слева (как разделитель колонок)
         val mid = root.x + (root.w * 0.42f).toInt()
         g.fill(mid, root.y + 40, mid + 1, root.bottom - 24, UiTheme.BORDER)
         root.render(g, mouseX, mouseY, pt)
