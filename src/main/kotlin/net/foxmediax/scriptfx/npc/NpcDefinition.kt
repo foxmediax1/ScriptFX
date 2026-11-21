@@ -64,7 +64,8 @@ data class NpcDefinition(
     val silent: Boolean = false,
     val speed: Float = 0.25f,
     val onInteractScript: String = "",
-    val interactKey: String = "X"
+    val interactKey: String = "X",
+    val behaviorJson: String = ""
 ) {
     fun mode(): NpcMode = NpcMode.from(defaultMode)
 
