@@ -27,6 +27,7 @@ class ParticlesPage : StudioPage {
 
     private val status = UiLabel("Выберите проект на Главной", UiTheme.TEXT_MUTED)
     private val info = UiLabel("", UiTheme.TEXT_MUTED)
+    private val propsLabel = UiLabel("", UiTheme.TEXT_MUTED)
 
     private val list = UiScrollList(onSelect = { idx, _ -> selectEffect(idx) })
     private val idField = UiTextField(hint = "scriptfx:my_fx")
@@ -38,17 +39,20 @@ class ParticlesPage : StudioPage {
         AaaPreviewHelper.setScale(AaaPreviewHelper.scale + 0.25f)
         status.text = "Scale: ${"%.2f".format(AaaPreviewHelper.scale)}"
         status.color = UiTheme.ACCENT
+        refreshInfo()
     }
     private val btnScaleDown = UiButton("Scale-") {
         AaaPreviewHelper.setScale(AaaPreviewHelper.scale - 0.25f)
         status.text = "Scale: ${"%.2f".format(AaaPreviewHelper.scale)}"
         status.color = UiTheme.ACCENT
+        refreshInfo()
     }
     private val btnResetCam = UiButton("Сброс") {
         AaaPreviewHelper.resetCamera()
         AaaPreviewHelper.setScale(1f)
         status.text = "Камера сброшена"
         status.color = UiTheme.TEXT_MUTED
+        refreshInfo()
     }
 
     private var vpX = 0
@@ -58,6 +62,11 @@ class ParticlesPage : StudioPage {
     private var dragging = false
     private var lastMx = 0
     private var lastMy = 0
+
+    init {
+        btnPlay.style = UiButton.Style.PRIMARY
+        btnStop.style = UiButton.Style.DANGER
+    }
 
     override fun onShow() {
         reloadList()
@@ -73,50 +82,60 @@ class ParticlesPage : StudioPage {
         root.setBounds(x, y, w, h)
 
         val pad = UiTheme.PAD
-        val leftW = (w * 0.32f).toInt().coerceIn(200, 340)
+        val leftW = (w * 0.26f).toInt().coerceIn(180, 280)
+        val rightW = (w * 0.22f).toInt().coerceIn(160, 240)
+        val midX = x + leftW + pad
+        val midW = (w - leftW - rightW - pad * 3).coerceAtLeast(200)
+        val rightX = x + w - rightW - pad
+        val barH = 32
 
-        val header = UiLabel("Эффекты проекта", UiTheme.ACCENT)
-        header.setBounds(x + pad, y + pad, leftW, 16)
-        root.add(header)
-
-        list.setBounds(x + pad, y + 36, leftW - pad, h - 150)
+        root.add(UiLabel("Эффекты", UiTheme.ACCENT).also {
+            it.setBounds(x + pad, y + pad, leftW - pad, 14)
+        })
+        list.setBounds(x + pad, y + 34, leftW - pad, h - 120)
         root.add(list)
 
-        idField.setBounds(x + pad, y + h - 100, leftW - pad, 26)
+        idField.setBounds(x + pad, y + h - 78, leftW - pad, 26)
         root.add(idField)
 
-        btnPlay.setBounds(x + pad, y + h - 66, 70, 24)
-        btnStop.setBounds(x + pad + 76, y + h - 66, 70, 24)
-        btnRefresh.setBounds(x + pad + 152, y + h - 66, 80, 24)
-        root.add(btnPlay)
-        root.add(btnStop)
+        btnRefresh.setBounds(x + pad, y + h - 44, leftW - pad, 28)
         root.add(btnRefresh)
 
-        // правая зона «превью / статус AAA»
-        vpX = x + leftW + pad
-        vpY = y + 36
-        vpW = w - leftW - pad * 2
-        vpH = h - 90
+        root.add(UiLabel("Предпросмотр", UiTheme.ACCENT).also {
+            it.setBounds(midX, y + pad, midW, 14)
+        })
 
-        val prevTitle = UiLabel("AAA превью (в мире перед игроком)", UiTheme.ACCENT)
-        prevTitle.setBounds(vpX, y + pad, vpW, 16)
-        root.add(prevTitle)
+        vpX = midX
+        vpY = y + 34
+        vpW = midW
+        vpH = (h - 34 - barH - pad - 8).coerceAtLeast(120)
 
-        val frame = UiPanel(0xFF0A0A10.toInt())
-        frame.setBounds(vpX, vpY, vpW, vpH)
-        root.add(frame)
+        root.add(UiPanel(0xFF0A0A10.toInt()).also {
+            it.setBounds(vpX, vpY, vpW, vpH)
+        })
 
-        info.setBounds(vpX + 12, vpY + 12, vpW - 24, 60)
+        info.setBounds(vpX + 12, vpY + 12, vpW - 24, 56)
         root.add(info)
 
-        btnScaleDown.setBounds(vpX, y + h - 46, 70, 24)
-        btnScaleUp.setBounds(vpX + 76, y + h - 46, 70, 24)
-        btnResetCam.setBounds(vpX + 152, y + h - 46, 70, 24)
+        val barY = vpY + vpH + 6
+        btnPlay.setBounds(vpX, barY, 70, 26)
+        btnStop.setBounds(vpX + 76, barY, 70, 26)
+        btnScaleDown.setBounds(vpX + 156, barY, 60, 26)
+        btnScaleUp.setBounds(vpX + 222, barY, 60, 26)
+        btnResetCam.setBounds(vpX + 288, barY, 70, 26)
+        root.add(btnPlay)
+        root.add(btnStop)
         root.add(btnScaleDown)
         root.add(btnScaleUp)
         root.add(btnResetCam)
 
-        status.setBounds(vpX + 230, y + h - 42, (w - leftW - 250).coerceAtLeast(80), 16)
+        root.add(UiLabel("Свойства эффекта", UiTheme.ACCENT).also {
+            it.setBounds(rightX, y + pad, rightW, 14)
+        })
+        propsLabel.setBounds(rightX, y + 34, rightW, 140)
+        root.add(propsLabel)
+
+        status.setBounds(rightX, y + h - 28, rightW, 16)
         root.add(status)
 
         updateBounds()
@@ -148,6 +167,11 @@ class ParticlesPage : StudioPage {
         list.selected = selected?.let { sel ->
             effects.indexOfFirst { it.identifier == sel.identifier }
         } ?: -1
+        if (list.selected >= 0) selectEffect(list.selected)
+        else {
+            selected = null
+            idField.value = ""
+        }
 
         status.text = "Проект: $project · эффектов: ${effects.size}"
         status.color = UiTheme.TEXT_MUTED
@@ -159,13 +183,13 @@ class ParticlesPage : StudioPage {
         if (idx !in effects.indices) return
         selected = effects[idx]
         idField.value = selected!!.identifier
-        refreshInfo()
         status.text = "Выбран: ${selected!!.identifier}"
         status.color = UiTheme.SUCCESS
+        refreshInfo()
     }
 
     private fun playSelected() {
-        val raw = idField.value.trim().ifBlank { selected?.identifier.orEmpty() }
+        val raw = idField.value.trim().ifEmpty { selected?.identifier.orEmpty() }
         if (raw.isEmpty()) {
             status.text = "Нет id эффекта"
             status.color = UiTheme.WARNING
@@ -220,21 +244,30 @@ class ParticlesPage : StudioPage {
             appendLine("effect: $eff")
             appendLine("scale=${"%.2f".format(AaaPreviewHelper.scale)}  dist=${"%.1f".format(AaaPreviewHelper.distance)}")
             if (!err.isNullOrBlank()) append("err: $err")
-            else append("ЛКМ по области — yaw/pitch (если поддерживается)")
+            else append("ЛКМ — yaw/pitch · колёсико — zoom")
         }
         info.color = if (!err.isNullOrBlank()) UiTheme.DANGER else UiTheme.TEXT_MUTED
+
+        val s = selected
+        propsLabel.text = if (s == null) {
+            "Эффект не выбран"
+        } else {
+            buildString {
+                appendLine("identifier:")
+                appendLine(s.identifier)
+                appendLine("material: ${s.material}")
+                appendLine("spawnRate: ${s.spawnRate}")
+                appendLine("lifetime: ${s.particleLifetime}")
+                appendLine("scale: ${"%.2f".format(AaaPreviewHelper.scale)}")
+            }
+        }
+        propsLabel.color = UiTheme.TEXT_MUTED
     }
 
     override fun render(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, pt: Float) {
         root.render(g, mouseX, mouseY, pt)
-        // World-space AAA рисует сам мод частиц; здесь только UI + статус
-        refreshInfoSoft(g)
-    }
-
-    private fun refreshInfoSoft(g: GuiGraphicsExtractor) {
-        // лёгкое обновление текста без пересоздания layout
         val err = AaaPreviewHelper.loadError
-        if (!err.isNullOrBlank()) {
+        if (!err.isNullOrBlank() && vpW > 0) {
             g.text(
                 Minecraft.getInstance().font,
                 Component.literal(err),
