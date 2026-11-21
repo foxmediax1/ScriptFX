@@ -1,12 +1,17 @@
 package net.foxmediax.scriptfx.client.ui
 
+import net.foxmediax.scriptfx.client.ui.pages.CutscenesPage
 import net.foxmediax.scriptfx.client.ui.pages.DocsPage
 import net.foxmediax.scriptfx.client.ui.pages.HomePage
 import net.foxmediax.scriptfx.client.ui.pages.HudPage
+import net.foxmediax.scriptfx.client.ui.pages.LogsPage
 import net.foxmediax.scriptfx.client.ui.pages.NpcPage
 import net.foxmediax.scriptfx.client.ui.pages.ParticlesPage
+import net.foxmediax.scriptfx.client.ui.pages.QuestsPage
 import net.foxmediax.scriptfx.client.ui.pages.ScenariosPage
+import net.foxmediax.scriptfx.client.ui.pages.SettingsPage
 import net.foxmediax.scriptfx.client.ui.pages.TriggersPage
+import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphicsExtractor
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.input.CharacterEvent
@@ -15,6 +20,9 @@ import net.minecraft.client.input.MouseButtonEvent
 import net.minecraft.network.chat.Component
 import org.lwjgl.glfw.GLFW
 
+/**
+ * Chrome по макету: логотип + вкладки сверху, контент на всю ширину, status bar снизу.
+ */
 class StudioScreen : Screen(Component.literal("ScriptFX Studio")) {
 
     private enum class Mode { HOME, STUDIO }
@@ -22,25 +30,26 @@ class StudioScreen : Screen(Component.literal("ScriptFX Studio")) {
     private var mode = Mode.HOME
 
     private val root = UiPanel(0)
-    private val sidebar = UiPanel(UiTheme.BG_SIDEBAR)
     private val header = UiPanel(UiTheme.BG_HEADER)
-    private val navButtons = mutableListOf<UiButton>()
 
-    /** Порядок как в старой панели + расширения. */
     private val studioSections = listOf(
         "Сценарии",
         "NPC",
-        "Частицы",
+        "Квесты",
         "Триггеры",
+        "Катсцены",
         "HUD",
+        "Частицы",
+        "Логи",
         "Документация",
         "Настройки"
     )
 
     private val host = object : StudioHost {
         override fun openPage(name: String) {
-            if (name == "Сценарии" || name in studioSections) {
-                enterStudio(name)
+            when {
+                name == "Главная" -> goHome()
+                name in studioSections || name in pages -> enterStudio(name)
             }
         }
     }
@@ -48,25 +57,47 @@ class StudioScreen : Screen(Component.literal("ScriptFX Studio")) {
     private val homePage = HomePage(host)
     private val scenariosPage = ScenariosPage()
     private val npcPage = NpcPage()
-    private val particlesPage = ParticlesPage()
+    private val questsPage = QuestsPage()
     private val triggersPage = TriggersPage()
+    private val cutscenesPage = CutscenesPage()
     private val hudPage = HudPage()
+    private val particlesPage = ParticlesPage()
+    private val logsPage = LogsPage()
     private val docsPage = DocsPage()
+    private val settingsPage = SettingsPage()
 
     private val pages: Map<String, StudioPage> = mapOf(
         "Главная" to homePage,
         "Сценарии" to scenariosPage,
         "NPC" to npcPage,
-        "Частицы" to particlesPage,
+        "Квесты" to questsPage,
         "Триггеры" to triggersPage,
+        "Катсцены" to cutscenesPage,
         "HUD" to hudPage,
-        "Документация" to docsPage
-        // "Настройки" → SettingsPage later
+        "Частицы" to particlesPage,
+        "Логи" to logsPage,
+        "Документация" to docsPage,
+        "Настройки" to settingsPage
     )
 
     private var sectionIndex = 0
     private var currentPage: StudioPage = homePage
-    private var breadcrumb = UiLabel("ScriptFX Studio", UiTheme.TEXT)
+
+    private val tabBar = UiTabBar(
+        tabs = studioSections,
+        selected = 0
+    ) { i, name ->
+        sectionIndex = i
+        currentPage.onHide()
+        currentPage = pages[name] ?: PlaceholderPage(name)
+        currentPage.onShow()
+        layout()
+    }
+
+    private val btnSettings = UiButton("⚙") { enterStudio("Настройки") }
+    private val btnClose = UiButton("✕") { onClose() }
+
+    private val statusH = 22
 
     override fun isPauseScreen(): Boolean = true
 
@@ -81,15 +112,16 @@ class StudioScreen : Screen(Component.literal("ScriptFX Studio")) {
     }
 
     fun enterStudio(section: String = "Сценарии") {
-        if (StudioSession.selectedProject == null && section != "Документация") {
-            // без проекта — только док / домой
+        val needsProject = section !in setOf("Документация", "Настройки", "Логи")
+        if (needsProject && StudioSession.selectedProject == null) {
             mode = Mode.HOME
             currentPage = homePage
             layout()
             return
         }
         mode = Mode.STUDIO
-        sectionIndex = studioSections.indexOf(section).coerceAtLeast(0)
+        sectionIndex = studioSections.indexOf(section).let { if (it < 0) 0 else it }
+        tabBar.selected = sectionIndex
         currentPage.onHide()
         currentPage = pages[section] ?: pages["Сценарии"] ?: homePage
         currentPage.onShow()
@@ -106,10 +138,7 @@ class StudioScreen : Screen(Component.literal("ScriptFX Studio")) {
 
     private fun layout() {
         root.clearChildren()
-        sidebar.clearChildren()
         header.clearChildren()
-        navButtons.clear()
-
         root.setBounds(0, 0, width, height)
 
         if (mode == Mode.HOME) {
@@ -118,52 +147,34 @@ class StudioScreen : Screen(Component.literal("ScriptFX Studio")) {
             return
         }
 
-        // --- STUDIO chrome ---
-        sidebar.setBounds(0, 0, UiTheme.SIDEBAR_W, height)
-        header.setBounds(UiTheme.SIDEBAR_W, 0, width - UiTheme.SIDEBAR_W, UiTheme.TOPBAR_H)
+        header.setBounds(0, 0, width, UiTheme.TOPBAR_H)
+        header.background = UiTheme.BG_HEADER
 
-        // logo block
         val logo = UiLabel("ScriptFX", UiTheme.ACCENT)
-        logo.setBounds(UiTheme.PAD, 14, UiTheme.SIDEBAR_W - UiTheme.PAD * 2, 16)
-        sidebar.add(logo)
-        val sub = UiLabel("Студия", UiTheme.TEXT_MUTED)
-        sub.setBounds(UiTheme.PAD, 32, UiTheme.SIDEBAR_W - UiTheme.PAD * 2, 12)
-        sidebar.add(sub)
+        logo.setBounds(14, (UiTheme.TOPBAR_H - 14) / 2, 88, 14)
+        header.add(logo)
 
-        studioSections.forEachIndexed { i, name ->
-            val btn = UiButton(name) {
-                sectionIndex = i
-                currentPage.onHide()
-                currentPage = pages[name] ?: PlaceholderPage(name)
-                currentPage.onShow()
-                layout()
-            }
-            btn.active = i == sectionIndex
-            btn.setBounds(10, 56 + i * 34, UiTheme.SIDEBAR_W - 20, UiTheme.BTN_H)
-            navButtons += btn
-            sidebar.add(btn)
-        }
+        val rightBtns = 36 + 8 + 36 + 12
+        val tabsX = 110
+        val tabsW = (width - tabsX - rightBtns).coerceAtLeast(200)
+        tabBar.tabs = studioSections
+        tabBar.selected = sectionIndex
+        tabBar.setBounds(tabsX, 4, tabsW, UiTheme.TOPBAR_H - 8)
+        header.add(tabBar)
 
-        val back = UiButton("← Проекты") { goHome() }
-        back.setBounds(10, height - 40, UiTheme.SIDEBAR_W - 20, UiTheme.BTN_H)
-        sidebar.add(back)
+        btnSettings.style = UiButton.Style.GHOST
+        btnSettings.setBounds(width - 36 - 8 - 36, 6, 28, 28)
+        header.add(btnSettings)
 
-        val title = studioSections.getOrElse(sectionIndex) { "Студия" }
-        val proj = StudioSession.selectedProject?.name ?: "—"
-        breadcrumb = UiLabel("Панель управления → $title  ·  $proj", UiTheme.TEXT)
-        breadcrumb.setBounds(header.x + UiTheme.PAD, header.y + 10, header.w - 120, 16)
-        header.add(breadcrumb)
-
-        val btnClose = UiButton("✕") { onClose() }
-        btnClose.setBounds(header.right - 36, header.y + 4, 28, 28)
+        btnClose.style = UiButton.Style.GHOST
+        btnClose.setBounds(width - 36, 6, 28, 28)
         header.add(btnClose)
 
-        root.add(sidebar)
         root.add(header)
 
-        val cx = UiTheme.SIDEBAR_W
-        val cy = UiTheme.TOPBAR_H
-        currentPage.layout(cx, cy, width - cx, height - cy)
+        val contentY = UiTheme.TOPBAR_H
+        val contentH = (height - contentY - statusH).coerceAtLeast(100)
+        currentPage.layout(0, contentY, width, contentH)
     }
 
     override fun extractBackground(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
@@ -172,12 +183,33 @@ class StudioScreen : Screen(Component.literal("ScriptFX Studio")) {
 
     override fun extractRenderState(g: GuiGraphicsExtractor, mouseX: Int, mouseY: Int, partialTick: Float) {
         if (mode == Mode.STUDIO) {
-            g.fill(0, 0, UiTheme.SIDEBAR_W, height, UiTheme.BG_SIDEBAR)
-            g.fill(UiTheme.SIDEBAR_W, 0, width, UiTheme.TOPBAR_H, UiTheme.BG_HEADER)
-            // divider
-            g.fill(UiTheme.SIDEBAR_W, 0, UiTheme.SIDEBAR_W + 1, height, UiTheme.BORDER)
-            g.fill(UiTheme.SIDEBAR_W, UiTheme.TOPBAR_H, width, UiTheme.TOPBAR_H + 1, UiTheme.BORDER)
+            g.fill(0, 0, width, UiTheme.TOPBAR_H, UiTheme.BG_HEADER)
+            g.fill(0, UiTheme.TOPBAR_H - 1, width, UiTheme.TOPBAR_H, UiTheme.BORDER)
+
             root.render(g, mouseX, mouseY, partialTick)
+
+            val sy = height - statusH
+            g.fill(0, sy, width, height, UiTheme.BG_HEADER)
+            g.fill(0, sy, width, sy + 1, UiTheme.BORDER)
+            val font = Minecraft.getInstance().font
+            val proj = StudioSession.selectedProject?.name ?: "—"
+            val sec = studioSections.getOrElse(sectionIndex) { "Студия" }
+            g.text(
+                font,
+                Component.literal("● Готово"),
+                12,
+                sy + (statusH - font.lineHeight) / 2,
+                UiTheme.SUCCESS,
+                false
+            )
+            g.text(
+                font,
+                Component.literal("$sec  ·  $proj"),
+                90,
+                sy + (statusH - font.lineHeight) / 2,
+                UiTheme.TEXT_MUTED,
+                false
+            )
         }
         currentPage.render(g, mouseX, mouseY, partialTick)
         super.extractRenderState(g, mouseX, mouseY, partialTick)
@@ -245,20 +277,20 @@ class StudioScreen : Screen(Component.literal("ScriptFX Studio")) {
 
 class PlaceholderPage(override val title: String) : StudioPage {
     private val root = UiPanel(0)
-    private val label = UiLabel("Раздел «$title» — в разработке", UiTheme.TEXT_MUTED)
 
     override fun layout(x: Int, y: Int, w: Int, h: Int) {
         root.clearChildren()
         root.setBounds(x, y, w, h)
+        val label = UiLabel("Раздел «$title» — в разработке", UiTheme.TEXT_MUTED)
         label.setBounds(x + UiTheme.PAD, y + UiTheme.PAD, w - UiTheme.PAD * 2, 20)
         root.add(label)
 
         val card = UiPanel(UiTheme.BG_CARD)
-        card.setBounds(x + UiTheme.PAD, y + 40, w - UiTheme.PAD * 2, 72)
+        card.setBounds(x + UiTheme.PAD, y + 40, (w - UiTheme.PAD * 2).coerceAtMost(520), 72)
         root.add(card)
 
         val info = UiLabel(
-            "Секция будет перенесена с Modern UI. Каркас Hybrid уже активен.",
+            "Каркас top-tabs активен. Контент раздела будет доведён до макета.",
             UiTheme.TEXT
         )
         info.setBounds(card.x + 12, card.y + 28, card.w - 24, 16)
