@@ -13,7 +13,7 @@ import net.foxmediax.scriptfx.ScriptFX
 import net.foxmediax.scriptfx.ScriptFXKeybinds
 import net.foxmediax.scriptfx.hud.HudOverlay
 import net.foxmediax.scriptfx.client.hud.HudRuntime
-import net.foxmediax.scriptfx.client.mui.MuiScreens
+import net.foxmediax.scriptfx.client.ui.StudioScreen
 import net.foxmediax.scriptfx.client.particles.AaaParticleBridge
 import net.foxmediax.scriptfx.client.particles.AaaPreviewHelper
 import net.foxmediax.scriptfx.client.particles.ParticleRuntime
@@ -183,13 +183,14 @@ object ScriptFXClient : ClientModInitializer {
                 if (client.screen == null &&
                     player.permissions().hasPermission(REQUIRED_PERMISSION)
                 ) {
-                    MuiScreens.openControlPanel()
+                    client.setScreen(StudioScreen())
                 }
             }
 
             while (ScriptFXKeybinds.openQuestJournal.consumeClick()) {
                 if (client.player != null && client.screen == null) {
-                    MuiScreens.openQuestJournal()
+                    // временно: студия на вкладке (квесты ещё не перенесены)
+                    client.setScreen(StudioScreen())
                 }
             }
         }
