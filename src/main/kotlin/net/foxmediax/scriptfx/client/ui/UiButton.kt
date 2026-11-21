@@ -14,15 +14,15 @@ class UiButton(
         if (!visible) return
         val hover = contains(mouseX, mouseY) && enabled
         val bg = when {
-            !enabled -> 0xFF15151C.toInt()
+            !enabled -> 0xFF0A0A0A.toInt()
             active -> UiTheme.BG_ACTIVE
             hover -> UiTheme.BG_HOVER
-            else -> UiTheme.BG_CARD
+            else -> UiTheme.BG_BTN
         }
         g.fill(x, y, right, bottom, bg)
         val border = when {
             !enabled -> UiTheme.BORDER
-            active || hover -> UiTheme.ACCENT_DIM
+            active || hover -> UiTheme.ACCENT
             else -> UiTheme.BORDER
         }
         g.fill(x, y, right, y + 1, border)
@@ -33,7 +33,11 @@ class UiButton(
         val tw = font.width(text)
         val tx = x + (w - tw) / 2
         val ty = y + (h - font.lineHeight) / 2
-        val col = if (enabled) UiTheme.TEXT else UiTheme.TEXT_MUTED
+        val col = when {
+            !enabled -> UiTheme.TEXT_DIM
+            active -> UiTheme.ACCENT_SOFT
+            else -> UiTheme.TEXT
+        }
         g.text(font, Component.literal(text), tx, ty, col, false)
     }
 
