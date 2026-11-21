@@ -1,8 +1,6 @@
 package net.foxmediax.scriptfx.client
 
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking
-import net.foxmediax.scriptfx.client.mui.MuiScreens
-import net.foxmediax.scriptfx.client.mui.NpcDialogModel
 import net.foxmediax.scriptfx.config.ScriptFXConfig
 import net.foxmediax.scriptfx.network.NpcDialogChoicePayload
 import net.foxmediax.scriptfx.network.NpcDialogOpenPayload
@@ -153,7 +151,7 @@ object NpcDialogClient {
     }
 
     private fun show(m: NpcDialogModel) {
-        val s = MuiScreens.createNpcDialog(m)
+        val s = NpcDialogScreen(m)
         screen = s
         Minecraft.getInstance().setScreen(s)
     }
