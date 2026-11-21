@@ -1,6 +1,6 @@
 package net.foxmediax.scriptfx.mixin.client;
 
-import net.foxmediax.scriptfx.client.mui.MuiScreens;
+import net.foxmediax.scriptfx.client.CenteredChatScreen;
 import net.foxmediax.scriptfx.config.MessageDisplayMode;
 import net.foxmediax.scriptfx.config.ScriptFXConfig;
 import net.minecraft.client.Minecraft;
@@ -27,7 +27,7 @@ public class MinecraftSetScreenMixin {
         ci.cancel();
         scriptfx$replacingChat = true;
         try {
-            MuiScreens.openCenteredChat();
+            Minecraft.getInstance().setScreen(new CenteredChatScreen(""));
         } finally {
             scriptfx$replacingChat = false;
         }
