@@ -23,7 +23,7 @@ repositories {
 		url = "https://raw.githubusercontent.com/Fuzss/modresources/main/maven/"
 	}
 
-	// Modern UI (использует репозиторий IzzelAliz)
+	// Arc3D
 	maven {
 		name 'IzzelAliz Maven'
 		url 'https://maven.izzel.io/releases/'
@@ -67,13 +67,6 @@ dependencies {
 	implementation "fuzs.forgeconfigapiport:forgeconfigapiport-fabric:26.1.5"
 	include "fuzs.forgeconfigapiport:forgeconfigapiport-fabric:26.1.5"
 
-	// Modern UI
-	implementation "icyllis.modernui:ModernUI-Fabric:26.1.2-3.13.0.4"
-	include "icyllis.modernui:ModernUI-Fabric:26.1.2-3.13.0.4"
-
-	implementation "curse.maven:modern-ui-352491:8206272"
-	include "curse.maven:modern-ui-352491:8206272"
-
 	// VFX Weaver
 	implementation "maven.modrinth:HBhB8m4j:oDBgLRw2"
 	include "maven.modrinth:HBhB8m4j:oDBgLRw2"
@@ -99,7 +92,7 @@ dependencies {
 
 	testImplementation "org.mockito:mockito-core:5.11.0"
 
-	// Arc3D — обязательная зависимость Modern UI
+	// Arc3D
 	implementation "icyllis.arc3d:arc3d-core:2026.1.0"
 	include "icyllis.arc3d:arc3d-core:2026.1.0"
 
